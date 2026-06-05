@@ -1,0 +1,72 @@
+// عمارتي — navigation/role context passed to every screen (mirrors the
+// prototype's `ctx` object).
+
+import 'package:flutter/widgets.dart';
+import 'data/sample_data.dart';
+
+enum AppRole { admin, resident, guest }
+
+class Ctx {
+  const Ctx({
+    required this.go,
+    required this.role,
+    required this.setRole,
+    required this.btype,
+    required this.setBtype,
+    required this.building,
+    required this.toast,
+    required this.openRole,
+    required this.adminNav,
+    required this.resNav,
+    required this.guestNav,
+    required this.busy,
+    required this.enterGuest,
+    required this.requestOtp,
+    required this.signIn,
+    required this.signOut,
+  });
+
+  /// Navigate to a screen id.
+  final void Function(String screen) go;
+  final AppRole role;
+  final void Function(AppRole) setRole;
+  final BType btype;
+  final void Function(BType) setBtype;
+  final Building building;
+
+  /// Show a transient toast. tone: 'ok' | 'info' | 'late'.
+  final void Function(String msg, {String tone}) toast;
+
+  /// Open the role / building-type switcher sheet.
+  final VoidCallback openRole;
+
+  /// Pre-built bottom navigation bars for each role.
+  final Widget adminNav;
+  final Widget resNav;
+  final Widget guestNav;
+
+  /// True while an auth / data-loading request is in flight.
+  final bool busy;
+
+  /// Enter guest mode for [btype] (loads the public building summary).
+  final Future<void> Function(BType btype) enterGuest;
+
+  /// Request a phone OTP. Returns the dev code in local environments.
+  final Future<String?> Function(String phone) requestOtp;
+
+  /// Sign in by email+password or phone+code, then load the building bundle.
+  /// Returns an error message on failure, or null on success.
+  final Future<String?> Function({
+    String? email,
+    String? password,
+    String? phone,
+    String? code,
+    required AppRole role,
+    required BType btype,
+  }) signIn;
+
+  /// Sign out, clear the session, and return to the splash screen.
+  final Future<void> Function() signOut;
+
+  bool get res => btype == BType.residential;
+}

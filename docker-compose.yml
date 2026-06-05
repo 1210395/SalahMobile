@@ -1,0 +1,23 @@
+# عمارتي — local infrastructure. MySQL for the Laravel backend.
+services:
+  db:
+    image: mysql:8.0
+    container_name: amarati-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: amarati
+      MYSQL_USER: amarati
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - amarati_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  amarati_db:

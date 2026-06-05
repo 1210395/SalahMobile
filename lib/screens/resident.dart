@@ -1,0 +1,376 @@
+// عمارتي — Resident screens + admin "More" hub.
+
+import 'package:flutter/material.dart';
+
+import '../common.dart';
+import 'admin_services.dart' show kElevPhone;
+
+Unit _meUnit(Ctx ctx) =>
+    (ctx.res ? kApartments : kShops).firstWhere((u) => u.status != 'vacant');
+
+class ResidentHome extends StatelessWidget {
+  const ResidentHome({super.key, required this.ctx});
+  final Ctx ctx;
+
+  @override
+  Widget build(BuildContext context) {
+    final me = _meUnit(ctx);
+    final res = ctx.res;
+    final paid = me.status != 'late';
+
+    return ScreenScaffold(
+      header: AppHeader(
+        accent: true,
+        logo: true,
+        right: Row(mainAxisSize: MainAxisSize.min, children: [
+          RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
+          const SizedBox(width: 8),
+          RoundBtn(icon: 'bell', dark: true, badge: true, onTap: () => ctx.go('alerts')),
+        ]),
+      ),
+      nav: ctx.resNav,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 0, 2, 12),
+          child: Row(
+            children: [
+              Avatar(name: me.resident, size: 40, tone: 'gold'),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('أهلاً، ${me.resident.split(' ').first}',
+                      style: AppType.base(size: 15, weight: FontWeight.w800)),
+                  const SizedBox(height: 1),
+                  Text('${res ? 'شقة' : 'محل'} ${me.no} · ${ctx.building.name}',
+                      style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // My status hero.
+        HeroBanner(
+          gradient: paid
+              ? const [AppColors.ok700, Color(0xFF0F5E3E)]
+              : const [AppColors.late700, Color(0xFF8C2019)],
+          shadow: AppShadows.md,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('حالة اشتراكي — مايو',
+                            style: AppType.base(size: 12.5, weight: FontWeight.w500, color: Colors.white70)),
+                        const SizedBox(height: 6),
+                        Text(paid ? 'مسدّد بالكامل' : 'يوجد مبلغ متأخر',
+                            style: AppType.base(size: 22, weight: FontWeight.w800, color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  AppIcon(paid ? 'checkCircle' : 'alert', size: 30, color: Colors.white),
+                ],
+              ),
+              if (!paid)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: NumText('المتأخر: ${fmtUSD(me.balance)}',
+                      style: AppType.num(size: 14, weight: FontWeight.w700, color: Colors.white)),
+                ),
+              const SizedBox(height: 14),
+              AppButton(
+                label: paid ? 'عرض إيصالاتي' : 'سدّد الآن',
+                variant: BtnVariant.white,
+                full: true,
+                icon: paid ? 'receipt' : 'wallet',
+                onTap: () => ctx.toast(paid ? 'عرض الإيصالات' : 'فتح صفحة الدفع', tone: 'info'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        const SectionTitle(text: 'ملخص عام للمبنى'),
+        Row(children: [
+          Expanded(child: StatCard(label: 'إيرادات الشهر', value: fmtUSD(Summary.revenueM), icon: 'trend', tone: 'ok')),
+          const SizedBox(width: 10),
+          Expanded(child: StatCard(label: 'مصروفات الشهر', value: fmtUSD(Summary.expenseM), icon: 'expense', tone: 'late')),
+        ]),
+        const SizedBox(height: 16),
+        const SectionTitle(text: 'روابط سريعة'),
+        gridRows([
+          QuickTile(label: 'تقريري', sub: 'سجل مدفوعاتي', icon: 'pie', tone: 'credit', onTap: () => ctx.go('resReport')),
+          QuickTile(label: 'المصعد', sub: paid ? 'رقم الهاتف' : 'مغلق', icon: 'elevator', tone: 'navy', onTap: () => ctx.go('resElevator')),
+          QuickTile(label: 'الصنايعية', sub: 'أرقام موثوقة', icon: 'wrench', tone: 'gold', onTap: () => ctx.go('craftsmen')),
+          QuickTile(label: 'التنبيهات', sub: 'إشعاراتي', icon: 'bell', tone: 'ok', badge: 2, onTap: () => ctx.go('alerts')),
+        ], n: 2),
+      ],
+    );
+  }
+}
+
+class ResidentReport extends StatelessWidget {
+  const ResidentReport({super.key, required this.ctx});
+  final Ctx ctx;
+
+  @override
+  Widget build(BuildContext context) {
+    final me = _meUnit(ctx);
+    final res = ctx.res;
+    final myPays = kPayments.where((p) => p.unit == me.no).toList();
+    final s = kStatusMap[me.status]!;
+
+    return ScreenScaffold(
+      header: AppHeader(
+        title: 'تقريري',
+        subtitle: '${res ? 'شقة' : 'محل'} ${me.no}',
+        onBack: () => ctx.go('resHome'),
+        right: RoundBtn(icon: 'download', onTap: () => ctx.toast('تصدير تقريري PDF')),
+      ),
+      nav: ctx.resNav,
+      children: [
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Avatar(name: me.resident, size: 46, tone: 'gold'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(me.resident, style: AppType.base(size: 15, weight: FontWeight.w800)),
+                        const SizedBox(height: 1),
+                        Text('${me.kind} · اشتراك ${fmtUSD(me.sub)}/شهر',
+                            style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  AppBadge(label: s.label, tone: s.tone),
+                ],
+              ),
+              const SizedBox(height: 14),
+              DetailGrid(rows: [
+                DetailRow('wallet', 'المطلوب (٢٠٢٦)', fmtUSD(me.sub * 12)),
+                DetailRow('checkCircle', 'المسدّد', fmtUSD(me.sub * 12 + me.balance), tone: 'ok'),
+                DetailRow('dollar', 'الرصيد', fmtUSD(me.balance), tone: me.balance < 0 ? 'late' : 'ok'),
+                DetailRow('calendar', 'آخر دفعة', myPays.isNotEmpty ? myPays.first.date : '—', ltr: true),
+              ]),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        const SectionTitle(text: 'سجل مدفوعاتي'),
+        AppCard(
+          pad: 6,
+          child: myPays.isEmpty
+              ? const EmptyState(icon: 'wallet', title: 'لا توجد مدفوعات بعد')
+              : Column(
+                  children: List.generate(myPays.length, (i) {
+                    final p = myPays[i];
+                    return ListRow(
+                      leading: const IconChip(icon: 'wallet', tone: 'ok', size: 40),
+                      title: p.kind,
+                      sub: p.method,
+                      dividerBelow: i < myPays.length - 1,
+                      trailing: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          NumText('+${fmtUSD(p.amount)}', style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.ok700)),
+                          const SizedBox(height: 2),
+                          NumText(p.date, style: AppType.num(size: 10.5, weight: FontWeight.w600, color: AppColors.ink400)),
+                        ],
+                      ),
+                    );
+                  }),
+                ),
+        ),
+        const SizedBox(height: 14),
+        const SectionTitle(text: 'التقرير العام للمبنى'),
+        AppCard(child: BarChart(data: Summary.bars)),
+      ],
+    );
+  }
+}
+
+class ResidentElevator extends StatelessWidget {
+  const ResidentElevator({super.key, required this.ctx});
+  final Ctx ctx;
+
+  @override
+  Widget build(BuildContext context) {
+    final me = _meUnit(ctx);
+    final paid = me.status != 'late';
+
+    return ScreenScaffold(
+      header: AppHeader(title: 'المصعد', onBack: () => ctx.go('resHome')),
+      nav: ctx.resNav,
+      children: [
+        const SizedBox(height: 12),
+        if (paid)
+          AppCard(
+            raised: true,
+            pad: 26,
+            child: Column(
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(color: AppColors.okBg, borderRadius: BorderRadius.circular(22)),
+                  alignment: Alignment.center,
+                  child: const AppIcon('elevator', size: 36, color: AppColors.ok700),
+                ),
+                const SizedBox(height: 14),
+                const AppBadge(label: 'اشتراكك مسدّد', tone: 'ok', icon: 'checkCircle'),
+                const SizedBox(height: 14),
+                Text('رقم هاتف المصعد الخاص بك',
+                    style: AppType.base(size: 14, weight: FontWeight.w600, color: AppColors.ink600)),
+                const SizedBox(height: 6),
+                NumText(kElevPhone,
+                    style: AppType.num(size: 26, weight: FontWeight.w800, color: AppColors.navy700, letterSpacing: 0.5)),
+                const SizedBox(height: 18),
+                AppButton(
+                  label: 'اتصال بالمصعد',
+                  full: true,
+                  icon: 'phone',
+                  onTap: () => ctx.toast('جارٍ الاتصال بالمصعد…', tone: 'info'),
+                ),
+              ],
+            ),
+          )
+        else
+          AppCard(
+            raised: true,
+            pad: 26,
+            child: Column(
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(color: AppColors.lateBg, borderRadius: BorderRadius.circular(22)),
+                  alignment: Alignment.center,
+                  child: const AppIcon('lock', size: 34, color: AppColors.late700),
+                ),
+                const SizedBox(height: 14),
+                const AppBadge(label: 'الوصول للمصعد موقوف', tone: 'late', icon: 'alert'),
+                const SizedBox(height: 14),
+                Text('يوجد مبلغ متأخر بقيمة ${fmtUSD(me.balance)}',
+                    textAlign: TextAlign.center,
+                    style: AppType.base(size: 14.5, weight: FontWeight.w700, color: AppColors.ink700)),
+                const SizedBox(height: 6),
+                Text('يرجى سداد المستحقات لتفعيل خدمة المصعد وإظهار رقم الهاتف.',
+                    textAlign: TextAlign.center,
+                    style: AppType.base(size: 13, weight: FontWeight.w500, color: AppColors.ink600, height: 1.6)),
+                const SizedBox(height: 18),
+                AppButton(
+                  label: 'سدّد الآن لتفعيل المصعد',
+                  variant: BtnVariant.gold,
+                  full: true,
+                  icon: 'wallet',
+                  onTap: () => ctx.toast('فتح صفحة الدفع', tone: 'info'),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class MoreHub extends StatelessWidget {
+  const MoreHub({super.key, required this.ctx});
+  final Ctx ctx;
+
+  @override
+  Widget build(BuildContext context) {
+    final res = ctx.res;
+    final groups = <(String, List<(String, String, String)>)>[
+      ('الإدارة', [
+        ('building', 'إدارة المبنى', 'building2'),
+        ('units', res ? 'الشقق' : 'المحلات', res ? 'building' : 'store'),
+        ('years', 'السنوات والأشهر', 'calendar'),
+      ]),
+      ('المالية', [
+        ('payments', 'الدفعات', 'wallet'),
+        ('expenses', 'المصروفات', 'expense'),
+        ('reports', 'التقارير', 'pie'),
+      ]),
+      ('الخدمات', [
+        ('workers', 'العمال والنظافة', 'broom'),
+        ('parking', 'الباركينج', 'parking'),
+        ('guard', 'الحارس', 'shield'),
+        ('elevator', 'المصعد', 'elevator'),
+        ('craftsmen', 'الصنايعية', 'wrench'),
+        ('alerts', 'التنبيهات', 'bell'),
+      ]),
+    ];
+    const toneFor = {
+      'building': 'navy', 'units': 'navy', 'years': 'credit',
+      'payments': 'ok', 'expenses': 'late', 'reports': 'credit',
+      'workers': 'ok', 'parking': 'gold', 'guard': 'navy',
+      'elevator': 'navy', 'craftsmen': 'gold', 'alerts': 'warn',
+    };
+
+    return ScreenScaffold(
+      header: const AppHeader(accent: true, title: 'المزيد', subtitle: 'كل أدوات الإدارة'),
+      nav: ctx.adminNav,
+      children: [
+        ...groups.map((g) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SectionTitle(text: g.$1),
+                  AppCard(
+                    pad: 6,
+                    child: Column(
+                      children: List.generate(g.$2.length, (i) {
+                        final it = g.$2[i];
+                        return ListRow(
+                          leading: IconChip(icon: it.$3, tone: toneFor[it.$1] ?? 'navy', size: 40),
+                          title: it.$2,
+                          chevron: true,
+                          dividerBelow: i < g.$2.length - 1,
+                          onTap: () => ctx.go(it.$1),
+                        );
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+            )),
+        AppCard(
+          pad: 6,
+          child: Column(
+            children: [
+              ListRow(
+                leading: const IconChip(icon: 'switch', tone: 'credit', size: 40),
+                title: 'تبديل الدور / الحساب',
+                chevron: true,
+                dividerBelow: true,
+                onTap: ctx.openRole,
+              ),
+              ListRow(
+                leading: const IconChip(icon: 'logout', tone: 'late', size: 40),
+                title: 'تسجيل الخروج',
+                onTap: () => ctx.signOut(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
