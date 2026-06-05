@@ -5,10 +5,13 @@ use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
 
 // ───────────────────────────── Auth ─────────────────────────────
-Route::post('/auth/register', [AuthController::class, 'register']);
-Route::post('/auth/login', [AuthController::class, 'login']);
-Route::post('/auth/request-otp', [AuthController::class, 'requestOtp']);
-Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp']);
+// Rate-limited to blunt credential stuffing / OTP brute force.
+Route::middleware('throttle:6,1')->group(function () {
+    Route::post('/auth/register', [AuthController::class, 'register']);
+    Route::post('/auth/login', [AuthController::class, 'login']);
+    Route::post('/auth/request-otp', [AuthController::class, 'requestOtp']);
+    Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp']);
+});
 
 // ───────────── Public (guest mode — general building data) ─────────────
 Route::get('/building', [ApiController::class, 'building']);

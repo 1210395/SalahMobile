@@ -24,14 +24,16 @@ class AuthController extends Controller
             'name' => 'required|string|max:120',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:6',
-            'role' => 'in:admin,resident,guest',
             'building_key' => 'in:residential,commercial',
         ]);
+        // SECURITY: role is never accepted from a public endpoint. New accounts
+        // are always unprivileged residents; promotion to admin must be done by
+        // an existing admin through a separate, authorized flow.
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
-            'role' => $data['role'] ?? 'resident',
+            'role' => 'resident',
             'building_key' => $data['building_key'] ?? 'residential',
         ]);
 
@@ -45,7 +47,7 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
         $user = User::where('email', $data['email'])->first();
-        if (! $user || ! Hash::check($data['password'], $user->password)) {
+        if (! $user || ! $user->password || ! Hash::check($data['password'], $user->password)) {
             throw ValidationException::withMessages(['email' => ['بيانات الدخول غير صحيحة']]);
         }
 
@@ -54,16 +56,20 @@ class AuthController extends Controller
 
     public function requestOtp(Request $r)
     {
-        $data = $r->validate(['phone' => 'required|string']);
-        $code = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        $data = $r->validate(['phone' => 'required|string|max:32']);
+
+        // Invalidate any outstanding codes for this phone, then issue one fresh
+        // 6-digit code stored only as a hash.
+        OtpCode::where('phone', $data['phone'])->where('used', false)->update(['used' => true]);
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         OtpCode::create([
             'phone' => $data['phone'],
-            'code' => $code,
+            'code' => Hash::make($code),
             'expires_at' => now()->addMinutes(10),
         ]);
 
-        // In production this would be sent over SMS. In local/dev we return it
-        // so the flow is testable without an SMS provider.
+        // In production this is sent over SMS. Locally we return it so the flow
+        // is testable without an SMS provider.
         $body = ['sent' => true];
         if (app()->environment('local')) {
             $body['dev_code'] = $code;
@@ -75,39 +81,53 @@ class AuthController extends Controller
     public function verifyOtp(Request $r)
     {
         $data = $r->validate([
-            'phone' => 'required|string',
+            'phone' => 'required|string|max:32',
             'code' => 'required|string',
-            'role' => 'in:admin,resident,guest',
             'building_key' => 'in:residential,commercial',
         ]);
 
         $otp = OtpCode::where('phone', $data['phone'])
-            ->where('code', $data['code'])
             ->where('used', false)
             ->where('expires_at', '>', now())
             ->latest()
             ->first();
 
+        $invalid = fn () => throw ValidationException::withMessages(
+            ['code' => ['رمز التحقق غير صحيح أو منتهٍ']]
+        );
+
         if (! $otp) {
-            throw ValidationException::withMessages(['code' => ['رمز التحقق غير صحيح أو منتهٍ']]);
+            $invalid();
+        }
+        if ($otp->attempts >= 5) {
+            $otp->update(['used' => true]);
+            $invalid();
+        }
+        if (! Hash::check($data['code'], $otp->code)) {
+            $otp->increment('attempts');
+            $invalid();
         }
         $otp->update(['used' => true]);
 
-        $user = User::firstOrCreate(
-            ['phone' => $data['phone']],
-            [
-                'name' => 'مستخدم عمارتي',
-                'role' => $data['role'] ?? 'resident',
-                'building_key' => $data['building_key'] ?? 'residential',
-            ],
-        );
-        // Honour an explicit role/building choice on subsequent logins.
-        if (isset($data['role']) || isset($data['building_key'])) {
-            $user->update(array_filter([
-                'role' => $data['role'] ?? null,
-                'building_key' => $data['building_key'] ?? null,
-            ]));
+        $user = User::where('phone', $data['phone'])->first();
+
+        // SECURITY: never let an OTP take over a password-protected account
+        // (e.g. an admin). Those must authenticate with their password.
+        if ($user && $user->password) {
+            throw ValidationException::withMessages(
+                ['phone' => ['هذا الرقم مرتبط بحساب بكلمة مرور — سجّل الدخول بكلمة المرور']]
+            );
         }
+
+        // SECURITY: phone-only accounts are always unprivileged residents; role
+        // is server-decided, never client-supplied. building_key only scopes
+        // which dataset they see and defaults to residential.
+        $user ??= User::create([
+            'phone' => $data['phone'],
+            'name' => 'مستخدم عمارتي',
+            'role' => 'resident',
+            'building_key' => $data['building_key'] ?? 'residential',
+        ]);
 
         return response()->json($this->payload($user));
     }

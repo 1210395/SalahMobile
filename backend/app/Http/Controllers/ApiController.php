@@ -20,9 +20,23 @@ use Illuminate\Http\Request;
 // by ?btype=residential|commercial (defaults to residential).
 class ApiController extends Controller
 {
+    /// Building scope for the request.
+    /// - Non-admins are locked to their own building (prevents cross-tenant IDOR).
+    /// - Admins (and public/guest endpoints with no user) may select via ?btype=.
     private function bk(Request $r): string
     {
+        $user = $r->user();
+        if ($user && $user->role !== 'admin') {
+            return $user->building_key === 'commercial' ? 'commercial' : 'residential';
+        }
+
         return $r->query('btype') === 'commercial' ? 'commercial' : 'residential';
+    }
+
+    /// Only an admin may perform writes.
+    private function requireAdmin(Request $r): void
+    {
+        abort_unless(optional($r->user())->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
     }
 
     public function building(Request $r)
@@ -53,6 +67,7 @@ class ApiController extends Controller
 
     public function storePayment(Request $r)
     {
+        $this->requireAdmin($r);
         $data = $r->validate([
             'unit_no' => 'required|string',
             'name' => 'nullable|string',
@@ -65,8 +80,11 @@ class ApiController extends Controller
             'notes' => 'nullable|string',
         ]);
         $data['building_key'] = $this->bk($r);
-        $data['name'] ??= optional(Unit::where('building_key', $data['building_key'])
-            ->where('no', $data['unit_no'])->first())->resident ?? '';
+        // The unit must exist in the scoped building.
+        $unit = Unit::where('building_key', $data['building_key'])
+            ->where('no', $data['unit_no'])->first();
+        abort_unless($unit !== null, 422, 'الوحدة غير موجودة في هذا المبنى');
+        $data['name'] ??= $unit->resident;
 
         return response()->json(Payment::create($data), 201);
     }
@@ -88,6 +106,7 @@ class ApiController extends Controller
 
     public function storeExpense(Request $r)
     {
+        $this->requireAdmin($r);
         $data = $r->validate([
             'cat' => 'required|string',
             'icon' => 'nullable|string',
@@ -112,6 +131,7 @@ class ApiController extends Controller
 
     public function storeWorker(Request $r)
     {
+        $this->requireAdmin($r);
         $data = $r->validate([
             'name' => 'required|string',
             'type' => 'nullable|string',
@@ -157,6 +177,7 @@ class ApiController extends Controller
 
     public function storeCraftsman(Request $r)
     {
+        $this->requireAdmin($r);
         $data = $r->validate([
             'name' => 'required|string',
             'job' => 'required|string',
