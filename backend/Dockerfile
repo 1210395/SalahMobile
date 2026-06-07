@@ -1,6 +1,7 @@
 # عمارتي — Amarati backend (Laravel 13 + Sanctum, MySQL). Production image.
-# PHP 8.3 + Apache serving public/. API-only, so no frontend build step.
-FROM php:8.3-apache
+# PHP 8.4 + Apache serving public/. API-only, so no frontend build step.
+# (composer.lock pins symfony 8.1 / laravel 13.14 which require PHP >= 8.4.1.)
+FROM php:8.4-apache
 
 # System deps + PHP extensions (MySQL only — the app ships a single mysql driver).
 RUN apt-get update && apt-get install -y \
