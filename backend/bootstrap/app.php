@@ -13,7 +13,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Deployed behind Cloudflare + Traefik. Trust the proxy chain so the
+        // client IP (X-Forwarded-For) is honoured — otherwise the auth
+        // throttle:6,1 limiter keys off the proxy and becomes global.
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

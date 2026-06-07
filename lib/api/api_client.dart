@@ -3,13 +3,18 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+/// Hosted production backend (Coolify @ Imarty.olive-dev.com).
+const String kProdApiBase = 'https://imarty.olive-dev.com/api';
+
 /// Base URL resolution:
 /// - override at build time with `--dart-define=API_BASE=http://host:port`
-/// - Android emulator reaches the host machine via 10.0.2.2
-/// - web / desktop / iOS simulator use localhost
+/// - release builds (`flutter build apk`) talk to the hosted backend
+/// - debug/profile builds default to local: Android emulator reaches the host
+///   via 10.0.2.2, everything else uses localhost
 String resolveApiBase() {
   const override = String.fromEnvironment('API_BASE');
   if (override.isNotEmpty) return override;
+  if (kReleaseMode) return kProdApiBase;
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
     return 'http://10.0.2.2:8000/api';
   }

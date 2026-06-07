@@ -68,10 +68,11 @@ class AuthController extends Controller
             'expires_at' => now()->addMinutes(10),
         ]);
 
-        // In production this is sent over SMS. Locally we return it so the flow
+        // In production this is sent over SMS. Locally — or on a demo deploy with
+        // AMARATI_EXPOSE_OTP_DEV_CODE=true — we return it so the phone-login flow
         // is testable without an SMS provider.
         $body = ['sent' => true];
-        if (app()->environment('local')) {
+        if (app()->environment('local') || config('amarati.expose_otp_dev_code')) {
             $body['dev_code'] = $code;
         }
 

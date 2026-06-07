@@ -24,6 +24,13 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // Idempotent: skip if the database has already been seeded. The
+        // production entrypoint runs `db:seed` on every boot, so this guard
+        // prevents duplicate sample data (none of the inserts below are upserts).
+        if (User::query()->exists()) {
+            return;
+        }
+
         $summary = [
             'balance' => 25840, 'due' => 12650, 'revenueM' => 3200, 'expenseM' => 1860,
             'bars' => [
