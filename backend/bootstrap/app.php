@@ -13,10 +13,22 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Deployed behind Cloudflare + Traefik. Trust the proxy chain so the
-        // client IP (X-Forwarded-For) is honoured — otherwise the auth
-        // throttle:6,1 limiter keys off the proxy and becomes global.
-        $middleware->trustProxies(at: '*');
+        // Deployed behind Cloudflare + Traefik (Coolify). Trust only the
+        // internal proxy hop — the app's immediate peer is always the Traefik
+        // container on a private Docker network — so X-Forwarded-For is honoured
+        // for real-client-IP detection (the throttle:6,1 limiter keys off it)
+        // WITHOUT letting an external client forge XFF to spoof their IP / dodge
+        // the rate limit. Trusting '*' would make XFF client-spoofable.
+        $middleware->trustProxies(at: [
+            '10.0.0.0/8',
+            '172.16.0.0/12',
+            '192.168.0.0/16',
+            '127.0.0.1',
+            '::1',
+        ], headers: Request::HEADER_X_FORWARDED_FOR
+            | Request::HEADER_X_FORWARDED_HOST
+            | Request::HEADER_X_FORWARDED_PORT
+            | Request::HEADER_X_FORWARDED_PROTO);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
