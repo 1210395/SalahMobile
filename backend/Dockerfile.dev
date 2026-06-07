@@ -1,0 +1,12 @@
+# Dev-only image to run the Laravel backend without host PHP.
+FROM php:8.4-cli
+
+# install-php-extensions pulls in all needed apt deps automatically.
+ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+RUN chmod +x /usr/local/bin/install-php-extensions && \
+    install-php-extensions pdo_mysql mbstring bcmath intl zip gd
+
+# Composer from the official image.
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
