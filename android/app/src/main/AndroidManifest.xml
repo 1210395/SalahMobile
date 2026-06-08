@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for the release APK to reach the hosted API. Flutter only adds
+         this automatically to the debug/profile manifests, so release builds
+         must declare it here or all network calls fail ("no server connection"). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="amarati"
         android:name="${applicationName}"
