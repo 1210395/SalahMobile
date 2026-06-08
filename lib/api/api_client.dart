@@ -1,24 +1,20 @@
 // عمارتي — Dio API client for the Laravel backend.
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 /// Hosted production backend (Coolify @ Imarty.olive-dev.com).
 const String kProdApiBase = 'https://imarty.olive-dev.com/api';
 
 /// Base URL resolution:
-/// - override at build time with `--dart-define=API_BASE=http://host:port`
-/// - release builds (`flutter build apk`) talk to the hosted backend
-/// - debug/profile builds default to local: Android emulator reaches the host
-///   via 10.0.2.2, everything else uses localhost
+/// - by default (any build — debug or release) the app talks to the hosted
+///   backend, so a plain `flutter build apk`/`flutter run` just works
+/// - for local backend dev, override at build time with
+///   `--dart-define=API_BASE=http://10.0.2.2:8000/api` (Android emulator) or
+///   `--dart-define=API_BASE=http://127.0.0.1:8000/api` (web/desktop/iOS sim)
 String resolveApiBase() {
   const override = String.fromEnvironment('API_BASE');
   if (override.isNotEmpty) return override;
-  if (kReleaseMode) return kProdApiBase;
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-    return 'http://10.0.2.2:8000/api';
-  }
-  return 'http://127.0.0.1:8000/api';
+  return kProdApiBase;
 }
 
 class ApiClient {
