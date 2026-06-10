@@ -124,7 +124,7 @@ class BuildingScreen extends StatelessWidget {
         title: 'إدارة المبنى',
         subtitle: 'الإعدادات العامة',
         onBack: () => ctx.go('home'),
-        right: RoundBtn(icon: 'edit', onTap: () => ctx.toast('وضع التعديل', tone: 'info')),
+        right: RoundBtn(icon: 'edit', onTap: () => _openEdit(context, ctx, b, res)),
       ),
       children: [
         Container(
@@ -223,8 +223,91 @@ class BuildingScreen extends StatelessWidget {
           QuickTile(label: 'الباركينج', sub: 'المواقف', icon: 'parking', tone: 'gold', onTap: () => ctx.go('parking')),
           QuickTile(label: 'الحارس', sub: 'بيانات الحارس', icon: 'shield', tone: 'ok', onTap: () => ctx.go('guard')),
           QuickTile(label: 'السنوات', sub: 'الأشهر والأرصدة', icon: 'calendar', tone: 'credit', onTap: () => ctx.go('years')),
+          QuickTile(label: 'طلبات الانضمام', sub: 'الموافقة على السكان', icon: 'users', tone: 'gold', onTap: () => ctx.go('approvals')),
+          QuickTile(label: 'الاشتراك والإعداد', sub: 'تفعيل ثم إعداد المبنى', icon: 'shield', tone: 'navy', onTap: () => ctx.go('subscribe')),
         ], n: 2),
       ],
+    );
+  }
+
+  /// Edit the building's general settings (mock-saves with a toast).
+  void _openEdit(BuildContext context, Ctx ctx, Building b, bool res) {
+    final f = {
+      'name': b.name,
+      'address': b.address,
+      'floors': '${b.floors}',
+      'units': '${b.units}',
+      'sub': '${b.subscription}',
+    };
+    BType type = ctx.btype;
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تعديل بيانات المبنى',
+          footer: AppButton(
+            label: 'حفظ التعديلات',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            onTap: () {
+              Navigator.of(sheetCtx).pop();
+              ctx.toast('تم حفظ بيانات المبنى');
+            },
+          ),
+          children: [
+            Field(label: 'اسم المبنى', icon: 'building2', value: f['name']!, onChanged: (v) => f['name'] = v),
+            Field(label: 'العنوان', icon: 'pin', value: f['address']!, onChanged: (v) => f['address'] = v),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('نوع المبنى',
+                  style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+            ),
+            Segmented(
+              value: type,
+              onChanged: (v) => setS(() => type = v as BType),
+              options: const [
+                SegOption(BType.residential, 'سكني (شقق)', icon: 'building'),
+                SegOption(BType.commercial, 'تجاري (محلات)', icon: 'store'),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Field(
+                      label: 'عدد الطوابق',
+                      icon: 'layers',
+                      value: f['floors']!,
+                      ltr: true,
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) => f['floors'] = v),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Field(
+                      label: res ? 'عدد الشقق' : 'عدد المحلات',
+                      icon: 'grid',
+                      value: f['units']!,
+                      ltr: true,
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) => f['units'] = v),
+                ),
+              ],
+            ),
+            Field(
+                label: 'الاشتراك الشهري',
+                icon: 'wallet',
+                value: f['sub']!,
+                ltr: true,
+                suffix: '\$',
+                marginBottom: 0,
+                keyboardType: TextInputType.number,
+                onChanged: (v) => f['sub'] = v),
+          ],
+        ),
+      ),
     );
   }
 }

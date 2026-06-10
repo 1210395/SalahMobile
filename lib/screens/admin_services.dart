@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../common.dart';
+import '../api/repository.dart';
 
 const String kElevPhone = '+966 92 000 1234';
 
@@ -405,26 +406,61 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
   }
 
   void _openAdd(Ctx ctx) {
+    final f = {'name': '', 'job': '', 'phone': '', 'note': ''};
     showAppSheet(
       context,
-      SheetShell(
-        title: 'إضافة صنايعي',
-        footer: AppButton(
-          label: 'حفظ',
-          full: true,
-          size: BtnSize.lg,
-          icon: 'check',
-          onTap: () {
-            Navigator.of(context).pop();
-            ctx.toast('تمت الإضافة');
-          },
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'إضافة صنايعي',
+          footer: AppButton(
+            label: 'حفظ',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            disabled: f['name']!.trim().isEmpty ||
+                f['job']!.trim().isEmpty ||
+                f['phone']!.trim().isEmpty,
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.createCraftsman({
+                  'name': f['name']!.trim(),
+                  'job': f['job']!.trim(),
+                  'phone': f['phone']!.trim(),
+                  'note': f['note'],
+                });
+                await ctx.reload();
+                ctx.toast('تمت إضافة ${f['name']!.trim()}');
+              } catch (_) {
+                ctx.toast('تعذّر الحفظ، تحقّق من الاتصال', tone: 'late');
+              }
+            },
+          ),
+          children: [
+            Field(
+                label: 'الاسم',
+                icon: 'user',
+                placeholder: 'اسم الصنايعي',
+                onChanged: (v) => setS(() => f['name'] = v)),
+            Field(
+                label: 'المهنة',
+                icon: 'wrench',
+                placeholder: 'سباكة، كهرباء…',
+                onChanged: (v) => setS(() => f['job'] = v)),
+            Field(
+                label: 'الجوال',
+                icon: 'phone',
+                placeholder: '5X XXX XXXX',
+                ltr: true,
+                keyboardType: TextInputType.phone,
+                onChanged: (v) => setS(() => f['phone'] = v)),
+            AppTextArea(
+                label: 'ملاحظات',
+                placeholder: 'ملاحظة اختيارية…',
+                rows: 2,
+                onChanged: (v) => f['note'] = v),
+          ],
         ),
-        children: const [
-          Field(label: 'الاسم', icon: 'user', placeholder: 'اسم الصنايعي'),
-          Field(label: 'المهنة', icon: 'wrench', placeholder: 'سباكة، كهرباء…'),
-          Field(label: 'الجوال', icon: 'phone', placeholder: '5X XXX XXXX', ltr: true),
-          AppTextArea(label: 'ملاحظات', placeholder: 'ملاحظة اختيارية…', rows: 2),
-        ],
       ),
     );
   }

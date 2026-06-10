@@ -86,12 +86,16 @@ class AuthStore {
     return res.data['dev_code'] as String?;
   }
 
-  Future<AuthUser> verifyOtp(String phone, String code, {String? role, String? buildingKey}) async {
+  Future<AuthUser> verifyOtp(String phone, String code,
+      {String? role, String? buildingKey, String? name}) async {
     final res = await _dio.post('/auth/verify-otp', data: {
       'phone': phone,
       'code': code,
       'role': ?role,
       'building_key': ?buildingKey,
+      // Optional full name captured on first sign-up (ignored by the backend if
+      // the account already exists).
+      'name': ?name,
     });
     await _persist(Map<String, dynamic>.from(res.data));
     return user!;

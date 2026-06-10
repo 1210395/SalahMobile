@@ -21,6 +21,7 @@ class Field extends StatefulWidget {
     this.obscure = false,
     this.ltr = false,
     this.marginBottom = 14,
+    this.maxLength,
   });
   final String? label;
   final String value;
@@ -33,6 +34,7 @@ class Field extends StatefulWidget {
   final bool obscure;
   final bool ltr;
   final double marginBottom;
+  final int? maxLength;
 
   @override
   State<Field> createState() => _FieldState();
@@ -96,6 +98,11 @@ class _FieldState extends State<Field> {
                     onChanged: widget.onChanged,
                     obscureText: widget.obscure,
                     keyboardType: widget.keyboardType,
+                    maxLength: widget.maxLength,
+                    // Hide the built-in counter; the fixed-height field has no room.
+                    buildCounter: widget.maxLength == null
+                        ? null
+                        : (_, {required currentLength, maxLength, required isFocused}) => null,
                     textDirection: widget.ltr ? TextDirection.ltr : null,
                     style: AppType.base(
                         size: 15, weight: FontWeight.w600, color: AppColors.ink900),
@@ -131,10 +138,11 @@ class _FieldState extends State<Field> {
 }
 
 class AppTextArea extends StatelessWidget {
-  const AppTextArea({super.key, this.label, this.placeholder, this.rows = 3});
+  const AppTextArea({super.key, this.label, this.placeholder, this.rows = 3, this.onChanged});
   final String? label;
   final String? placeholder;
   final int rows;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -160,6 +168,7 @@ class AppTextArea extends StatelessWidget {
             ),
             child: TextField(
               maxLines: rows,
+              onChanged: onChanged,
               style: AppType.base(size: 15, weight: FontWeight.w600, color: AppColors.ink900),
               cursorColor: AppColors.navy600,
               decoration: InputDecoration(

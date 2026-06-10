@@ -89,6 +89,20 @@ class ApiController extends Controller
         return response()->json(Payment::create($data), 201);
     }
 
+    /// The authenticated resident's own payment history (their unit only).
+    public function myPayments(Request $r)
+    {
+        $user = $r->user();
+        $q = Payment::where('building_key', $user->building_key);
+        if ($user->unit_no) {
+            $q->where('unit_no', $user->unit_no);
+        } else {
+            $q->whereRaw('1 = 0'); // no unit assigned yet → empty history
+        }
+
+        return $q->orderByDesc('date')->get();
+    }
+
     public function payTypes()
     {
         return PayType::orderBy('sort')->get();

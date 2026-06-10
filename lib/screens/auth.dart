@@ -277,11 +277,15 @@ class _LoginScreenState extends State<LoginScreen> {
   late BType btype = widget.ctx.btype;
   String val = '';
   String code = '';
+  String name = '';
+  // Phone sign-in requires the OTP to have been sent before "دخول" is enabled.
+  bool otpSent = false;
 
   Future<void> _submit() async {
     final ctx = widget.ctx;
     final err = method == 'phone'
-        ? await ctx.signIn(phone: val, code: code, role: role, btype: btype)
+        ? await ctx.signIn(
+            phone: val, code: code, name: name.trim().isEmpty ? null : name.trim(), role: role, btype: btype)
         : await ctx.signIn(email: val, password: code, role: role, btype: btype);
     if (err != null) ctx.toast(err, tone: 'late');
   }
@@ -294,11 +298,16 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     try {
       final dev = await ctx.requestOtp(val);
+      setState(() => otpSent = true);
       ctx.toast(dev != null ? 'رمز التحقق التجريبي: $dev' : 'تم إرسال رمز التحقق إلى جوالك');
     } catch (_) {
       ctx.toast('تعذّر إرسال الرمز', tone: 'late');
     }
   }
+
+  bool get _canSubmit => method == 'phone'
+      ? (val.isNotEmpty && otpSent && code.length >= 4)
+      : (val.isNotEmpty && code.isNotEmpty);
 
   @override
   Widget build(BuildContext context) {
@@ -313,13 +322,24 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         Segmented(
           value: method,
-          onChanged: (v) => setState(() => method = v as String),
+          onChanged: (v) => setState(() {
+            method = v as String;
+            otpSent = false;
+            code = '';
+          }),
           options: const [
             SegOption('phone', 'رقم الجوال', icon: 'phone'),
             SegOption('email', 'البريد', icon: 'mail'),
           ],
         ),
         const SizedBox(height: 16),
+        // Full (four-part) name — captured on first sign-up.
+        Field(
+          label: 'الاسم الرباعي',
+          icon: 'user',
+          placeholder: 'الاسم الأول والأب والجد والعائلة',
+          onChanged: (v) => setState(() => name = v),
+        ),
         if (phone)
           Field(
             label: 'رقم الجوال',
@@ -327,9 +347,12 @@ class _LoginScreenState extends State<LoginScreen> {
             placeholder: '5X XXX XXXX',
             keyboardType: TextInputType.phone,
             ltr: true,
-            onChanged: (v) => setState(() => val = v),
+            onChanged: (v) => setState(() {
+              val = v;
+              otpSent = false; // re-send required if the number changes
+            }),
           )
-        else
+        else ...[
           Field(
             label: 'البريد الإلكتروني',
             icon: 'mail',
@@ -338,15 +361,15 @@ class _LoginScreenState extends State<LoginScreen> {
             ltr: true,
             onChanged: (v) => setState(() => val = v),
           ),
-        Field(
-          label: phone ? 'رمز التحقق (OTP)' : 'كلمة المرور',
-          icon: 'lock',
-          placeholder: phone ? '••••' : 'كلمة المرور',
-          obscure: !phone,
-          ltr: true,
-          hint: phone ? 'أرسلنا رمزاً مكوناً من 4 أرقام إلى جوالك' : null,
-          onChanged: (v) => setState(() => code = v),
-        ),
+          Field(
+            label: 'كلمة المرور',
+            icon: 'lock',
+            placeholder: 'كلمة المرور',
+            obscure: true,
+            ltr: true,
+            onChanged: (v) => setState(() => code = v),
+          ),
+        ],
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
           child: Text('نوع الحساب',
@@ -374,23 +397,35 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
         const SizedBox(height: 22),
+        // For phone sign-in the OTP field sits right next to the "send code"
+        // button (per client feedback), and "دخول" stays disabled until a valid
+        // code is entered.
         if (phone) ...[
           AppButton(
-            label: 'إرسال رمز التحقق',
+            label: otpSent ? 'إعادة إرسال الرمز' : 'إرسال رمز التحقق',
             variant: BtnVariant.outline,
             size: BtnSize.lg,
             full: true,
             icon: 'send',
             onTap: _sendOtp,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
+          Field(
+            label: 'رمز التحقق (OTP)',
+            icon: 'lock',
+            placeholder: 'أدخل الرمز',
+            keyboardType: TextInputType.number,
+            ltr: true,
+            hint: otpSent ? 'أدخل الرمز المُرسَل إلى جوالك' : 'اضغط «إرسال رمز التحقق» أولاً',
+            onChanged: (v) => setState(() => code = v),
+          ),
         ],
         AppButton(
           label: 'دخول',
           size: BtnSize.lg,
           full: true,
           iconRight: 'arrowL',
-          disabled: val.isEmpty || code.isEmpty,
+          disabled: !_canSubmit,
           onTap: _submit,
         ),
         const SizedBox(height: 14),

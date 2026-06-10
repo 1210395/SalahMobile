@@ -22,6 +22,7 @@ Route::get('/wa-templates', [ApiController::class, 'waTemplates']);
 // ───────────────────── Protected (signed-in users) ─────────────────────
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
+    Route::get('/me/payments', [ApiController::class, 'myPayments']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
 
     Route::get('/units', [ApiController::class, 'units']);

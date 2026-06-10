@@ -20,6 +20,12 @@ dependencies:
   dio: ^5.7.0
   # Persist the auth token across launches.
   shared_preferences: ^2.3.2
+  # Real spreadsheet export (pure Dart, no native code).
+  excel: ^4.0.6
+  # Share the generated report file (xlsx / csv).
+  share_plus: ^10.1.4
+  # Temp dir for the generated file before sharing.
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:

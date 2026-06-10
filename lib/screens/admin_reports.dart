@@ -1,8 +1,19 @@
 // عمارتي — Admin: Reports, Alerts & Messages, Years.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:excel/excel.dart' as xlsx;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../common.dart';
+
+/// Clone chart data with a money value label drawn above each bar.
+List<ChartDatum> _withValueLabels(List<ChartDatum> data) => data
+    .map((d) => ChartDatum(label: d.label, value: d.value, color: d.color, label2: fmtUSD(d.value)))
+    .toList();
 
 // ───────────────────────────── Reports ─────────────────────────────
 
@@ -16,6 +27,154 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   String tab = 'monthly';
+  int selYear = 2026;
+  int selMonth = 4; // مايو
+  String? selUnitNo;
+
+  /// Building-wide amount collected in the selected month/year.
+  int _collected() => kPayments
+      .where((p) => p.month == selMonth && p.year == selYear)
+      .fold<int>(0, (s, p) => s + p.amount);
+
+  /// Export chooser: real .xlsx / .csv files (shared) or copy to clipboard.
+  void _exportSheet(Ctx ctx, String title, List<List<String>> rows) {
+    showAppSheet(
+      context,
+      SheetShell(
+        title: title,
+        children: [
+          _exportOption(
+            icon: 'excel',
+            label: 'تصدير Excel (ملف .xlsx)',
+            onTap: () {
+              Navigator.of(context).pop();
+              _shareReport(ctx, rows, excel: true);
+            },
+          ),
+          const SizedBox(height: 10),
+          _exportOption(
+            icon: 'file',
+            label: 'تصدير CSV (ملف)',
+            onTap: () {
+              Navigator.of(context).pop();
+              _shareReport(ctx, rows, excel: false);
+            },
+          ),
+          const SizedBox(height: 10),
+          _exportOption(
+            icon: 'receipt',
+            label: 'نسخ إلى الحافظة',
+            onTap: () {
+              Clipboard.setData(ClipboardData(text: _rowsToCsv(rows)));
+              Navigator.of(context).pop();
+              ctx.toast('تم نسخ التقرير إلى الحافظة');
+            },
+          ),
+          const SizedBox(height: 8),
+          Text('ملاحظة: تصدير PDF بالعربية يتطلب تضمين خط عربي وتشكيل النص (خطوة لاحقة).',
+              style: AppType.base(size: 11, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _exportOption({required String icon, required String label, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface2,
+          border: Border.all(color: AppColors.line),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(children: [
+          IconChip(icon: icon, tone: 'navy', size: 40),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: AppType.base(size: 14.5, weight: FontWeight.w700))),
+          const AppIcon('chevronL', size: 18, color: AppColors.ink300),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _shareReport(Ctx ctx, List<List<String>> rows, {required bool excel}) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final stamp = '$selYear${(selMonth + 1).toString().padLeft(2, '0')}';
+      if (excel) {
+        final book = xlsx.Excel.createExcel();
+        final sheet = book[book.getDefaultSheet() ?? 'Sheet1'];
+        for (final r in rows) {
+          sheet.appendRow([for (final c in r) xlsx.TextCellValue(c)]);
+        }
+        final bytes = book.encode() ?? <int>[];
+        final file = File('${dir.path}/amarati-$tab-$stamp.xlsx');
+        await file.writeAsBytes(bytes);
+        await Share.shareXFiles([XFile(file.path)], text: 'تقرير عمارتي');
+      } else {
+        // Prepend a BOM so Excel opens the Arabic CSV in UTF-8.
+        final csv = '﻿${_rowsToCsv(rows)}';
+        final file = File('${dir.path}/amarati-$tab-$stamp.csv');
+        await file.writeAsString(csv);
+        await Share.shareXFiles([XFile(file.path)], text: 'تقرير عمارتي');
+      }
+    } catch (_) {
+      ctx.toast('تعذّر تصدير الملف', tone: 'late');
+    }
+  }
+
+  String _rowsToCsv(List<List<String>> rows) => rows.map((r) => r.map(_csvCell).join(',')).join('\n');
+
+  String _csvCell(String v) =>
+      v.contains(',') || v.contains('"') || v.contains('\n') ? '"${v.replaceAll('"', '""')}"' : v;
+
+  List<List<String>> _reportRows(Ctx ctx, List<Unit> lateUnits) {
+    switch (tab) {
+      case 'monthly':
+        return [
+          ['التقرير الشهري', '${arMonths[selMonth]} $selYear'],
+          [],
+          ['البند', 'القيمة'],
+          ['إجمالي محصّل', '${_collected()}'],
+          ['متبقٍ', '${Summary.due}'],
+          [],
+          ['المتأخرون', 'الوحدة', 'الرصيد'],
+          for (final u in lateUnits) [u.resident, u.no, '${u.balance}'],
+        ];
+      case 'annual':
+        return [
+          ['التقرير السنوي', '$selYear'],
+          [],
+          ['الشهر', 'القيمة'],
+          for (final d in Summary.trend) [d.label, '${d.value}'],
+          [],
+          ['إجمالي الإيرادات', '38400'],
+          ['إجمالي المصروفات', '22150'],
+        ];
+      case 'unit':
+        final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
+        final u = units.firstWhere((x) => x.no == (selUnitNo ?? units.first.no), orElse: () => units.first);
+        return [
+          ['تقرير الوحدة', '${u.no} — ${u.resident}'],
+          [],
+          ['البند', 'القيمة'],
+          ['المطلوب سنوياً', '${u.sub * 12}'],
+          ['الرصيد', '${u.balance}'],
+          [],
+          ['التاريخ', 'المبلغ', 'النوع', 'الطريقة'],
+          for (final p in kPayments.where((p) => p.unit == u.no))
+            [p.date, '${p.amount}', p.kind, p.method],
+        ];
+      default:
+        return [
+          ['تقرير المصروفات', '$selYear'],
+          [],
+          ['التصنيف', 'القيمة'],
+          for (final d in _expData) [d.label, '${d.value}'],
+        ];
+    }
+  }
 
   static const List<ChartDatum> _expData = [
     ChartDatum(label: 'مصعد', value: 350, color: AppColors.navy600),
@@ -37,7 +196,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
         title: 'التقارير',
         subtitle: 'تحليل شامل للمبنى',
         onBack: () => ctx.go('home'),
-        right: RoundBtn(icon: 'download', onTap: () => ctx.toast('تم تصدير التقرير PDF')),
+        right: RoundBtn(
+            icon: 'download',
+            onTap: () => _exportSheet(ctx, 'تصدير التقرير', _reportRows(ctx, lateUnits))),
       ),
       nav: ctx.adminNav,
       children: [
@@ -61,21 +222,52 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Row(children: [
           Expanded(
             child: AppButton(
-                label: 'PDF', variant: BtnVariant.outline, full: true, icon: 'file', onTap: () => ctx.toast('تصدير PDF')),
+                label: 'Excel',
+                variant: BtnVariant.outline,
+                full: true,
+                icon: 'excel',
+                onTap: () => _shareReport(ctx, _reportRows(ctx, lateUnits), excel: true)),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: AppButton(
-                label: 'Excel', variant: BtnVariant.outline, full: true, icon: 'excel', onTap: () => ctx.toast('تصدير Excel')),
+                label: 'CSV',
+                variant: BtnVariant.outline,
+                full: true,
+                icon: 'file',
+                onTap: () => _shareReport(ctx, _reportRows(ctx, lateUnits), excel: false)),
           ),
         ]),
       ],
     );
   }
 
+  Widget _yearSelect() => SelectField(
+        label: 'السنة',
+        icon: 'calendar',
+        options: [for (final y in const [2024, 2025, 2026]) SelectOption(y, '$y')],
+        value: selYear,
+        onChanged: (v) => setState(() => selYear = v as int),
+      );
+
+  Widget _monthSelect() => SelectField(
+        label: 'الشهر',
+        options: [for (var i = 0; i < arMonths.length; i++) SelectOption(i, arMonths[i])],
+        value: selMonth,
+        onChanged: (v) => setState(() => selMonth = v as int),
+      );
+
   List<Widget> _monthly(List<Unit> lateUnits) => [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _monthSelect()),
+            const SizedBox(width: 10),
+            Expanded(child: _yearSelect()),
+          ],
+        ),
         Row(children: [
-          Expanded(child: StatCard(label: 'إجمالي محصّل', value: fmtUSD(Summary.revenueM), icon: 'trend', tone: 'ok')),
+          Expanded(child: StatCard(label: 'إجمالي محصّل', value: fmtUSD(_collected()), icon: 'trend', tone: 'ok')),
           const SizedBox(width: 10),
           Expanded(child: StatCard(label: 'متبقٍ', value: fmtUSD(Summary.due), icon: 'alert', tone: 'gold')),
         ]),
@@ -85,7 +277,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SectionTitle(text: 'الحركة الشهرية', margin: EdgeInsets.only(bottom: 10)),
-              BarChart(data: Summary.bars),
+              BarChart(data: _withValueLabels(Summary.bars)),
             ],
           ),
         ),
@@ -117,13 +309,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ];
 
   List<Widget> _annual() => [
+        _yearSelect(),
         HeroBanner(
           gradient: const [AppColors.navy700, AppColors.navy800],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('الرصيد النهائي — 2026',
+              Text('الرصيد النهائي — $selYear',
                   style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.navy300)),
               const SizedBox(height: 6),
               NumText(fmtUSD(Summary.balance),
@@ -137,7 +330,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SectionTitle(text: 'الإيرادات الشهرية', margin: EdgeInsets.only(bottom: 10)),
-              BarChart(data: Summary.trend),
+              BarChart(data: _withValueLabels(Summary.trend)),
             ],
           ),
         ),
@@ -150,51 +343,83 @@ class _ReportsScreenState extends State<ReportsScreen> {
         const SizedBox(height: 12),
       ];
 
-  List<Widget> _unit(Ctx ctx) => [
-        SelectField(
-          label: 'اختر الوحدة',
-          icon: 'building',
-          options: (ctx.res ? kApartments : kShops)
-              .where((u) => u.status != 'vacant')
-              .map((u) => SelectOption(u.no, '${u.no} — ${u.resident}'))
-              .toList(),
-          value: '101',
-          onChanged: (_) {},
-        ),
-        AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const Avatar(name: 'أحمد العامري', size: 46),
-                  const SizedBox(width: 12),
-                  Column(
+  List<Widget> _unit(Ctx ctx) {
+    final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
+    if (units.isEmpty) {
+      return const [EmptyState(icon: 'building', title: 'لا توجد وحدات فعّالة')];
+    }
+    final no = selUnitNo ?? units.first.no;
+    final u = units.firstWhere((x) => x.no == no, orElse: () => units.first);
+    final s = kStatusMap[u.status]!;
+    final pays = kPayments.where((p) => p.unit == u.no).toList();
+    final required = u.sub * 12;
+    final paid = (required + u.balance).clamp(0, required).toInt();
+
+    return [
+      SelectField(
+        label: 'اختر الوحدة',
+        icon: 'building',
+        options: units.map((x) => SelectOption(x.no, '${x.no} — ${x.resident}')).toList(),
+        value: u.no,
+        onChanged: (v) => setState(() => selUnitNo = v as String),
+      ),
+      AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Avatar(name: u.resident, size: 46, tone: u.kind == 'مالك' ? 'navy' : 'gold'),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('أحمد العامري', style: AppType.base(size: 15, weight: FontWeight.w800)),
+                      Text(u.resident, style: AppType.base(size: 15, weight: FontWeight.w800)),
                       const SizedBox(height: 2),
-                      Text('شقة 101 · مالك',
+                      Text('${ctx.res ? 'شقة' : 'محل'} ${u.no} · ${u.kind}',
                           style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
                     ],
                   ),
-                  const Spacer(),
-                  const AppBadge(label: 'مسدد', tone: 'ok', icon: 'checkCircle'),
-                ],
-              ),
-              const SizedBox(height: 14),
-              DetailGrid(rows: [
-                DetailRow('wallet', 'المطلوب سنوياً', fmtUSD(480)),
-                DetailRow('checkCircle', 'المسدّد', fmtUSD(480), tone: 'ok'),
-                DetailRow('dollar', 'الرصيد', fmtUSD(0), tone: 'ok'),
-                DetailRow('calendar', 'آخر دفعة', '2026-05-01', ltr: true),
-              ]),
-            ],
-          ),
+                ),
+                const SizedBox(width: 8),
+                AppBadge(label: s.label, tone: s.tone, icon: u.status == 'ok' ? 'checkCircle' : null),
+              ],
+            ),
+            const SizedBox(height: 14),
+            DetailGrid(rows: [
+              DetailRow('wallet', 'المطلوب سنوياً', fmtUSD(required)),
+              DetailRow('checkCircle', 'المسدّد', fmtUSD(paid), tone: 'ok'),
+              DetailRow('dollar', 'الرصيد', fmtUSD(u.balance),
+                  tone: u.balance < 0 ? 'late' : u.balance > 0 ? 'credit' : 'ok'),
+              DetailRow('calendar', 'آخر دفعة', pays.isNotEmpty ? pays.first.date : '—', ltr: true),
+            ]),
+          ],
         ),
-        const SizedBox(height: 12),
-      ];
+      ),
+      const SizedBox(height: 12),
+      AppCard(
+        pad: 6,
+        child: pays.isEmpty
+            ? const EmptyState(icon: 'wallet', title: 'لا توجد مدفوعات لهذه الوحدة')
+            : Column(
+                children: List.generate(pays.length, (i) {
+                  final p = pays[i];
+                  return ListRow(
+                    leading: const IconChip(icon: 'wallet', tone: 'ok', size: 40),
+                    title: p.kind,
+                    sub: '${p.method} · ${arMonths[p.month]} ${p.year}',
+                    dividerBelow: i < pays.length - 1,
+                    trailing: NumText('+${fmtUSD(p.amount)}',
+                        style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.ok700)),
+                  );
+                }),
+              ),
+      ),
+      const SizedBox(height: 12),
+    ];
+  }
 
   List<Widget> _expense(int expTotal) => [
         AppCard(
@@ -255,11 +480,36 @@ class AlertsScreen extends StatefulWidget {
 
 class _AlertsScreenState extends State<AlertsScreen> {
   String tab = 'alerts';
+  String _note = '';
+  int _noteSeq = 0; // bump to reset the composer field after sending
+
+  /// Residents see only their own unit's alerts + general (non unit-specific)
+  /// announcements broadcast by the building admin.
+  List<AlertItem> _visibleAlerts(Ctx ctx, bool isAdmin) {
+    if (isAdmin) return kAlerts;
+    final mine = (ctx.res ? kApartments : kShops)
+        .firstWhere((u) => u.status != 'vacant', orElse: () => (ctx.res ? kApartments : kShops).first);
+    return kAlerts.where((a) {
+      final unitSpecific = a.type == 'subscription' || a.type == 'paid';
+      if (!unitSpecific) return true; // general announcement → everyone
+      return a.title.contains(mine.no) || a.body.contains(mine.no);
+    }).toList();
+  }
+
+  void _sendNote(Ctx ctx) {
+    if (_note.trim().isEmpty) return;
+    ctx.toast('تم إرسال ملاحظتك لمسؤول العمارة');
+    setState(() {
+      _note = '';
+      _noteSeq++;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
     final isAdmin = ctx.role == AppRole.admin;
+    final alerts = _visibleAlerts(ctx, isAdmin);
 
     return ScreenScaffold(
       header: AppHeader(
@@ -279,7 +529,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
         ),
         const SizedBox(height: 14),
         if (tab == 'alerts')
-          ...kAlerts.map((a) => Padding(
+          ...alerts.map((a) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: AppCard(
                   pad: 13,
@@ -328,6 +578,34 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   ),
                 ),
               )),
+        // Residents can send a short note (≤ 50 chars) to the building admin.
+        if (tab == 'alerts' && !isAdmin) ...[
+          const SizedBox(height: 4),
+          const SectionTitle(text: 'إرسال ملاحظة لمسؤول العمارة'),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Field(
+                  key: ValueKey('note$_noteSeq'),
+                  icon: 'bell',
+                  placeholder: 'اكتب ملاحظتك (حتى 50 حرفاً)…',
+                  maxLength: 50,
+                  marginBottom: 10,
+                  hint: 'متبقٍ ${50 - _note.length} حرفاً',
+                  onChanged: (v) => setState(() => _note = v),
+                ),
+                AppButton(
+                  label: 'إرسال',
+                  full: true,
+                  icon: 'send',
+                  disabled: _note.trim().isEmpty,
+                  onTap: () => _sendNote(ctx),
+                ),
+              ],
+            ),
+          ),
+        ],
         if (tab == 'settings') ..._settings(ctx),
       ],
     );

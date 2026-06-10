@@ -58,6 +58,22 @@ class Api {
     s.payTypes = _list(payTypes).map(PayType.fromJson).toList();
   }
 
+  // ───────────────────────────── Writes ─────────────────────────────
+  // building_key is derived server-side from ?btype for admins, so every write
+  // carries the active building type as a query param.
+
+  Future<void> createPayment(BType b, Map<String, dynamic> body) =>
+      _dio.post('/payments', queryParameters: {'btype': btypeKey(b)}, data: body);
+
+  Future<void> createExpense(BType b, Map<String, dynamic> body) =>
+      _dio.post('/expenses', queryParameters: {'btype': btypeKey(b)}, data: body);
+
+  Future<void> createWorker(BType b, Map<String, dynamic> body) =>
+      _dio.post('/workers', queryParameters: {'btype': btypeKey(b)}, data: body);
+
+  Future<void> createCraftsman(Map<String, dynamic> body) =>
+      _dio.post('/craftsmen', data: body);
+
   /// Guest mode — only the public building summary is available (no token).
   Future<void> loadGuest(BType b) async {
     final q = {'btype': btypeKey(b)};

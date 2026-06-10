@@ -91,7 +91,8 @@ class ResidentHome extends StatelessWidget {
                 variant: BtnVariant.white,
                 full: true,
                 icon: paid ? 'receipt' : 'wallet',
-                onTap: () => ctx.toast(paid ? 'عرض الإيصالات' : 'فتح صفحة الدفع', tone: 'info'),
+                onTap: () =>
+                    paid ? ctx.go('resReport') : ctx.toast('فتح صفحة الدفع', tone: 'info'),
               ),
             ],
           ),
@@ -116,16 +117,44 @@ class ResidentHome extends StatelessWidget {
   }
 }
 
-class ResidentReport extends StatelessWidget {
+class ResidentReport extends StatefulWidget {
   const ResidentReport({super.key, required this.ctx});
   final Ctx ctx;
 
   @override
+  State<ResidentReport> createState() => _ResidentReportState();
+}
+
+class _ResidentReportState extends State<ResidentReport> {
+  int selYear = 2026;
+  int selMonth = -1; // -1 = كل الأشهر
+
+  @override
   Widget build(BuildContext context) {
+    final ctx = widget.ctx;
     final me = _meUnit(ctx);
     final res = ctx.res;
-    final myPays = kPayments.where((p) => p.unit == me.no).toList();
+    final myPays = kPayments
+        .where((p) =>
+            p.unit == me.no &&
+            p.year == selYear &&
+            (selMonth == -1 || p.month == selMonth))
+        .toList();
     final s = kStatusMap[me.status]!;
+
+    // Payment ratio for the donut: paid vs the annual requirement.
+    final required = me.sub * 12;
+    final paidAmt = (required + me.balance).clamp(0, required).toInt();
+    final remaining = (required - paidAmt).clamp(0, required).toInt();
+    final pct = required > 0 ? ((paidAmt / required) * 100).round() : 0;
+
+    final years = [2024, 2025, 2026]
+        .map((y) => SelectOption(y, '$y'))
+        .toList();
+    final months = <SelectOption>[
+      const SelectOption(-1, 'كل الأشهر'),
+      for (var i = 0; i < arMonths.length; i++) SelectOption(i, arMonths[i]),
+    ];
 
     return ScreenScaffold(
       header: AppHeader(
@@ -136,6 +165,73 @@ class ResidentReport extends StatelessWidget {
       ),
       nav: ctx.resNav,
       children: [
+        // Year / month selectors — payment history filters by the chosen period.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SelectField(
+                label: 'السنة',
+                icon: 'calendar',
+                options: years,
+                value: selYear,
+                onChanged: (v) => setState(() => selYear = v as int),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: SelectField(
+                label: 'الشهر',
+                options: months,
+                value: selMonth,
+                onChanged: (v) => setState(() => selMonth = v as int),
+              ),
+            ),
+          ],
+        ),
+        // Payment-ratio donut.
+        AppCard(
+          child: Row(
+            children: [
+              SizedBox(
+                width: 120,
+                height: 120,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Donut(data: [
+                      ChartDatum(label: 'مسدّد', value: paidAmt, color: AppColors.ok),
+                      ChartDatum(label: 'متبقٍ', value: remaining, color: AppColors.gold500),
+                    ]),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        NumText('$pct%',
+                            style: AppType.num(size: 20, weight: FontWeight.w800, color: AppColors.ink900)),
+                        Text('نسبة السداد',
+                            style: AppType.base(size: 10, weight: FontWeight.w600, color: AppColors.ink500)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ratioRow(AppColors.ok, 'المسدّد', fmtUSD(paidAmt)),
+                    const SizedBox(height: 8),
+                    _ratioRow(AppColors.gold500, 'المتبقّي', fmtUSD(remaining)),
+                    const SizedBox(height: 8),
+                    _ratioRow(AppColors.navy600, 'المطلوب سنوياً', fmtUSD(required)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
         AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -203,6 +299,18 @@ class ResidentReport extends StatelessWidget {
       ],
     );
   }
+
+  Widget _ratioRow(Color color, String label, String value) => Row(
+        children: [
+          Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(label,
+                style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.ink600)),
+          ),
+          NumText(value, style: AppType.num(size: 12.5, weight: FontWeight.w800)),
+        ],
+      );
 }
 
 class ResidentElevator extends StatelessWidget {
@@ -300,6 +408,7 @@ class MoreHub extends StatelessWidget {
       ('الإدارة', [
         ('building', 'إدارة المبنى', 'building2'),
         ('units', res ? 'الشقق' : 'المحلات', res ? 'building' : 'store'),
+        ('approvals', 'طلبات الانضمام', 'users'),
         ('years', 'السنوات والأشهر', 'calendar'),
       ]),
       ('المالية', [
@@ -317,7 +426,7 @@ class MoreHub extends StatelessWidget {
       ]),
     ];
     const toneFor = {
-      'building': 'navy', 'units': 'navy', 'years': 'credit',
+      'building': 'navy', 'units': 'navy', 'years': 'credit', 'approvals': 'gold',
       'payments': 'ok', 'expenses': 'late', 'reports': 'credit',
       'workers': 'ok', 'parking': 'gold', 'guard': 'navy',
       'elevator': 'navy', 'craftsmen': 'gold', 'alerts': 'warn',

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../common.dart';
+import '../api/repository.dart';
 
 // ───────────────────────────── Payments ─────────────────────────────
 
@@ -16,14 +17,16 @@ class PaymentsScreen extends StatefulWidget {
 
 class _PaymentsScreenState extends State<PaymentsScreen> {
   String month = 'all';
+  int year = 2026;
 
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
-    final total = kPayments.fold<int>(0, (s, p) => s + p.amount);
+    final byYear = kPayments.where((p) => p.year == year).toList();
+    final total = byYear.fold<int>(0, (s, p) => s + p.amount);
     final list = month == 'all'
-        ? kPayments
-        : kPayments.where((p) => p.month == int.parse(month)).toList();
+        ? byYear
+        : byYear.where((p) => p.month == int.parse(month)).toList();
 
     return ScreenScaffold(
       header: AppHeader(
@@ -49,14 +52,14 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   style: AppType.num(size: 28, weight: FontWeight.w800, color: Colors.white)),
               const SizedBox(height: 12),
               Row(children: [
-                AppBadge(label: '${kPayments.length} دفعة', tone: 'ok', icon: 'checkCircle'),
+                AppBadge(label: '${byYear.length} دفعة', tone: 'ok', icon: 'checkCircle'),
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
                   decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(999)),
-                  child: Text('متوسط ${fmtUSD((total / kPayments.length).round())}',
+                  child: Text('متوسط ${fmtUSD(byYear.isEmpty ? 0 : (total / byYear.length).round())}',
                       style: AppType.base(size: 12, weight: FontWeight.w700, color: Colors.white)),
                 ),
               ]),
@@ -64,15 +67,26 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        Segmented(
-          small: true,
-          value: month,
-          onChanged: (v) => setState(() => month = v as String),
-          options: const [
-            SegOption('all', 'الكل'),
-            SegOption('4', 'مايو'),
-            SegOption('3', 'أبريل'),
-            SegOption('2', 'مارس'),
+        Row(
+          children: [
+            Expanded(
+              child: Segmented(
+                small: true,
+                value: month,
+                onChanged: (v) => setState(() => month = v as String),
+                options: const [
+                  SegOption('all', 'الكل'),
+                  SegOption('4', 'مايو'),
+                  SegOption('3', 'أبريل'),
+                  SegOption('2', 'مارس'),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _YearChip(
+              year: year,
+              onChanged: (y) => setState(() => year = y),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -123,18 +137,29 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
   Object unit = '';
   Object method = 'تحويل بنكي';
   Object payMonth = 4;
+  // Target: one unit / all units / a group of units.
+  String target = 'one';
+  final Set<String> selUnits = {};
+  // Custom "Other" payment line.
+  bool otherOn = false;
+  String otherLabel = '';
+  String otherAmount = '';
 
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
-    final total = kPayTypes.where((t) => types[t.id] == true).fold<int>(0, (s, t) => s + t.amount);
-    final units = (ctx.res ? kApartments : kShops)
-        .where((u) => u.status != 'vacant')
-        .map((u) => SelectOption(u.no, '${u.no} — ${u.resident}'))
-        .toList();
+    final base = kPayTypes.where((t) => types[t.id] == true).fold<int>(0, (s, t) => s + t.amount);
+    final extra = otherOn ? (int.tryParse(otherAmount) ?? 0) : 0;
+    final total = base + extra;
+    final unitList = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
+    final units = unitList.map((u) => SelectOption(u.no, '${u.no} — ${u.resident}')).toList();
 
     String payIcon(String id) =>
         {'sub': 'wallet', 'elev': 'elevator', 'guard': 'shield'}[id] ?? 'parking';
+
+    final canSave = (target == 'one' && unit != '') ||
+        (target == 'group' && selUnits.isNotEmpty) ||
+        target == 'all';
 
     return SheetShell(
       title: 'تسجيل دفعة جديدة',
@@ -143,20 +168,68 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         full: true,
         size: BtnSize.lg,
         icon: 'check',
-        disabled: unit == '',
-        onTap: () {
-          Navigator.of(context).pop();
-          ctx.toast('تم تسجيل دفعة بقيمة ${fmtUSD(total)}');
-        },
+        disabled: !canSave,
+        onTap: () => _save(ctx, total, unitList),
       ),
       children: [
-        SelectField(
-          label: 'الوحدة / الساكن',
-          icon: 'building',
-          options: units,
-          value: unit == '' ? null : unit,
-          onChanged: (v) => setState(() => unit = v),
+        // Target selector — all / one / group.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Segmented(
+            small: true,
+            value: target,
+            onChanged: (v) => setState(() => target = v as String),
+            options: const [
+              SegOption('one', 'وحدة واحدة'),
+              SegOption('all', 'الجميع'),
+              SegOption('group', 'مجموعة'),
+            ],
+          ),
         ),
+        if (target == 'one')
+          SelectField(
+            label: 'الوحدة / الساكن',
+            icon: 'building',
+            options: units,
+            value: unit == '' ? null : unit,
+            onChanged: (v) => setState(() => unit = v),
+          ),
+        if (target == 'all')
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: _infoNote('سيتم تسجيل الدفعة لجميع الوحدات الفعّالة (${unitList.length} وحدة).'),
+          ),
+        if (target == 'group') ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text('اختر الوحدات (${selUnits.length})',
+                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: unitList.map((u) {
+                final on = selUnits.contains(u.no);
+                return GestureDetector(
+                  onTap: () => setState(() => on ? selUnits.remove(u.no) : selUnits.add(u.no)),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: on ? AppColors.navy700 : AppColors.surface,
+                      border: Border.all(color: on ? AppColors.navy700 : AppColors.line2, width: 1.5),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(u.no,
+                        style: AppType.base(
+                            size: 12.5, weight: FontWeight.w700, color: on ? Colors.white : AppColors.ink600)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
         Padding(
           padding: const EdgeInsets.only(bottom: 9),
           child: Text('بنود الدفع',
@@ -199,6 +272,44 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             ),
           );
         }),
+        // Custom "Other" line — admin enters the type name and amount.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 9),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+              color: otherOn ? AppColors.navy50 : AppColors.surface,
+              border: Border.all(color: otherOn ? AppColors.navy100 : AppColors.line, width: 1.5),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Column(
+              children: [
+                Row(children: [
+                  AppIcon('receipt', size: 20, color: otherOn ? AppColors.navy700 : AppColors.ink400),
+                  const SizedBox(width: 11),
+                  Expanded(child: Text('أخرى', style: AppType.base(size: 14, weight: FontWeight.w700))),
+                  AppSwitch(checked: otherOn, onChanged: (v) => setState(() => otherOn = v)),
+                ]),
+                if (otherOn) ...[
+                  const SizedBox(height: 10),
+                  Field(
+                      label: 'نوع الدفعة',
+                      placeholder: 'مثال: غرامة تأخير',
+                      marginBottom: 10,
+                      onChanged: (v) => setState(() => otherLabel = v)),
+                  Field(
+                      label: 'المبلغ',
+                      ltr: true,
+                      suffix: '\$',
+                      placeholder: '0',
+                      keyboardType: TextInputType.number,
+                      marginBottom: 0,
+                      onChanged: (v) => setState(() => otherAmount = v)),
+                ],
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: 7),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,6 +342,55 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
       ],
     );
   }
+
+  /// POST one payment per target unit, then refresh the bundle.
+  Future<void> _save(Ctx ctx, int total, List<Unit> unitList) async {
+    final targets = target == 'all'
+        ? unitList.map((u) => u.no).toList()
+        : target == 'group'
+            ? selUnits.toList()
+            : [unit as String];
+    final labels = [
+      for (final t in kPayTypes)
+        if (types[t.id] == true) t.label,
+      if (otherOn && otherLabel.trim().isNotEmpty) otherLabel.trim(),
+    ];
+    final kind = labels.isEmpty ? 'دفعة' : labels.join(' + ');
+    final m = payMonth as int;
+    final date = '2026-${(m + 1).toString().padLeft(2, '0')}-01';
+    Navigator.of(context).pop();
+    try {
+      for (final no in targets) {
+        await Api.I.createPayment(ctx.btype, {
+          'unit_no': no,
+          'amount': total,
+          'kind': kind,
+          'month': m,
+          'year': 2026,
+          'date': date,
+          'method': method as String,
+        });
+      }
+      await ctx.reload();
+      final who = target == 'all'
+          ? 'جميع الوحدات'
+          : target == 'group'
+              ? '${targets.length} وحدة'
+              : 'وحدة $unit';
+      ctx.toast('تم تسجيل دفعة بقيمة ${fmtUSD(total)} لـ $who');
+    } catch (_) {
+      ctx.toast('تعذّر حفظ الدفعة، تحقّق من الاتصال', tone: 'late');
+    }
+  }
+
+  Widget _infoNote(String text) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration:
+            BoxDecoration(color: AppColors.surface2, borderRadius: BorderRadius.circular(12)),
+        child: Text(text,
+            style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.ink600, height: 1.5)),
+      );
 }
 
 // ───────────────────────────── Expenses ─────────────────────────────
@@ -325,42 +485,88 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     );
   }
 
+  // Icon/tone per expense category (matches the seed styling).
+  static const _expMeta = {
+    'مصعد': ['elevator', 'navy'],
+    'نظافة': ['broom', 'ok'],
+    'كهرباء': ['alert', 'warn'],
+    'صيانة': ['wrench', 'credit'],
+    'أخرى': ['receipt', 'gold'],
+  };
+
   void _openAdd(Ctx ctx) {
+    final f = {'cat': kExpCats.first, 'supplier': '', 'amount': '', 'date': '2026-05-06', 'desc': ''};
     showAppSheet(
       context,
-      SheetShell(
-        title: 'تسجيل مصروف',
-        footer: AppButton(
-          label: 'حفظ المصروف',
-          full: true,
-          size: BtnSize.lg,
-          icon: 'check',
-          onTap: () {
-            Navigator.of(context).pop();
-            ctx.toast('تم تسجيل المصروف');
-          },
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تسجيل مصروف',
+          footer: AppButton(
+            label: 'حفظ المصروف',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            disabled: f['supplier']!.trim().isEmpty || (int.tryParse(f['amount']!) ?? 0) <= 0,
+            onTap: () async {
+              final meta = _expMeta[f['cat']] ?? const ['receipt', 'gold'];
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.createExpense(ctx.btype, {
+                  'cat': f['cat'],
+                  'icon': meta[0],
+                  'tone': meta[1],
+                  'supplier': f['supplier']!.trim(),
+                  'amount': int.tryParse(f['amount']!) ?? 0,
+                  'date': f['date'],
+                  'description': f['desc'],
+                });
+                await ctx.reload();
+                ctx.toast('تم تسجيل المصروف');
+              } catch (_) {
+                ctx.toast('تعذّر حفظ المصروف، تحقّق من الاتصال', tone: 'late');
+              }
+            },
+          ),
+          children: [
+            SelectField(
+              label: 'التصنيف',
+              icon: 'grid',
+              options: [for (final c in kExpCats) SelectOption(c, c)],
+              value: f['cat'],
+              onChanged: (v) => setS(() => f['cat'] = v as String),
+            ),
+            Field(
+                label: 'المورّد / الجهة',
+                icon: 'store',
+                placeholder: 'اسم المورّد',
+                onChanged: (v) => setS(() => f['supplier'] = v)),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                    child: Field(
+                        label: 'المبلغ',
+                        icon: 'dollar',
+                        placeholder: '0',
+                        ltr: true,
+                        suffix: '\$',
+                        keyboardType: TextInputType.number,
+                        onChanged: (v) => setS(() => f['amount'] = v))),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: Field(
+                        label: 'التاريخ',
+                        value: f['date']!,
+                        ltr: true,
+                        onChanged: (v) => f['date'] = v)),
+              ],
+            ),
+            AppTextArea(
+                label: 'الوصف',
+                placeholder: 'تفاصيل المصروف…',
+                onChanged: (v) => f['desc'] = v),
+          ],
         ),
-        children: [
-          SelectField(
-            label: 'التصنيف',
-            icon: 'grid',
-            options: [for (final c in kExpCats) SelectOption(c, c)],
-            value: 'مصعد',
-            onChanged: (_) {},
-          ),
-          const Field(label: 'المورّد / الجهة', icon: 'store', placeholder: 'اسم المورّد'),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Expanded(
-                  child: Field(
-                      label: 'المبلغ', icon: 'dollar', placeholder: '0', ltr: true, suffix: '\$', keyboardType: TextInputType.number)),
-              SizedBox(width: 10),
-              Expanded(child: Field(label: 'التاريخ', value: '2026-05-06', ltr: true)),
-            ],
-          ),
-          const AppTextArea(label: 'الوصف', placeholder: 'تفاصيل المصروف…'),
-        ],
       ),
     );
   }
@@ -448,37 +654,76 @@ class WorkersScreen extends StatelessWidget {
   }
 
   void _openAdd(BuildContext context, Ctx ctx) {
+    final f = {'name': '', 'phone': '', 'address': '', 'cycle': 'شهري', 'amount': ''};
     showAppSheet(
       context,
-      SheetShell(
-        title: 'إضافة عامل / شركة',
-        footer: AppButton(
-          label: 'حفظ',
-          full: true,
-          size: BtnSize.lg,
-          icon: 'check',
-          onTap: () {
-            Navigator.of(context).pop();
-            ctx.toast('تمت الإضافة');
-          },
-        ),
-        children: [
-          const Field(label: 'الاسم', icon: 'user', placeholder: 'اسم العامل أو الشركة'),
-          const Field(label: 'الجوال', icon: 'phone', placeholder: '5X XXX XXXX', ltr: true),
-          const Field(label: 'العنوان', icon: 'pin', placeholder: 'العنوان'),
-          SelectField(
-            label: 'نوع الدفع',
-            icon: 'calendar',
-            options: const [
-              SelectOption('يومي', 'يومي'),
-              SelectOption('أسبوعي', 'أسبوعي'),
-              SelectOption('شهري', 'شهري'),
-            ],
-            value: 'شهري',
-            onChanged: (_) {},
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'إضافة عامل / شركة',
+          footer: AppButton(
+            label: 'حفظ',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            disabled: f['name']!.trim().isEmpty ||
+                f['phone']!.trim().isEmpty ||
+                (int.tryParse(f['amount']!) ?? 0) <= 0,
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.createWorker(ctx.btype, {
+                  'name': f['name']!.trim(),
+                  'phone': f['phone']!.trim(),
+                  'address': f['address'],
+                  'cycle': f['cycle'],
+                  'amount': int.tryParse(f['amount']!) ?? 0,
+                });
+                await ctx.reload();
+                ctx.toast('تمت إضافة ${f['name']!.trim()}');
+              } catch (_) {
+                ctx.toast('تعذّر الحفظ، تحقّق من الاتصال', tone: 'late');
+              }
+            },
           ),
-          const Field(label: 'المبلغ', icon: 'dollar', placeholder: '0', ltr: true, suffix: '\$', keyboardType: TextInputType.number),
-        ],
+          children: [
+            Field(
+                label: 'الاسم',
+                icon: 'user',
+                placeholder: 'اسم العامل أو الشركة',
+                onChanged: (v) => setS(() => f['name'] = v)),
+            Field(
+                label: 'الجوال',
+                icon: 'phone',
+                placeholder: '5X XXX XXXX',
+                ltr: true,
+                keyboardType: TextInputType.phone,
+                onChanged: (v) => setS(() => f['phone'] = v)),
+            Field(
+                label: 'العنوان',
+                icon: 'pin',
+                placeholder: 'العنوان',
+                onChanged: (v) => f['address'] = v),
+            SelectField(
+              label: 'نوع الدفع',
+              icon: 'calendar',
+              options: const [
+                SelectOption('يومي', 'يومي'),
+                SelectOption('أسبوعي', 'أسبوعي'),
+                SelectOption('شهري', 'شهري'),
+              ],
+              value: f['cycle'],
+              onChanged: (v) => setS(() => f['cycle'] = v as String),
+            ),
+            Field(
+                label: 'المبلغ',
+                icon: 'dollar',
+                placeholder: '0',
+                ltr: true,
+                suffix: '\$',
+                keyboardType: TextInputType.number,
+                onChanged: (v) => setS(() => f['amount'] = v)),
+          ],
+        ),
       ),
     );
   }
@@ -589,6 +834,38 @@ class ParkingScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Compact tappable year chip (cycles through the tracked years).
+class _YearChip extends StatelessWidget {
+  const _YearChip({required this.year, required this.onChanged});
+  final int year;
+  final ValueChanged<int> onChanged;
+  static const _years = [2024, 2025, 2026];
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        final i = _years.indexOf(year);
+        onChanged(_years[(i + 1) % _years.length]);
+      },
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppColors.navy700,
+          borderRadius: BorderRadius.circular(11),
+          boxShadow: AppShadows.sm,
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const AppIcon('calendar', size: 15, color: Colors.white),
+          const SizedBox(width: 5),
+          NumText('$year', style: AppType.num(size: 13, weight: FontWeight.w800, color: Colors.white)),
+        ]),
       ),
     );
   }
