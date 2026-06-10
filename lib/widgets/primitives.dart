@@ -231,7 +231,7 @@ class AppHeader extends StatelessWidget {
         child: logo
             ? Align(
                 alignment: Alignment.centerRight,
-                child: Image.asset('assets/images/logo-light.png', height: 30),
+                child: Image.asset('assets/images/logo-light.png', height: 42),
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -279,7 +279,9 @@ class AppHeader extends StatelessWidget {
               gradient: appGradient(
                   [AppColors.navy700, AppColors.navy800, AppColors.navy900]),
             ),
-            child: Stack(children: [const BranchMotif(), bar]),
+            // The building/dots motif is dropped behind the logo (per client
+            // feedback) — kept only on titled accent headers.
+            child: Stack(children: [if (!logo) const BranchMotif(), bar]),
           )
         : Container(
             decoration: const BoxDecoration(

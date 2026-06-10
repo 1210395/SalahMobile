@@ -14,12 +14,14 @@ import 'screens/admin_finance.dart';
 import 'screens/admin_services.dart';
 import 'screens/admin_reports.dart';
 import 'screens/resident.dart';
+import 'screens/onboarding.dart';
 
 const Map<String, String> _adminTabOf = {
   'home': 'home', 'units': 'units', 'payments': 'payments', 'reports': 'reports',
   'more': 'more', 'building': 'more', 'expenses': 'more', 'workers': 'more',
   'parking': 'more', 'guard': 'more', 'elevator': 'more', 'craftsmen': 'more',
-  'alerts': 'more', 'years': 'more',
+  'alerts': 'more', 'years': 'more', 'approvals': 'more',
+  'subscribe': 'more', 'buildingSetup': 'more',
 };
 const Map<String, String> _resTabOf = {
   'resHome': 'resHome', 'resReport': 'resReport', 'resElevator': 'resElevator',
@@ -149,6 +151,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
     String? password,
     String? phone,
     String? code,
+    String? name,
     required AppRole role,
     required BType btype,
   }) async {
@@ -156,7 +159,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
     try {
       if (phone != null && code != null) {
         await AuthStore.I.verifyOtp(phone, code,
-            role: role.name, buildingKey: btypeKey(btype));
+            role: role.name, buildingKey: btypeKey(btype), name: name);
       } else {
         await AuthStore.I.loginEmail(email ?? '', password ?? '');
       }
@@ -188,6 +191,16 @@ class _AmaratiAppState extends State<AmaratiApp> {
       role = AppRole.guest;
       screen = 'splash';
     });
+  }
+
+  /// Re-fetch the active bundle (after a write) and rebuild the current screen.
+  Future<void> _reload() async {
+    if (!AuthStore.I.isAuthed) return;
+    setState(() => _busy = true);
+    try {
+      await Api.I.loadBundle(btype);
+    } catch (_) {}
+    if (mounted) setState(() => _busy = false);
   }
 
   /// Switch building type and reload the active dataset.
@@ -269,6 +282,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
       requestOtp: _requestOtp,
       signIn: _signIn,
       signOut: _signOut,
+      reload: _reload,
     );
   }
 
@@ -308,6 +322,14 @@ class _AmaratiAppState extends State<AmaratiApp> {
         return YearsScreen(ctx: ctx);
       case 'more':
         return MoreHub(ctx: ctx);
+      case 'subscribe':
+        return SubscribeScreen(ctx: ctx);
+      case 'buildingSetup':
+        return BuildingSetupScreen(ctx: ctx);
+      case 'joinUnit':
+        return JoinUnitScreen(ctx: ctx);
+      case 'approvals':
+        return ApprovalsScreen(ctx: ctx);
       case 'resHome':
         return ResidentHome(ctx: ctx);
       case 'resReport':

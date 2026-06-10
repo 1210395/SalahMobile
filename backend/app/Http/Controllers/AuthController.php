@@ -85,6 +85,9 @@ class AuthController extends Controller
             'phone' => 'required|string|max:32',
             'code' => 'required|string',
             'building_key' => 'in:residential,commercial',
+            // Optional full name captured on first sign-up (used only when the
+            // phone-only account is created; never overwrites an existing one).
+            'name' => 'nullable|string|max:120',
         ]);
 
         $otp = OtpCode::where('phone', $data['phone'])
@@ -125,7 +128,7 @@ class AuthController extends Controller
         // which dataset they see and defaults to residential.
         $user ??= User::create([
             'phone' => $data['phone'],
-            'name' => 'مستخدم عمارتي',
+            'name' => $data['name'] ?? 'مستخدم عمارتي',
             'role' => 'resident',
             'building_key' => $data['building_key'] ?? 'residential',
         ]);

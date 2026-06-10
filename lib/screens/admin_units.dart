@@ -1,6 +1,7 @@
 // عمارتي — Units (apartments / shops): list, detail sheet, add via WhatsApp/QR.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../common.dart';
 
@@ -214,7 +215,146 @@ class _UnitsScreenState extends State<UnitsScreen> {
           _notes(u.kind == 'شاغر'
               ? 'الوحدة متاحة للإيجار.'
               : 'يفضل التواصل عبر واتساب بعد الساعة 5 مساءً.'),
+          const SizedBox(height: 10),
+          AppButton(
+            label: 'تعديل بيانات الوحدة',
+            variant: BtnVariant.outline,
+            full: true,
+            icon: 'edit',
+            onTap: () {
+              Navigator.of(context).pop();
+              _openEdit(ctx, u, res);
+            },
+          ),
         ],
+      ),
+    );
+  }
+
+  /// Manual new-resident form (name, phone, floor, unit no, optional email).
+  void _openManualAdd(Ctx ctx, bool res) {
+    final f = {'name': '', 'phone': '', 'floor': '', 'no': '', 'email': ''};
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'إضافة ${res ? 'ساكن' : 'مستأجر'} يدوياً',
+          footer: AppButton(
+            label: 'حفظ',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            disabled: f['name']!.trim().isEmpty || f['no']!.trim().isEmpty,
+            onTap: () {
+              Navigator.of(sheetCtx).pop();
+              final where = f['floor']!.isNotEmpty ? ' (دور ${f['floor']})' : '';
+              ctx.toast('تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'محل'} ${f['no']}$where');
+            },
+          ),
+          children: [
+            Field(
+                label: 'الاسم الرباعي',
+                icon: 'user',
+                placeholder: 'الاسم الكامل',
+                onChanged: (v) => setS(() => f['name'] = v)),
+            Field(
+                label: 'رقم الجوال',
+                icon: 'phone',
+                placeholder: '5X XXX XXXX',
+                ltr: true,
+                keyboardType: TextInputType.phone,
+                onChanged: (v) => setS(() => f['phone'] = v)),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Field(
+                      label: 'الطابق',
+                      icon: 'building',
+                      placeholder: '1',
+                      ltr: true,
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) => setS(() => f['floor'] = v)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Field(
+                      label: res ? 'رقم الشقة' : 'رقم المحل',
+                      icon: 'grid',
+                      placeholder: res ? '101' : 'M-01',
+                      ltr: true,
+                      onChanged: (v) => setS(() => f['no'] = v)),
+                ),
+              ],
+            ),
+            Field(
+                label: 'البريد الإلكتروني (اختياري)',
+                icon: 'mail',
+                placeholder: 'name@email.com',
+                ltr: true,
+                keyboardType: TextInputType.emailAddress,
+                onChanged: (v) => setS(() => f['email'] = v)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Edit an existing unit, including a "vacant" status that excludes it from
+  /// accounts and payments.
+  void _openEdit(Ctx ctx, Unit u, bool res) {
+    final f = {'name': u.resident, 'phone': u.phone, 'sub': '${u.sub}'};
+    String status = u.status;
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تعديل ${res ? 'شقة' : 'محل'} ${u.no}',
+          footer: AppButton(
+            label: 'حفظ التعديلات',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            onTap: () {
+              Navigator.of(sheetCtx).pop();
+              ctx.toast(status == 'vacant'
+                  ? 'تم تعيين الوحدة كشاغرة — مستبعَدة من الحسابات والدفعات'
+                  : 'تم حفظ تعديلات الوحدة');
+            },
+          ),
+          children: [
+            Field(label: 'اسم الساكن', icon: 'user', value: f['name']!, onChanged: (v) => f['name'] = v),
+            Field(
+                label: 'رقم الجوال',
+                icon: 'phone',
+                value: f['phone']!,
+                ltr: true,
+                keyboardType: TextInputType.phone,
+                onChanged: (v) => f['phone'] = v),
+            Field(
+                label: 'الاشتراك الشهري',
+                icon: 'wallet',
+                value: f['sub']!,
+                ltr: true,
+                suffix: '\$',
+                keyboardType: TextInputType.number,
+                onChanged: (v) => f['sub'] = v),
+            SelectField(
+              label: 'الحالة',
+              icon: 'filter',
+              options: const [
+                SelectOption('ok', 'مسدّد'),
+                SelectOption('late', 'متأخر'),
+                SelectOption('credit', 'رصيد دائن'),
+                SelectOption('vacant', 'شاغر'),
+              ],
+              value: status,
+              onChanged: (v) => setS(() => status = v as String),
+            ),
+            if (status == 'vacant')
+              _notes('عند جعل الوحدة شاغرة تُستبعَد تلقائياً من الحسابات والدفعات والتقارير.'),
+          ],
+        ),
       ),
     );
   }
@@ -234,7 +374,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
             sub: 'أرسل رابط انضمام مباشر لرقم الساكن',
             onTap: () {
               Navigator.of(context).pop();
-              ctx.toast('تم إرسال دعوة عبر واتساب');
+              _openInvite(ctx, res, qr: false);
             },
           ),
           const SizedBox(height: 12),
@@ -246,7 +386,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
             sub: 'يمسح الساكن الرمز للانضمام للوحدة',
             onTap: () {
               Navigator.of(context).pop();
-              ctx.toast('تم إنشاء رمز QR للوحدة');
+              _openInvite(ctx, res, qr: true);
             },
           ),
           const SizedBox(height: 14),
@@ -267,12 +407,87 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   icon: 'plus',
                   onTap: () {
                     Navigator.of(context).pop();
-                    ctx.toast('فتح نموذج الإضافة اليدوية', tone: 'info');
+                    _openManualAdd(ctx, res);
                   },
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Invite preview (WhatsApp link / QR) — the resident opens the join page.
+  void _openInvite(Ctx ctx, bool res, {required bool qr}) {
+    final code = 'AMR-${ctx.building.units}${ctx.building.floors}';
+    final link = 'https://imarty.olive-dev.com/join/$code';
+    showAppSheet(
+      context,
+      SheetShell(
+        title: qr ? 'رمز QR للانضمام' : 'دعوة عبر واتساب',
+        footer: AppButton(
+          label: 'محاكاة فتح صفحة الانضمام',
+          full: true,
+          size: BtnSize.lg,
+          iconRight: 'arrowL',
+          onTap: () {
+            Navigator.of(context).pop();
+            ctx.go('joinUnit');
+          },
+        ),
+        children: [
+          if (qr)
+            Center(
+              child: Container(
+                width: 180,
+                height: 180,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.line2, width: 1.5),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                alignment: Alignment.center,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const AppIcon('qr', size: 96, color: AppColors.navy700),
+                  const SizedBox(height: 8),
+                  NumText(code,
+                      style: AppType.num(size: 12, weight: FontWeight.w700, color: AppColors.ink500)),
+                ]),
+              ),
+            ),
+          Text(
+              qr
+                  ? 'يمسح الساكن هذا الرمز ليفتح صفحة تعبئة بياناته مرتبطة بـ «${ctx.building.name}».'
+                  : 'يصل الساكن رابط الانضمام التالي عبر واتساب، ويفتح صفحة تعبئة بياناته مرتبطة بـ «${ctx.building.name}»:',
+              style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.ink700, height: 1.6)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Row(children: [
+              Expanded(
+                child: NumText(link,
+                    style: AppType.num(size: 12.5, weight: FontWeight.w700, color: AppColors.navy700)),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: link));
+                  ctx.toast('تم نسخ رابط الدعوة');
+                },
+                child: const AppIcon('file', size: 18, color: AppColors.navy600),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 8),
+          Text('ملاحظة: توليد QR/الرابط الفعلي والربط العميق (deep-link) يتم في الخطوة التالية مع الخلفية.',
+              style: AppType.base(size: 11, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
         ],
       ),
     );

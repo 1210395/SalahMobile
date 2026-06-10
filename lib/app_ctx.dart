@@ -24,6 +24,7 @@ class Ctx {
     required this.requestOtp,
     required this.signIn,
     required this.signOut,
+    required this.reload,
   });
 
   /// Navigate to a screen id.
@@ -61,12 +62,16 @@ class Ctx {
     String? password,
     String? phone,
     String? code,
+    String? name,
     required AppRole role,
     required BType btype,
   }) signIn;
 
   /// Sign out, clear the session, and return to the splash screen.
   final Future<void> Function() signOut;
+
+  /// Re-fetch the active building bundle and rebuild (after a write).
+  final Future<void> Function() reload;
 
   bool get res => btype == BType.residential;
 }
