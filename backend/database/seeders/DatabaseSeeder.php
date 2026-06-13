@@ -10,6 +10,7 @@ use App\Models\Guard;
 use App\Models\ParkingSpot;
 use App\Models\PayType;
 use App\Models\Payment;
+use App\Models\Subscription;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\WaTemplate;
@@ -24,9 +25,14 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // Idempotent: skip if the database has already been seeded. The
-        // production entrypoint runs `db:seed` on every boot, so this guard
-        // prevents duplicate sample data (none of the inserts below are upserts).
+        // Runs every boot (idempotent): ensure existing buildings have an active
+        // subscription — covers upgrades where the subscriptions table is new but
+        // the buildings/users already exist.
+        $this->seedSubscriptions();
+
+        // Idempotent: skip the bulk sample data if already seeded. The production
+        // entrypoint runs `db:seed` on every boot, so this guard prevents
+        // duplicate sample data (none of the inserts below are upserts).
         if (User::query()->exists()) {
             return;
         }
@@ -60,6 +66,7 @@ class DatabaseSeeder extends Seeder
             'subscription' => 120, 'currency' => 'USD', 'floors' => 3, 'units_count' => 10,
             'exchange_rate' => 3.75, 'elevator_fee' => 15, 'summary' => $summary,
         ]);
+        $this->seedSubscriptions();
 
         $apartments = [
             ['A1', '101', 1, 'أحمد العامري', 'مالك', '+966 50 123 4567', 40, 'ok', 0, 'الساكن'],
@@ -202,6 +209,20 @@ class DatabaseSeeder extends Seeder
         User::create(['name' => 'أحمد العامري', 'email' => 'resident@amarati.app',
             'phone' => '+966500000002', 'password' => Hash::make('password'),
             'role' => 'resident', 'building_key' => 'residential', 'unit_no' => '101']);
+    }
+
+    private function seedSubscriptions(): void
+    {
+        foreach (Building::pluck('key') as $bk) {
+            Subscription::firstOrCreate(
+                ['building_key' => $bk],
+                [
+                    'status' => 'active', 'plan' => 'سنوي', 'amount' => 299,
+                    'payment_ref' => 'SEED', 'activated_at' => now(),
+                    'expires_at' => now()->addYear(),
+                ],
+            );
+        }
     }
 
     private function seedUnits(string $bk, array $rows): void

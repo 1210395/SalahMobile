@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../common.dart';
+import '../api/repository.dart';
 
 class UnitsScreen extends StatefulWidget {
   const UnitsScreen({super.key, required this.ctx});
@@ -16,6 +17,18 @@ class UnitsScreen extends StatefulWidget {
 class _UnitsScreenState extends State<UnitsScreen> {
   String filter = 'all';
   String q = '';
+
+  /// Persist a unit write, then refresh the bundle so the list updates.
+  Future<void> _save(Future<void> Function() call, String okMsg) async {
+    final ctx = widget.ctx;
+    try {
+      await call();
+      await ctx.reload();
+      ctx.toast(okMsg);
+    } catch (e) {
+      ctx.toast(apiErrorText(e), tone: 'late');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -247,8 +260,18 @@ class _UnitsScreenState extends State<UnitsScreen> {
             disabled: f['name']!.trim().isEmpty || f['no']!.trim().isEmpty,
             onTap: () {
               Navigator.of(sheetCtx).pop();
-              final where = f['floor']!.isNotEmpty ? ' (دور ${f['floor']})' : '';
-              ctx.toast('تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'محل'} ${f['no']}$where');
+              _save(
+                () => Api.I.createUnit(ctx.btype, {
+                  'no': f['no']!.trim(),
+                  'floor': int.tryParse(f['floor']!.trim()) ?? 1,
+                  'resident': f['name']!.trim(),
+                  'kind': 'مالك',
+                  'phone': f['phone']!.trim().isEmpty ? '—' : f['phone']!.trim(),
+                  'sub': ctx.building.subscription,
+                  'status': 'ok',
+                }),
+                'تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'محل'} ${f['no']}',
+              );
             },
           ),
           children: [
@@ -317,9 +340,19 @@ class _UnitsScreenState extends State<UnitsScreen> {
             icon: 'check',
             onTap: () {
               Navigator.of(sheetCtx).pop();
-              ctx.toast(status == 'vacant'
-                  ? 'تم تعيين الوحدة كشاغرة — مستبعَدة من الحسابات والدفعات'
-                  : 'تم حفظ تعديلات الوحدة');
+              _save(
+                () => Api.I.updateUnit(ctx.btype, u.dbId, {
+                  'no': u.no,
+                  'floor': u.floor,
+                  'resident': f['name'],
+                  'phone': f['phone'],
+                  'sub': int.tryParse(f['sub']!.trim()) ?? u.sub,
+                  'status': status,
+                }),
+                status == 'vacant'
+                    ? 'تم تعيين الوحدة كشاغرة — مستبعَدة من الحسابات والدفعات'
+                    : 'تم حفظ تعديلات الوحدة',
+              );
             },
           ),
           children: [
@@ -353,6 +386,18 @@ class _UnitsScreenState extends State<UnitsScreen> {
             ),
             if (status == 'vacant')
               _notes('عند جعل الوحدة شاغرة تُستبعَد تلقائياً من الحسابات والدفعات والتقارير.'),
+            const SizedBox(height: 12),
+            AppButton(
+              label: 'حذف الوحدة نهائياً',
+              variant: BtnVariant.danger,
+              full: true,
+              icon: 'trash',
+              onTap: () {
+                Navigator.of(sheetCtx).pop();
+                _save(() => Api.I.deleteUnit(ctx.btype, u.dbId),
+                    'تم حذف ${res ? 'الشقة' : 'المحل'} ${u.no}');
+              },
+            ),
           ],
         ),
       ),

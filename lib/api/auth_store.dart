@@ -65,6 +65,13 @@ class AuthStore {
     }
   }
 
+  /// Re-fetch the current user (e.g. after a server-side role change).
+  Future<void> refresh() async {
+    if (token == null) return;
+    final res = await _dio.get('/me');
+    user = AuthUser.fromJson(Map<String, dynamic>.from(res.data['user']));
+  }
+
   Future<void> _persist(Map<String, dynamic> data) async {
     token = data['token'];
     user = AuthUser.fromJson(Map<String, dynamic>.from(data['user']));

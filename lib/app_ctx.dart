@@ -25,6 +25,7 @@ class Ctx {
     required this.signIn,
     required this.signOut,
     required this.reload,
+    required this.becomeAdmin,
   });
 
   /// Navigate to a screen id.
@@ -72,6 +73,10 @@ class Ctx {
 
   /// Re-fetch the active building bundle and rebuild (after a write).
   final Future<void> Function() reload;
+
+  /// Refresh the user (now an admin of [b]) after building setup, load the
+  /// bundle, and land on the admin home.
+  final Future<void> Function(BType b) becomeAdmin;
 
   bool get res => btype == BType.residential;
 }

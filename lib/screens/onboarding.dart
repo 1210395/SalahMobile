@@ -1,47 +1,14 @@
-// عمارتي — onboarding flow: subscription activation, building setup wizard,
-// resident self-join (invite/QR target), and admin approval of join requests.
-//
-// Persistence here is in-memory/mock (confirms with a toast and updates the
-// shared [OnboardingStore]); wiring to real Laravel endpoints + a payment
-// provider is the documented next step (see docs/CLIENT-FEEDBACK-PLAN.md).
+// عمارتي — onboarding flow: subscription activation, building setup wizard
+// (which promotes the actor to admin), resident self-join (invite/QR target),
+// and admin approval of join requests. All wired to the live Laravel API.
 
 import 'package:flutter/material.dart';
 
 import '../common.dart';
+import '../api/auth_store.dart';
+import '../api/repository.dart';
 
-// ───────────────────────────── Shared store ─────────────────────────────
-
-class JoinRequest {
-  JoinRequest({
-    required this.name,
-    required this.phone,
-    required this.floor,
-    required this.unitNo,
-    this.email = '',
-    this.status = 'pending',
-  });
-  final String name;
-  final String phone;
-  final String floor;
-  final String unitNo;
-  final String email;
-  String status; // pending | approved | rejected
-}
-
-/// In-memory store for pending resident join requests (mock backend).
-class OnboardingStore {
-  OnboardingStore._();
-  static final OnboardingStore I = OnboardingStore._();
-
-  bool subscriptionActive = false;
-
-  final List<JoinRequest> requests = [
-    JoinRequest(name: 'بدر العتيبي', phone: '+966 50 555 1212', floor: '2', unitNo: '203'),
-    JoinRequest(name: 'هند الشمري', phone: '+966 55 888 3434', floor: '4', unitNo: '404'),
-  ];
-
-  int get pending => requests.where((r) => r.status == 'pending').length;
-}
+int? _i(String s) => int.tryParse(s.trim());
 
 // ───────────────────────────── Subscription gate ─────────────────────────────
 
@@ -69,7 +36,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
       header: AppHeader(
         title: 'تفعيل الاشتراك',
         subtitle: 'اشتراك إدارة المبنى',
-        onBack: () => ctx.go('home'),
+        onBack: () => ctx.go(ctx.role == AppRole.admin ? 'home' : 'guestHome'),
       ),
       children: [
         HeroBanner(
@@ -82,7 +49,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                   style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.gold400)),
               const SizedBox(height: 8),
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                NumText(fmtUSD(99),
+                NumText(fmtUSD(299),
                     style: AppType.num(size: 30, weight: FontWeight.w800, color: Colors.white)),
                 const SizedBox(width: 6),
                 Padding(
@@ -152,14 +119,15 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         ]),
         const SizedBox(height: 16),
         AppButton(
-          label: 'تفعيل الاشتراك · ${fmtUSD(99)}',
+          label: 'الدفع والمتابعة · ${fmtUSD(299)}',
           size: BtnSize.lg,
           full: true,
           icon: 'check',
-          disabled: !_valid,
+          disabled: !_valid || ctx.busy,
+          // Card capture is simulated; the subscription is actually activated on
+          // the server in the building-setup step (for the chosen building type).
           onTap: () {
-            OnboardingStore.I.subscriptionActive = true;
-            ctx.toast('تم تفعيل الاشتراك بنجاح');
+            ctx.toast('تم قبول الدفع — أكمل إعداد المبنى');
             ctx.go('buildingSetup');
           },
         ),
@@ -181,11 +149,42 @@ class BuildingSetupScreen extends StatefulWidget {
 class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
   final f = {'name': '', 'address': '', 'floors': '', 'units': '', 'sub': ''};
   BType type = BType.residential;
+  bool _saving = false;
 
   bool get _valid =>
       f['name']!.trim().isNotEmpty &&
-      f['floors']!.isNotEmpty &&
-      f['units']!.isNotEmpty;
+      f['address']!.trim().isNotEmpty &&
+      _i(f['floors']!) != null &&
+      _i(f['units']!) != null;
+
+  Future<void> _save() async {
+    final ctx = widget.ctx;
+    if (!AuthStore.I.isAuthed) {
+      ctx.toast('سجّل الدخول أولاً لإعداد المبنى', tone: 'late');
+      ctx.go('login');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await Api.I.activateSubscription(type);
+      await Api.I.setupBuilding(type, {
+        'name': f['name']!.trim(),
+        'address': f['address']!.trim(),
+        'floors': _i(f['floors']!),
+        'units_count': _i(f['units']!),
+      });
+      if (_i(f['sub']!) != null) {
+        await Api.I.updateBuilding(type, {'subscription': _i(f['sub']!)});
+      }
+      ctx.toast('تم تفعيل الاشتراك وحفظ بيانات المبنى');
+      await ctx.becomeAdmin(type); // refreshes role → admin, lands on home
+      if (mounted) ctx.go('units');
+    } catch (e) {
+      if (mounted) ctx.toast(apiErrorText(e), tone: 'late');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -195,7 +194,7 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
       header: AppHeader(
         title: 'إعداد المبنى',
         subtitle: 'الخطوة الأخيرة قبل البدء',
-        onBack: () => ctx.go('home'),
+        onBack: () => ctx.go('subscribe'),
       ),
       children: [
         const SectionTitle(text: 'بيانات المبنى'),
@@ -273,15 +272,12 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
         ),
         const SizedBox(height: 16),
         AppButton(
-          label: 'حفظ والبدء',
+          label: _saving ? 'جارٍ الحفظ…' : 'حفظ والبدء',
           size: BtnSize.lg,
           full: true,
           iconRight: 'arrowL',
-          disabled: !_valid,
-          onTap: () {
-            ctx.toast('تم حفظ بيانات المبنى — يمكنك الآن إضافة الوحدات');
-            ctx.go('units');
-          },
+          disabled: !_valid || _saving,
+          onTap: _save,
         ),
         const SizedBox(height: 8),
         Center(
@@ -306,9 +302,34 @@ class JoinUnitScreen extends StatefulWidget {
 
 class _JoinUnitScreenState extends State<JoinUnitScreen> {
   final f = {'name': '', 'phone': '', 'floor': '', 'no': '', 'email': ''};
+  bool _sending = false;
 
   bool get _valid =>
       f['name']!.trim().isNotEmpty && f['phone']!.trim().isNotEmpty && f['no']!.trim().isNotEmpty;
+
+  Future<void> _send() async {
+    final ctx = widget.ctx;
+    if (!AuthStore.I.isAuthed) {
+      ctx.toast('سجّل الدخول أولاً لإرسال طلب الانضمام', tone: 'late');
+      ctx.go('login');
+      return;
+    }
+    setState(() => _sending = true);
+    try {
+      await Api.I.createJoinRequest(ctx.btype, {
+        'name': f['name']!.trim(),
+        'phone': f['phone']!.trim(),
+        'floor': _i(f['floor']!),
+        'unit_no': f['no']!.trim(),
+      });
+      ctx.toast('تم إرسال طلبك — بانتظار موافقة مسؤول العمارة');
+      ctx.go(ctx.role == AppRole.resident ? 'resHome' : 'guestHome');
+    } catch (e) {
+      if (mounted) ctx.toast(apiErrorText(e), tone: 'late');
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -317,7 +338,7 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
       header: AppHeader(
         title: 'الانضمام إلى العمارة',
         subtitle: ctx.building.name,
-        onBack: () => ctx.go('guestHome'),
+        onBack: () => ctx.go(ctx.role == AppRole.resident ? 'resHome' : 'guestHome'),
       ),
       children: [
         AppCard(
@@ -387,22 +408,12 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
         ),
         const SizedBox(height: 16),
         AppButton(
-          label: 'إرسال طلب الانضمام',
+          label: _sending ? 'جارٍ الإرسال…' : 'إرسال طلب الانضمام',
           size: BtnSize.lg,
           full: true,
           icon: 'send',
-          disabled: !_valid,
-          onTap: () {
-            OnboardingStore.I.requests.add(JoinRequest(
-              name: f['name']!.trim(),
-              phone: f['phone']!.trim(),
-              floor: f['floor']!,
-              unitNo: f['no']!,
-              email: f['email']!,
-            ));
-            ctx.toast('تم إرسال طلبك — بانتظار موافقة مسؤول العمارة');
-            ctx.go('guestHome');
-          },
+          disabled: !_valid || _sending,
+          onTap: _send,
         ),
       ],
     );
@@ -420,78 +431,120 @@ class ApprovalsScreen extends StatefulWidget {
 }
 
 class _ApprovalsScreenState extends State<ApprovalsScreen> {
+  List<Map<String, dynamic>>? _requests;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final list = await Api.I.listJoinRequests(widget.ctx.btype);
+      if (mounted) setState(() => _requests = list);
+    } catch (e) {
+      if (mounted) setState(() => _error = apiErrorText(e));
+    }
+  }
+
+  Future<void> _act(int id, bool approve, String name, String unit) async {
+    final ctx = widget.ctx;
+    try {
+      if (approve) {
+        await Api.I.approveJoinRequest(ctx.btype, id);
+        ctx.toast('تمت الموافقة على $name — وحدة $unit');
+      } else {
+        await Api.I.rejectJoinRequest(ctx.btype, id);
+        ctx.toast('تم رفض الطلب', tone: 'late');
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) ctx.toast(apiErrorText(e), tone: 'late');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
-    final pending = OnboardingStore.I.requests.where((r) => r.status == 'pending').toList();
+    final pending = (_requests ?? []).where((r) => r['status'] == 'pending').toList();
 
     return ScreenScaffold(
       header: AppHeader(
         title: 'طلبات الانضمام',
-        subtitle: '${pending.length} طلب بانتظار الموافقة',
+        subtitle: _requests == null
+            ? '...'
+            : '${pending.length} طلب بانتظار الموافقة',
         onBack: () => ctx.go('more'),
       ),
       nav: ctx.adminNav,
       children: [
-        if (pending.isEmpty)
+        if (_error != null)
+          EmptyState(icon: 'alert', title: 'تعذّر التحميل', sub: _error)
+        else if (_requests == null)
+          const Padding(
+            padding: EdgeInsets.only(top: 60),
+            child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
+          )
+        else if (pending.isEmpty)
           const EmptyState(icon: 'users', title: 'لا توجد طلبات', sub: 'ستظهر هنا طلبات الانضمام الجديدة')
         else
-          ...pending.map((r) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: AppCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(children: [
-                        Avatar(name: r.name, size: 46, tone: 'gold'),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(r.name, style: AppType.base(size: 15, weight: FontWeight.w800)),
-                              const SizedBox(height: 2),
-                              NumText(r.phone,
-                                  style: AppType.num(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
-                            ],
-                          ),
+          ...pending.map((r) {
+            final id = (r['id'] as num).toInt();
+            final name = '${r['name']}';
+            final unit = '${r['unit_no'] ?? '—'}';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: AppCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      Avatar(name: name, size: 46, tone: 'gold'),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(name, style: AppType.base(size: 15, weight: FontWeight.w800)),
+                            const SizedBox(height: 2),
+                            NumText('${r['phone'] ?? ''}',
+                                style: AppType.num(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
+                          ],
                         ),
-                        AppBadge(label: 'شقة ${r.unitNo}', tone: 'navy', small: true),
-                      ]),
-                      const SizedBox(height: 12),
-                      Row(children: [
-                        Expanded(
-                          child: AppButton(
-                            label: 'رفض',
-                            variant: BtnVariant.ghost,
-                            size: BtnSize.sm,
-                            full: true,
-                            icon: 'xCircle',
-                            onTap: () => setState(() {
-                              r.status = 'rejected';
-                              ctx.toast('تم رفض الطلب', tone: 'late');
-                            }),
-                          ),
+                      ),
+                      AppBadge(label: 'وحدة $unit', tone: 'navy', small: true),
+                    ]),
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      Expanded(
+                        child: AppButton(
+                          label: 'رفض',
+                          variant: BtnVariant.ghost,
+                          size: BtnSize.sm,
+                          full: true,
+                          icon: 'xCircle',
+                          onTap: () => _act(id, false, name, unit),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: AppButton(
-                            label: 'قبول',
-                            size: BtnSize.sm,
-                            full: true,
-                            icon: 'checkCircle',
-                            onTap: () => setState(() {
-                              r.status = 'approved';
-                              ctx.toast('تمت الموافقة على ${r.name} — شقة ${r.unitNo}');
-                            }),
-                          ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: AppButton(
+                          label: 'قبول',
+                          size: BtnSize.sm,
+                          full: true,
+                          icon: 'checkCircle',
+                          onTap: () => _act(id, true, name, unit),
                         ),
-                      ]),
-                    ],
-                  ),
+                      ),
+                    ]),
+                  ],
                 ),
-              )),
+              ),
+            );
+          }),
       ],
     );
   }

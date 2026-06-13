@@ -26,6 +26,11 @@ dependencies:
   share_plus: ^10.1.4
   # Temp dir for the generated file before sharing.
   path_provider: ^2.1.4
+  # Real PDF report export (with an Arabic-capable font via printing).
+  pdf: ^3.11.1
+  printing: ^5.13.3
+  # Pick a logo image for the brand-editing panel.
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

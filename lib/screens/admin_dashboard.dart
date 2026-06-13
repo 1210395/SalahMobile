@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../common.dart';
+import '../api/repository.dart';
 
 class Dashboard extends StatelessWidget {
   const Dashboard({super.key, required this.ctx});
@@ -250,9 +251,21 @@ class BuildingScreen extends StatelessWidget {
             full: true,
             size: BtnSize.lg,
             icon: 'check',
-            onTap: () {
+            onTap: () async {
               Navigator.of(sheetCtx).pop();
-              ctx.toast('تم حفظ بيانات المبنى');
+              try {
+                await Api.I.updateBuilding(ctx.btype, {
+                  'name': f['name'],
+                  'address': f['address'],
+                  'floors': int.tryParse(f['floors']!.trim()) ?? b.floors,
+                  'units_count': int.tryParse(f['units']!.trim()) ?? b.units,
+                  'subscription': int.tryParse(f['sub']!.trim()) ?? b.subscription,
+                });
+                await ctx.reload();
+                ctx.toast('تم حفظ بيانات المبنى');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
             },
           ),
           children: [

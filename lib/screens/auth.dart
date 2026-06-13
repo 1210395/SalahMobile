@@ -62,9 +62,14 @@ class SplashScreen extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Image.asset('assets/images/logo-light.png', width: 230),
+                        Brand.logoUrl.isNotEmpty
+                            ? Image.network(Brand.logoUrl,
+                                width: 230,
+                                errorBuilder: (c, e, s) =>
+                                    Image.asset('assets/images/logo-light.png', width: 230))
+                            : Image.asset('assets/images/logo-light.png', width: 230),
                         const SizedBox(height: 26),
-                        Text('إدارة عماراتك بثقة وراحة',
+                        Text(Brand.slogan,
                             textAlign: TextAlign.center,
                             style: AppType.base(
                                 size: 26, weight: FontWeight.w800, color: Colors.white)),
@@ -72,7 +77,7 @@ class SplashScreen extends StatelessWidget {
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 290),
                           child: Text(
-                            'برنامج متكامل لإدارة شؤون العمارات السكنية والمجمعات التجارية — المستحقات، المصروفات، التقارير والتنبيهات في مكان واحد.',
+                            Brand.description,
                             textAlign: TextAlign.center,
                             style: AppType.base(
                                 size: 14.5,
@@ -107,7 +112,7 @@ class SplashScreen extends StatelessWidget {
                         onTap: () => ctx.go('login'),
                       ),
                       const SizedBox(height: 18),
-                      Text('عمارتي … تنظيم اليوم، راحة تدوم',
+                      Text(Brand.tagline,
                           style: AppType.base(
                               size: 12, weight: FontWeight.w600, color: AppColors.navy300)),
                     ],

@@ -138,11 +138,13 @@ class _FieldState extends State<Field> {
 }
 
 class AppTextArea extends StatelessWidget {
-  const AppTextArea({super.key, this.label, this.placeholder, this.rows = 3, this.onChanged});
+  const AppTextArea(
+      {super.key, this.label, this.placeholder, this.rows = 3, this.onChanged, this.value});
   final String? label;
   final String? placeholder;
   final int rows;
   final ValueChanged<String>? onChanged;
+  final String? value;
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +171,7 @@ class AppTextArea extends StatelessWidget {
             child: TextField(
               maxLines: rows,
               onChanged: onChanged,
+              controller: value == null ? null : TextEditingController(text: value),
               style: AppType.base(size: 15, weight: FontWeight.w600, color: AppColors.ink900),
               cursorColor: AppColors.navy600,
               decoration: InputDecoration(

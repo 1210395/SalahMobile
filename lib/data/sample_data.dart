@@ -103,6 +103,7 @@ class Unit {
     required this.status,
     required this.balance,
     required this.payer,
+    this.dbId = 0,
   });
   final String id;
   final String no;
@@ -114,9 +115,11 @@ class Unit {
   final String status;
   final int balance;
   final String payer;
+  final int dbId; // server primary key (0 for bundled seed units)
 
   factory Unit.fromJson(Map<String, dynamic> j) => Unit(
         id: '${j['ext_id'] ?? j['id']}',
+        dbId: _int(j['id']),
         no: '${j['no']}',
         floor: _int(j['floor']),
         resident: j['resident'] ?? '',
@@ -455,6 +458,7 @@ class DataStore {
   List<Craftsman>? craftsmen;
   List<WaTemplate>? waTemplates;
   List<PayType>? payTypes;
+  Map<String, String>? settings; // editable brand / app settings
 
   bool get loaded => units != null;
 
@@ -642,4 +646,20 @@ class Summary {
   static int get expenseM => _d.expenseM;
   static List<ChartDatum> get bars => _d.bars;
   static List<ChartDatum> get trend => _d.trend;
+}
+
+/// Editable brand (#10) — live from API settings, or bundled defaults.
+class Brand {
+  Brand._();
+  static String _v(String k, String fallback) {
+    final v = _s.settings?[k];
+    return (v == null || v.isEmpty) ? fallback : v;
+  }
+
+  static String get appName => _v('app_name', 'عمارتي');
+  static String get slogan => _v('slogan', 'إدارة عماراتك بثقة وراحة');
+  static String get description => _v('description',
+      'برنامج متكامل لإدارة شؤون العمارات السكنية والمجمعات التجارية — المستحقات، المصروفات، التقارير والتنبيهات في مكان واحد.');
+  static String get tagline => _v('tagline', 'عمارتي … تنظيم اليوم، راحة تدوم');
+  static String get logoUrl => _v('logo_url', '');
 }

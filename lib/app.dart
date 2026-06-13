@@ -15,13 +15,14 @@ import 'screens/admin_services.dart';
 import 'screens/admin_reports.dart';
 import 'screens/resident.dart';
 import 'screens/onboarding.dart';
+import 'screens/brand_edit.dart';
 
 const Map<String, String> _adminTabOf = {
   'home': 'home', 'units': 'units', 'payments': 'payments', 'reports': 'reports',
   'more': 'more', 'building': 'more', 'expenses': 'more', 'workers': 'more',
   'parking': 'more', 'guard': 'more', 'elevator': 'more', 'craftsmen': 'more',
   'alerts': 'more', 'years': 'more', 'approvals': 'more',
-  'subscribe': 'more', 'buildingSetup': 'more',
+  'subscribe': 'more', 'buildingSetup': 'more', 'brandEdit': 'more',
 };
 const Map<String, String> _resTabOf = {
   'resHome': 'resHome', 'resReport': 'resReport', 'resElevator': 'resElevator',
@@ -50,7 +51,10 @@ class AmaratiApp extends StatefulWidget {
 }
 
 class _AmaratiAppState extends State<AmaratiApp> {
-  late String screen = widget.initialScreen;
+  // Demo deep-links start at splash and navigate to the target screen only
+  // after the API login completes, so screens that fetch in initState do so
+  // while authenticated.
+  late String screen = widget.demoEmail != null ? 'splash' : widget.initialScreen;
   late AppRole role = widget.initialRole;
   late BType btype = widget.initialBtype;
 
@@ -73,7 +77,12 @@ class _AmaratiAppState extends State<AmaratiApp> {
 
   /// Restore a saved session on launch and load its building bundle.
   Future<void> _bootstrap() async {
-    // Web review hook: a real API login with a seeded demo account.
+    // Load editable brand (#10) — best-effort, rebuild when ready.
+    Api.I.loadSettings().then((_) {
+      if (mounted) setState(() {});
+    });
+    // Web review hook: a real API login with a seeded demo account, optionally
+    // landing on a specific screen (?demo=admin&screen=brandEdit).
     if (widget.demoEmail != null) {
       final err = await _signIn(
         email: widget.demoEmail!,
@@ -81,7 +90,11 @@ class _AmaratiAppState extends State<AmaratiApp> {
         role: AppRole.admin,
         btype: BType.residential,
       );
-      if (err != null && mounted) _toastMsg(err, tone: 'late');
+      if (err != null && mounted) {
+        _toastMsg(err, tone: 'late');
+      } else if (mounted && widget.initialScreen != 'splash') {
+        _go(widget.initialScreen);
+      }
       return;
     }
     // Deep-linked screens (web review links) skip the auth restore.
@@ -203,6 +216,23 @@ class _AmaratiAppState extends State<AmaratiApp> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// After building setup the server promoted this user to admin of [b];
+  /// refresh the user, load the bundle, and land on the admin home.
+  Future<void> _becomeAdmin(BType b) async {
+    setState(() => _busy = true);
+    try {
+      await AuthStore.I.refresh();
+      await Api.I.loadBundle(b);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      role = AppRole.admin;
+      btype = b;
+      screen = 'home';
+    });
+  }
+
   /// Switch building type and reload the active dataset.
   Future<void> _setBtype(BType b) async {
     setState(() {
@@ -283,6 +313,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
       signIn: _signIn,
       signOut: _signOut,
       reload: _reload,
+      becomeAdmin: _becomeAdmin,
     );
   }
 
@@ -330,6 +361,8 @@ class _AmaratiAppState extends State<AmaratiApp> {
         return JoinUnitScreen(ctx: ctx);
       case 'approvals':
         return ApprovalsScreen(ctx: ctx);
+      case 'brandEdit':
+        return BrandEditScreen(ctx: ctx);
       case 'resHome':
         return ResidentHome(ctx: ctx);
       case 'resReport':

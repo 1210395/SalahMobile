@@ -14,6 +14,7 @@ use App\Models\Unit;
 use App\Models\WaTemplate;
 use App\Models\Worker;
 use App\Models\YearSummary;
+use App\Services\AlertGenerator;
 use Illuminate\Http\Request;
 
 // عمارتي — read + write endpoints for all building data. Every list is scoped
@@ -47,6 +48,38 @@ class ApiController extends Controller
     public function summary(Request $r)
     {
         return response()->json(Building::where('key', $this->bk($r))->firstOrFail()->summary);
+    }
+
+    /// Edit building settings (admin only) — name, address, defaults, rates.
+    public function updateBuilding(Request $r)
+    {
+        $this->requireAdmin($r);
+        $data = $r->validate([
+            'name' => 'nullable|string|max:160',
+            'address' => 'nullable|string|max:200',
+            'floors' => 'nullable|integer|min:1|max:200',
+            'units_count' => 'nullable|integer|min:1|max:2000',
+            'subscription' => 'nullable|integer|min:0',
+            'elevator_fee' => 'nullable|integer|min:0',
+            'exchange_rate' => 'nullable|numeric|min:0',
+        ]);
+        $building = Building::where('key', $this->bk($r))->firstOrFail();
+        $building->update(array_filter($data, fn ($v) => $v !== null));
+
+        return response()->json($building->fresh());
+    }
+
+    /// Recompute alerts from live data and "dispatch" them (admin only).
+    public function regenerateAlerts(Request $r, AlertGenerator $gen)
+    {
+        $this->requireAdmin($r);
+        $bk = $this->bk($r);
+        $count = $gen->regenerate($bk);
+
+        return response()->json([
+            'generated' => $count,
+            'alerts' => Alert::where('building_key', $bk)->orderBy('id')->get(),
+        ]);
     }
 
     public function units(Request $r)

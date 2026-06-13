@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../common.dart';
+import '../api/repository.dart';
+import 'report_pdf.dart';
 
 /// Clone chart data with a money value label drawn above each bar.
 List<ChartDatum> _withValueLabels(List<ChartDatum> data) => data
@@ -44,6 +46,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
         title: title,
         children: [
           _exportOption(
+            icon: 'file',
+            label: 'تصدير PDF (ملف .pdf)',
+            onTap: () async {
+              Navigator.of(context).pop();
+              try {
+                await exportReportPdf(title, rows);
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          const SizedBox(height: 10),
+          _exportOption(
             icon: 'excel',
             label: 'تصدير Excel (ملف .xlsx)',
             onTap: () {
@@ -71,7 +86,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             },
           ),
           const SizedBox(height: 8),
-          Text('ملاحظة: تصدير PDF بالعربية يتطلب تضمين خط عربي وتشكيل النص (خطوة لاحقة).',
+          Text('PDF و Excel و CSV — تُصدَّر كملفات فعلية عبر مشاركة النظام.',
               style: AppType.base(size: 11, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
         ],
       ),
@@ -496,13 +511,29 @@ class _AlertsScreenState extends State<AlertsScreen> {
     }).toList();
   }
 
-  void _sendNote(Ctx ctx) {
-    if (_note.trim().isEmpty) return;
-    ctx.toast('تم إرسال ملاحظتك لمسؤول العمارة');
-    setState(() {
-      _note = '';
-      _noteSeq++;
-    });
+  Future<void> _sendNote(Ctx ctx) async {
+    final body = _note.trim();
+    if (body.isEmpty) return;
+    try {
+      await Api.I.createNote(body);
+      ctx.toast('تم إرسال ملاحظتك لمسؤول العمارة');
+      setState(() {
+        _note = '';
+        _noteSeq++;
+      });
+    } catch (e) {
+      ctx.toast(apiErrorText(e), tone: 'late');
+    }
+  }
+
+  Future<void> _regenerate(Ctx ctx) async {
+    try {
+      final n = await Api.I.regenerateAlerts(ctx.btype);
+      await ctx.reload();
+      ctx.toast('تم تحديث التنبيهات من البيانات ($n)');
+    } catch (e) {
+      ctx.toast(apiErrorText(e), tone: 'late');
+    }
   }
 
   @override
@@ -515,7 +546,13 @@ class _AlertsScreenState extends State<AlertsScreen> {
       header: AppHeader(
         title: 'التنبيهات والرسائل',
         onBack: () => ctx.go(isAdmin ? 'home' : 'resHome'),
-        right: RoundBtn(icon: 'settings', onTap: () => setState(() => tab = 'settings')),
+        right: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (isAdmin) ...[
+            RoundBtn(icon: 'refresh', onTap: () => _regenerate(ctx)),
+            const SizedBox(width: 8),
+          ],
+          RoundBtn(icon: 'settings', onTap: () => setState(() => tab = 'settings')),
+        ]),
       ),
       nav: isAdmin ? ctx.adminNav : ctx.resNav,
       children: [
