@@ -15,18 +15,26 @@ import 'screens/admin_services.dart';
 import 'screens/admin_reports.dart';
 import 'screens/resident.dart';
 import 'screens/onboarding.dart';
-import 'screens/brand_edit.dart';
+import 'screens/super_admin.dart';
 
 const Map<String, String> _adminTabOf = {
   'home': 'home', 'units': 'units', 'payments': 'payments', 'reports': 'reports',
   'more': 'more', 'building': 'more', 'expenses': 'more', 'workers': 'more',
   'parking': 'more', 'guard': 'more', 'elevator': 'more', 'craftsmen': 'more',
   'alerts': 'more', 'years': 'more', 'approvals': 'more',
-  'subscribe': 'more', 'buildingSetup': 'more', 'brandEdit': 'more',
+  'subscribe': 'more', 'buildingSetup': 'more', 'register': 'more',
 };
 const Map<String, String> _resTabOf = {
   'resHome': 'resHome', 'resReport': 'resReport', 'resElevator': 'resElevator',
   'craftsmen': 'craftsmen', 'alerts': 'alerts',
+};
+// Super-admin: every building-management sub-screen maps to the "المباني" tab.
+const Map<String, String> _superTabOf = {
+  'superReport': 'superReport', 'admins': 'admins', 'more': 'more',
+  'home': 'home', 'units': 'home', 'payments': 'home', 'reports': 'home',
+  'building': 'home', 'expenses': 'home', 'workers': 'home', 'parking': 'home',
+  'guard': 'home', 'elevator': 'home', 'craftsmen': 'home', 'alerts': 'home',
+  'years': 'home', 'approvals': 'home', 'subscribe': 'home', 'buildingSetup': 'home',
 };
 
 class AmaratiApp extends StatefulWidget {
@@ -82,7 +90,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
       if (mounted) setState(() {});
     });
     // Web review hook: a real API login with a seeded demo account, optionally
-    // landing on a specific screen (?demo=admin&screen=brandEdit).
+    // landing on a specific screen (?demo=admin&screen=units).
     if (widget.demoEmail != null) {
       final err = await _signIn(
         email: widget.demoEmail!,
@@ -115,14 +123,23 @@ class _AmaratiAppState extends State<AmaratiApp> {
     if (!mounted) return;
     setState(() {
       _busy = false;
-      screen = r == AppRole.admin ? 'home' : r == AppRole.resident ? 'resHome' : 'guestHome';
+      screen = _homeFor(r);
     });
   }
 
   AppRole _roleFromString(String s) => switch (s) {
+        'superadmin' => AppRole.superadmin,
         'admin' => AppRole.admin,
         'guest' => AppRole.guest,
         _ => AppRole.resident,
+      };
+
+  /// Landing screen for a role after sign-in.
+  String _homeFor(AppRole r) => switch (r) {
+        AppRole.superadmin => 'superReport',
+        AppRole.admin => 'home',
+        AppRole.resident => 'resHome',
+        AppRole.guest => 'guestHome',
       };
 
   String _errText(Object e) {
@@ -185,7 +202,29 @@ class _AmaratiAppState extends State<AmaratiApp> {
         _busy = false;
         this.role = r;
         this.btype = b;
-        screen = r == AppRole.admin ? 'home' : 'resHome';
+        screen = _homeFor(r);
+      });
+      return null;
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
+      return _errText(e);
+    }
+  }
+
+  /// Create a new account (always a resident), then land on the resident home.
+  Future<String?> _register(String name, String email, String password) async {
+    setState(() => _busy = true);
+    try {
+      await AuthStore.I.register(name, email, password);
+      final u = AuthStore.I.user!;
+      final b = btypeFromKey(u.buildingKey);
+      await Api.I.loadBundle(b);
+      if (!mounted) return null;
+      setState(() {
+        _busy = false;
+        role = _roleFromString(u.role);
+        btype = b;
+        screen = _homeFor(role);
       });
       return null;
     } catch (e) {
@@ -261,20 +300,33 @@ class _AmaratiAppState extends State<AmaratiApp> {
   }
 
   Ctx _buildCtx() {
-    Widget adminNav() => BottomNav(
-          active: _adminTabOf[screen],
+    Widget superNav() => BottomNav(
+          active: _superTabOf[screen] ?? 'superReport',
           onChange: _go,
-          tabs: [
-            const NavTab(id: 'home', label: 'الرئيسية', icon: 'home', fillOnActive: true),
-            NavTab(
-                id: 'units',
-                label: btype == BType.residential ? 'الوحدات' : 'المحلات',
-                icon: btype == BType.residential ? 'building' : 'store'),
-            const NavTab(id: 'payments', label: 'المستحقات', icon: 'wallet'),
-            const NavTab(id: 'reports', label: 'التقارير', icon: 'pie'),
-            const NavTab(id: 'more', label: 'المزيد', icon: 'grid'),
+          tabs: const [
+            NavTab(id: 'superReport', label: 'التقرير الشامل', icon: 'pie', fillOnActive: true),
+            NavTab(id: 'admins', label: 'المسؤولون', icon: 'users'),
+            NavTab(id: 'home', label: 'المباني', icon: 'building'),
+            NavTab(id: 'more', label: 'المزيد', icon: 'grid'),
           ],
         );
+    // Super-admins reuse the admin screens but with their own nav.
+    Widget adminNav() => role == AppRole.superadmin
+        ? superNav()
+        : BottomNav(
+            active: _adminTabOf[screen],
+            onChange: _go,
+            tabs: [
+              const NavTab(id: 'home', label: 'الرئيسية', icon: 'home', fillOnActive: true),
+              NavTab(
+                  id: 'units',
+                  label: btype == BType.residential ? 'الوحدات' : 'المحلات',
+                  icon: btype == BType.residential ? 'building' : 'store'),
+              const NavTab(id: 'payments', label: 'المستحقات', icon: 'wallet'),
+              const NavTab(id: 'reports', label: 'التقارير', icon: 'pie'),
+              const NavTab(id: 'more', label: 'المزيد', icon: 'grid'),
+            ],
+          );
     Widget resNav() => BottomNav(
           active: _resTabOf[screen],
           onChange: _go,
@@ -310,6 +362,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
       busy: _busy,
       enterGuest: _enterGuest,
       requestOtp: _requestOtp,
+      register: _register,
       signIn: _signIn,
       signOut: _signOut,
       reload: _reload,
@@ -361,8 +414,12 @@ class _AmaratiAppState extends State<AmaratiApp> {
         return JoinUnitScreen(ctx: ctx);
       case 'approvals':
         return ApprovalsScreen(ctx: ctx);
-      case 'brandEdit':
-        return BrandEditScreen(ctx: ctx);
+      case 'register':
+        return RegisterScreen(ctx: ctx);
+      case 'superReport':
+        return SuperReportScreen(ctx: ctx);
+      case 'admins':
+        return AdminsScreen(ctx: ctx);
       case 'resHome':
         return ResidentHome(ctx: ctx);
       case 'resReport':

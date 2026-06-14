@@ -43,6 +43,8 @@ void main() {
         demoEmail = 'admin@amarati.app';
       case 'resident':
         demoEmail = 'resident@amarati.app';
+      case 'super':
+        demoEmail = 'superadmin@amarati.app';
     }
   }
   return (screen: screen, role: role, btype: btype, demoEmail: demoEmail);

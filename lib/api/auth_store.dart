@@ -86,6 +86,14 @@ class AuthStore {
     return user!;
   }
 
+  /// Create a new account (always a resident — role is server-decided).
+  Future<AuthUser> register(String name, String email, String password) async {
+    final res = await _dio.post('/auth/register',
+        data: {'name': name, 'email': email, 'password': password});
+    await _persist(Map<String, dynamic>.from(res.data));
+    return user!;
+  }
+
   /// Returns the dev OTP code in local environments (so the flow is testable
   /// without an SMS provider), or null in production.
   Future<String?> requestOtp(String phone) async {

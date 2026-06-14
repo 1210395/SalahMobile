@@ -436,6 +436,23 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 14),
         Center(
           child: GestureDetector(
+            onTap: () => ctx.go('register'),
+            child: RichText(
+              text: TextSpan(
+                style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.ink500),
+                children: [
+                  const TextSpan(text: 'ليس لديك حساب؟ '),
+                  TextSpan(
+                      text: 'إنشاء حساب جديد',
+                      style: AppType.base(size: 13, weight: FontWeight.w800, color: AppColors.navy600)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Center(
+          child: GestureDetector(
             onTap: () => ctx.enterGuest(btype),
             child: Text('المتابعة كزائر بدلاً من ذلك',
                 style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.navy600)),
@@ -481,6 +498,132 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ───────────────────────────── Create account (sign-up) ─────────────────────────────
+
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key, required this.ctx});
+  final Ctx ctx;
+
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final f = {'name': '', 'email': '', 'password': '', 'confirm': ''};
+  bool _saving = false;
+
+  bool get _valid =>
+      f['name']!.trim().isNotEmpty &&
+      f['email']!.trim().contains('@') &&
+      f['password']!.length >= 6 &&
+      f['password'] == f['confirm'];
+
+  Future<void> _submit() async {
+    final ctx = widget.ctx;
+    if (f['password'] != f['confirm']) {
+      ctx.toast('كلمتا المرور غير متطابقتين', tone: 'late');
+      return;
+    }
+    setState(() => _saving = true);
+    final err = await ctx.register(f['name']!.trim(), f['email']!.trim(), f['password']!);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (err != null) {
+      ctx.toast(err, tone: 'late');
+    } else {
+      ctx.toast('تم إنشاء حسابك بنجاح');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ctx = widget.ctx;
+    return ScreenScaffold(
+      header: AppHeader(
+        title: 'إنشاء حساب جديد',
+        subtitle: 'انضم إلى عمارتي',
+        onBack: () => ctx.go('login'),
+      ),
+      children: [
+        AppCard(
+          color: AppColors.navy50,
+          borderColor: AppColors.navy100,
+          child: Row(children: [
+            const IconChip(icon: 'user', tone: 'navy', size: 42),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text('الحسابات الجديدة تُنشأ كساكن. للانضمام إلى عمارة، أرسل طلب '
+                  'انضمام بعد الدخول ووافق عليه مسؤول العمارة.',
+                  style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.ink700, height: 1.6)),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Field(
+                  label: 'الاسم الرباعي',
+                  icon: 'user',
+                  placeholder: 'الاسم الكامل',
+                  onChanged: (v) => setState(() => f['name'] = v)),
+              Field(
+                  label: 'البريد الإلكتروني',
+                  icon: 'mail',
+                  placeholder: 'name@email.com',
+                  ltr: true,
+                  keyboardType: TextInputType.emailAddress,
+                  onChanged: (v) => setState(() => f['email'] = v)),
+              Field(
+                  label: 'كلمة المرور',
+                  icon: 'lock',
+                  placeholder: '6 أحرف على الأقل',
+                  ltr: true,
+                  obscure: true,
+                  onChanged: (v) => setState(() => f['password'] = v)),
+              Field(
+                  label: 'تأكيد كلمة المرور',
+                  icon: 'lock',
+                  placeholder: 'أعد إدخال كلمة المرور',
+                  ltr: true,
+                  obscure: true,
+                  marginBottom: 0,
+                  onChanged: (v) => setState(() => f['confirm'] = v)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        AppButton(
+          label: _saving ? 'جارٍ الإنشاء…' : 'إنشاء الحساب',
+          size: BtnSize.lg,
+          full: true,
+          iconRight: 'arrowL',
+          disabled: !_valid || _saving,
+          onTap: _submit,
+        ),
+        const SizedBox(height: 12),
+        Center(
+          child: GestureDetector(
+            onTap: () => ctx.go('login'),
+            child: RichText(
+              text: TextSpan(
+                style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.ink500),
+                children: [
+                  const TextSpan(text: 'لديك حساب؟ '),
+                  TextSpan(
+                      text: 'تسجيل الدخول',
+                      style: AppType.base(size: 13, weight: FontWeight.w800, color: AppColors.navy600)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

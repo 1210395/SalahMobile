@@ -4,7 +4,7 @@
 import 'package:flutter/widgets.dart';
 import 'data/sample_data.dart';
 
-enum AppRole { admin, resident, guest }
+enum AppRole { superadmin, admin, resident, guest }
 
 class Ctx {
   const Ctx({
@@ -22,6 +22,7 @@ class Ctx {
     required this.busy,
     required this.enterGuest,
     required this.requestOtp,
+    required this.register,
     required this.signIn,
     required this.signOut,
     required this.reload,
@@ -55,6 +56,9 @@ class Ctx {
 
   /// Request a phone OTP. Returns the dev code in local environments.
   final Future<String?> Function(String phone) requestOtp;
+
+  /// Create a new account (name/email/password). Returns an error or null.
+  final Future<String?> Function(String name, String email, String password) register;
 
   /// Sign in by email+password or phone+code, then load the building bundle.
   /// Returns an error message on failure, or null on success.

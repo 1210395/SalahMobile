@@ -410,7 +410,6 @@ class MoreHub extends StatelessWidget {
         ('units', res ? 'الشقق' : 'المحلات', res ? 'building' : 'store'),
         ('approvals', 'طلبات الانضمام', 'users'),
         ('subscribe', 'الاشتراك والإعداد', 'shield'),
-        ('brandEdit', 'هوية التطبيق', 'edit'),
         ('years', 'السنوات والأشهر', 'calendar'),
       ]),
       ('المالية', [
@@ -429,7 +428,7 @@ class MoreHub extends StatelessWidget {
     ];
     const toneFor = {
       'building': 'navy', 'units': 'navy', 'years': 'credit', 'approvals': 'gold',
-      'subscribe': 'navy', 'brandEdit': 'gold',
+      'subscribe': 'navy',
       'payments': 'ok', 'expenses': 'late', 'reports': 'credit',
       'workers': 'ok', 'parking': 'gold', 'guard': 'navy',
       'elevator': 'navy', 'craftsmen': 'gold', 'alerts': 'warn',

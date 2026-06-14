@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\NoteController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
 
@@ -75,4 +76,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Brand / app settings (admin write)
     Route::put('/settings', [SettingsController::class, 'update']);
     Route::post('/settings/logo', [SettingsController::class, 'uploadLogo']);
+
+    // Super-admin (platform owner): manage admins + global report
+    Route::get('/admins', [SuperAdminController::class, 'admins']);
+    Route::post('/admins', [SuperAdminController::class, 'createAdmin']);
+    Route::get('/reports/global', [SuperAdminController::class, 'globalReport']);
 });

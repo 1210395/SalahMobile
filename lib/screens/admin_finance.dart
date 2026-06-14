@@ -137,6 +137,9 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
   Object unit = '';
   Object method = 'تحويل بنكي';
   Object payMonth = 4;
+  // Currency the amount is entered in + its rate to the building's base currency.
+  late Object currency = activeCurrency;
+  String rateStr = '';
   // Target: one unit / all units / a group of units.
   String target = 'one';
   final Set<String> selUnits = {};
@@ -157,14 +160,17 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     String payIcon(String id) =>
         {'sub': 'wallet', 'elev': 'elevator', 'guard': 'shield'}[id] ?? 'parking';
 
-    final canSave = (target == 'one' && unit != '') ||
-        (target == 'group' && selUnits.isNotEmpty) ||
-        target == 'all';
+    final sameCur = currency == activeCurrency;
+    final rateOk = sameCur || (double.tryParse(rateStr) ?? 0) > 0;
+    final canSave = ((target == 'one' && unit != '') ||
+            (target == 'group' && selUnits.isNotEmpty) ||
+            target == 'all') &&
+        rateOk;
 
     return SheetShell(
       title: 'تسجيل دفعة جديدة',
       footer: AppButton(
-        label: 'حفظ الدفعة · ${fmtUSD(total)}',
+        label: 'حفظ الدفعة · ${fmtMoney(total, currency as String)}',
         full: true,
         size: BtnSize.lg,
         icon: 'check',
@@ -311,6 +317,41 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
           ),
         ),
         const SizedBox(height: 7),
+        // Currency + exchange rate (when paying in a currency other than the base).
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SelectField(
+                label: 'العملة',
+                icon: 'dollar',
+                options: [for (final c in kCurrencyCodes) SelectOption(c, '$c (${currencySymbol(c)})')],
+                value: currency,
+                onChanged: (v) => setState(() => currency = v),
+              ),
+            ),
+            if (currency != activeCurrency) ...[
+              const SizedBox(width: 10),
+              Expanded(
+                child: Field(
+                    label: 'سعر الصرف → $activeCurrency',
+                    icon: 'refresh',
+                    placeholder: '3.75',
+                    ltr: true,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (v) => setState(() => rateStr = v)),
+              ),
+            ],
+          ],
+        ),
+        if (currency != activeCurrency)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: _infoNote(
+                'المبلغ ${fmtMoney(total, currency as String)} يعادل '
+                '${fmtMoney((total * (double.tryParse(rateStr) ?? 0)).round(), activeCurrency)} '
+                'بعملة المبنى.'),
+          ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -358,12 +399,17 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     final kind = labels.isEmpty ? 'دفعة' : labels.join(' + ');
     final m = payMonth as int;
     final date = '2026-${(m + 1).toString().padLeft(2, '0')}-01';
+    final cur = currency as String;
+    final sameCur = cur == activeCurrency;
+    final rate = sameCur ? 1.0 : (double.tryParse(rateStr) ?? 1);
     Navigator.of(context).pop();
     try {
       for (final no in targets) {
         await Api.I.createPayment(ctx.btype, {
           'unit_no': no,
-          'amount': total,
+          'original_amount': total,
+          'currency': cur,
+          'exchange_rate': rate,
           'kind': kind,
           'month': m,
           'year': 2026,
@@ -377,7 +423,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
           : target == 'group'
               ? '${targets.length} وحدة'
               : 'وحدة $unit';
-      ctx.toast('تم تسجيل دفعة بقيمة ${fmtUSD(total)} لـ $who');
+      ctx.toast('تم تسجيل دفعة بقيمة ${fmtMoney(total, cur)} لـ $who');
     } catch (_) {
       ctx.toast('تعذّر حفظ الدفعة، تحقّق من الاتصال', tone: 'late');
     }

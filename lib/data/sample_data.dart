@@ -9,8 +9,22 @@
 import 'package:flutter/material.dart';
 import '../theme/tokens.dart';
 
-/// Format a USD amount, e.g. 25840 -> "$25,840", -80 -> "-$80".
-String fmtUSD(num n, {bool dec = false}) {
+/// Supported currencies (code → symbol). The active building's currency drives
+/// how money is displayed app-wide.
+const Map<String, String> kCurrencySymbols = {
+  'USD': '\$', 'SAR': 'ر.س', 'AED': 'د.إ', 'EGP': 'ج.م', 'JOD': 'د.أ',
+  'KWD': 'د.ك', 'QAR': 'ر.ق', 'BHD': 'د.ب', 'OMR': 'ر.ع', 'TRY': '₺',
+  'EUR': '€', 'GBP': '£', 'JD': 'د.أ',
+};
+List<String> get kCurrencyCodes => kCurrencySymbols.keys.toList();
+
+String currencySymbol(String code) => kCurrencySymbols[code] ?? code;
+
+/// The active building's base currency (from live data, else USD).
+String get activeCurrency => DataStore.I.building?.currency ?? 'USD';
+
+/// Group digits with thousands separators (e.g. 25840 -> "25,840").
+String _grouped(num n, {bool dec = false}) {
   final abs = n.abs();
   final whole = abs.truncate();
   final s = whole.toString();
@@ -24,8 +38,23 @@ String fmtUSD(num n, {bool dec = false}) {
     final frac = ((abs - whole) * 100).round().toString().padLeft(2, '0');
     out = '$out.$frac';
   }
-  return (n < 0 ? '-\$' : '\$') + out;
+  return out;
 }
+
+/// Group digits with thousands separators, no currency symbol.
+String groupNumber(num n, {bool dec = false}) => _grouped(n, dec: dec);
+
+/// Format money in a specific currency: "$" prefixes, others suffix the symbol.
+String fmtMoney(num n, String code, {bool dec = false}) {
+  final sign = n < 0 ? '-' : '';
+  final sym = currencySymbol(code);
+  final num = _grouped(n, dec: dec);
+  return sym == '\$' ? '$sign$sym$num' : '$sign$num $sym';
+}
+
+/// Format money in the active building's currency. Kept named `fmtUSD` so the
+/// hundreds of existing call sites stay currency-aware without churn.
+String fmtUSD(num n, {bool dec = false}) => fmtMoney(n, activeCurrency, dec: dec);
 
 const List<String> arMonths = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',

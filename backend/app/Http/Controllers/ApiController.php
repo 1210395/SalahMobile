@@ -27,17 +27,20 @@ class ApiController extends Controller
     private function bk(Request $r): string
     {
         $user = $r->user();
-        if ($user && $user->role !== 'admin') {
+        // Admins + super-admins may select the building; everyone else is locked
+        // to their own (prevents cross-tenant IDOR).
+        if ($user && ! in_array($user->role, ['admin', 'superadmin'])) {
             return $user->building_key === 'commercial' ? 'commercial' : 'residential';
         }
 
         return $r->query('btype') === 'commercial' ? 'commercial' : 'residential';
     }
 
-    /// Only an admin may perform writes.
+    /// Only an admin (or super-admin) may perform writes.
     private function requireAdmin(Request $r): void
     {
-        abort_unless(optional($r->user())->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
+        abort_unless(in_array(optional($r->user())->role, ['admin', 'superadmin']),
+            403, 'يتطلب صلاحية المسؤول');
     }
 
     public function building(Request $r)
@@ -62,6 +65,7 @@ class ApiController extends Controller
             'subscription' => 'nullable|integer|min:0',
             'elevator_fee' => 'nullable|integer|min:0',
             'exchange_rate' => 'nullable|numeric|min:0',
+            'currency' => 'nullable|string|max:8',   // building base currency
         ]);
         $building = Building::where('key', $this->bk($r))->firstOrFail();
         $building->update(array_filter($data, fn ($v) => $v !== null));
@@ -104,7 +108,10 @@ class ApiController extends Controller
         $data = $r->validate([
             'unit_no' => 'required|string',
             'name' => 'nullable|string',
-            'amount' => 'required|integer',
+            'amount' => 'nullable|integer',            // base amount (legacy/optional)
+            'original_amount' => 'nullable|integer',   // amount as entered
+            'currency' => 'nullable|string|max:8',     // entered currency
+            'exchange_rate' => 'nullable|numeric|min:0', // entered-currency → base
             'kind' => 'required|string',
             'month' => 'required|integer|min:0|max:11',
             'year' => 'required|integer',
@@ -112,14 +119,34 @@ class ApiController extends Controller
             'method' => 'required|string',
             'notes' => 'nullable|string',
         ]);
-        $data['building_key'] = $this->bk($r);
-        // The unit must exist in the scoped building.
-        $unit = Unit::where('building_key', $data['building_key'])
-            ->where('no', $data['unit_no'])->first();
+        $bk = $this->bk($r);
+        $unit = Unit::where('building_key', $bk)->where('no', $data['unit_no'])->first();
         abort_unless($unit !== null, 422, 'الوحدة غير موجودة في هذا المبنى');
-        $data['name'] ??= $unit->resident;
 
-        return response()->json(Payment::create($data), 201);
+        // Convert the entered amount to the building's base currency. `amount` is
+        // always stored in the base currency so totals/reports sum cleanly.
+        $base = Building::where('key', $bk)->value('currency') ?: 'USD';
+        $currency = $data['currency'] ?? $base;
+        $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
+        $original = (int) ($data['original_amount'] ?? $data['amount'] ?? 0);
+
+        $payment = Payment::create([
+            'building_key' => $bk,
+            'unit_no' => $data['unit_no'],
+            'name' => $data['name'] ?? $unit->resident,
+            'amount' => (int) round($original * $rate),  // base currency
+            'currency' => $currency,
+            'original_amount' => $original,
+            'exchange_rate' => $rate,
+            'kind' => $data['kind'],
+            'month' => $data['month'],
+            'year' => $data['year'],
+            'date' => $data['date'],
+            'method' => $data['method'],
+            'notes' => $data['notes'] ?? null,
+        ]);
+
+        return response()->json($payment, 201);
     }
 
     /// The authenticated resident's own payment history (their unit only).

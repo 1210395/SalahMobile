@@ -169,6 +169,20 @@ class Api {
         Map<String, dynamic>.from(data).map((k, v) => MapEntry(k, '${v ?? ''}'));
   }
 
+  // ───────────── Super-admin (#6) ─────────────
+  Future<Map<String, dynamic>> globalReport({int? month, BType? btype}) async {
+    final q = <String, dynamic>{};
+    if (month != null) q['month'] = '$month';
+    if (btype != null) q['btype'] = btypeKey(btype);
+    final data = (await _dio.get('/reports/global', queryParameters: q)).data;
+    return _obj(data);
+  }
+
+  Future<List<Map<String, dynamic>>> listAdmins() async =>
+      _list((await _dio.get('/admins')).data);
+
+  Future<void> createAdmin(Map<String, dynamic> body) => _dio.post('/admins', data: body);
+
   /// Resident's own receipts (their unit only).
   Future<List<Payment>> myPayments() async {
     final data = (await _dio.get('/me/payments')).data;

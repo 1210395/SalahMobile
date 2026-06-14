@@ -28,12 +28,13 @@ class DatabaseSeeder extends Seeder
         // Runs every boot (idempotent): ensure existing buildings have an active
         // subscription — covers upgrades where the subscriptions table is new but
         // the buildings/users already exist.
+        $this->seedSuperAdmin();
         $this->seedSubscriptions();
 
-        // Idempotent: skip the bulk sample data if already seeded. The production
-        // entrypoint runs `db:seed` on every boot, so this guard prevents
-        // duplicate sample data (none of the inserts below are upserts).
-        if (User::query()->exists()) {
+        // Idempotent: skip the bulk sample data if already seeded. Keyed on
+        // buildings (the canonical seed marker) — NOT users, since the helpers
+        // above create the super-admin user before this guard runs.
+        if (Building::query()->exists()) {
             return;
         }
 
@@ -209,6 +210,18 @@ class DatabaseSeeder extends Seeder
         User::create(['name' => 'أحمد العامري', 'email' => 'resident@amarati.app',
             'phone' => '+966500000002', 'password' => Hash::make('password'),
             'role' => 'resident', 'building_key' => 'residential', 'unit_no' => '101']);
+    }
+
+    private function seedSuperAdmin(): void
+    {
+        User::firstOrCreate(
+            ['email' => 'superadmin@amarati.app'],
+            [
+                'name' => 'المدير العام', 'phone' => '+966500000000',
+                'password' => Hash::make('password'),
+                'role' => 'superadmin', 'building_key' => 'residential',
+            ],
+        );
     }
 
     private function seedSubscriptions(): void

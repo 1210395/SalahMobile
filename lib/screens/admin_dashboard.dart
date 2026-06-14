@@ -241,6 +241,7 @@ class BuildingScreen extends StatelessWidget {
       'sub': '${b.subscription}',
     };
     BType type = ctx.btype;
+    Object currency = b.currency;
     showAppSheet(
       context,
       StatefulBuilder(
@@ -260,6 +261,7 @@ class BuildingScreen extends StatelessWidget {
                   'floors': int.tryParse(f['floors']!.trim()) ?? b.floors,
                   'units_count': int.tryParse(f['units']!.trim()) ?? b.units,
                   'subscription': int.tryParse(f['sub']!.trim()) ?? b.subscription,
+                  'currency': currency,
                 });
                 await ctx.reload();
                 ctx.toast('تم حفظ بيانات المبنى');
@@ -314,10 +316,16 @@ class BuildingScreen extends StatelessWidget {
                 icon: 'wallet',
                 value: f['sub']!,
                 ltr: true,
-                suffix: '\$',
-                marginBottom: 0,
+                suffix: currencySymbol(currency as String),
                 keyboardType: TextInputType.number,
                 onChanged: (v) => f['sub'] = v),
+            SelectField(
+              label: 'عملة المبنى',
+              icon: 'dollar',
+              options: [for (final c in kCurrencyCodes) SelectOption(c, '$c (${currencySymbol(c)})')],
+              value: currency,
+              onChanged: (v) => setS(() => currency = v),
+            ),
           ],
         ),
       ),
