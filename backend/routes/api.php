@@ -39,6 +39,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::put('/building', [ApiController::class, 'updateBuilding']);
 
+    // Admin creates a renter account / a co-admin for their own building.
+    Route::post('/residents', [ApiController::class, 'storeResident']);
+    Route::post('/co-admins', [ApiController::class, 'createCoAdmin']);
+
     Route::get('/payments', [ApiController::class, 'payments']);
     Route::post('/payments', [ApiController::class, 'storePayment']);
 

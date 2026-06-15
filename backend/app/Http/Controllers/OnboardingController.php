@@ -94,8 +94,8 @@ class OnboardingController extends Controller
             'btype' => 'required|in:residential,commercial',
             'name' => 'required|string|max:160',
             'address' => 'required|string|max:200',
-            'floors' => 'required|integer|min:1|max:200',
-            'units_count' => 'required|integer|min:1|max:2000',
+            'floors' => 'required|integer|min:-50|max:300',
+            'units_count' => 'required|integer|min:0|max:2000',
         ]);
         $bk = $data['btype'];
         // SECURITY: a building with an existing admin cannot be taken over.

@@ -102,6 +102,13 @@ class Api {
   Future<void> updateBuilding(BType b, Map<String, dynamic> body) =>
       _dio.put('/building', queryParameters: {'btype': btypeKey(b)}, data: body);
 
+  // ───────────── Admin creates a renter / co-admin ─────────────
+  Future<void> createResident(BType b, Map<String, dynamic> body) =>
+      _dio.post('/residents', queryParameters: {'btype': btypeKey(b)}, data: body);
+
+  Future<void> createCoAdmin(BType b, Map<String, dynamic> body) =>
+      _dio.post('/co-admins', queryParameters: {'btype': btypeKey(b)}, data: body);
+
   // ───────────── Resident notes (#4) ─────────────
   Future<void> createNote(String body) => _dio.post('/notes', data: {'body': body});
 

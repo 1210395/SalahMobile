@@ -246,7 +246,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
 
   /// Manual new-resident form (name, phone, floor, unit no, optional email).
   void _openManualAdd(Ctx ctx, bool res) {
-    final f = {'name': '', 'phone': '', 'floor': '', 'no': '', 'email': ''};
+    final f = {'name': '', 'phone': '', 'floor': '', 'no': '', 'email': '', 'password': ''};
+    bool makeAccount = false;
     showAppSheet(
       context,
       StatefulBuilder(
@@ -257,20 +258,35 @@ class _UnitsScreenState extends State<UnitsScreen> {
             full: true,
             size: BtnSize.lg,
             icon: 'check',
-            disabled: f['name']!.trim().isEmpty || f['no']!.trim().isEmpty,
+            disabled: f['name']!.trim().isEmpty ||
+                f['no']!.trim().isEmpty ||
+                (makeAccount && f['phone']!.trim().isEmpty),
             onTap: () {
               Navigator.of(sheetCtx).pop();
               _save(
-                () => Api.I.createUnit(ctx.btype, {
-                  'no': f['no']!.trim(),
-                  'floor': int.tryParse(f['floor']!.trim()) ?? 1,
-                  'resident': f['name']!.trim(),
-                  'kind': 'مالك',
-                  'phone': f['phone']!.trim().isEmpty ? '—' : f['phone']!.trim(),
-                  'sub': ctx.building.subscription,
-                  'status': 'ok',
-                }),
-                'تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'محل'} ${f['no']}',
+                () async {
+                  await Api.I.createUnit(ctx.btype, {
+                    'no': f['no']!.trim(),
+                    'floor': int.tryParse(f['floor']!.trim()) ?? 0,
+                    'resident': f['name']!.trim(),
+                    'kind': 'مالك',
+                    'phone': f['phone']!.trim().isEmpty ? '—' : f['phone']!.trim(),
+                    'sub': ctx.building.subscription,
+                    'status': 'ok',
+                  });
+                  if (makeAccount) {
+                    await Api.I.createResident(ctx.btype, {
+                      'name': f['name']!.trim(),
+                      'phone': f['phone']!.trim(),
+                      if (f['email']!.trim().isNotEmpty) 'email': f['email']!.trim(),
+                      if (f['password']!.trim().isNotEmpty) 'password': f['password']!.trim(),
+                      'unit_no': f['no']!.trim(),
+                    });
+                  }
+                },
+                makeAccount
+                    ? 'تمت إضافة ${f['name']!.trim()} وإنشاء حساب دخول'
+                    : 'تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'محل'} ${f['no']}',
               );
             },
           ),
@@ -294,9 +310,9 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   child: Field(
                       label: 'الطابق',
                       icon: 'building',
-                      placeholder: '1',
+                      placeholder: '0',
                       ltr: true,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(signed: true),
                       onChanged: (v) => setS(() => f['floor'] = v)),
                 ),
                 const SizedBox(width: 10),
@@ -317,6 +333,34 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ltr: true,
                 keyboardType: TextInputType.emailAddress,
                 onChanged: (v) => setS(() => f['email'] = v)),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                border: Border.all(color: AppColors.line),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(children: [
+                Expanded(
+                  child: Text('إنشاء حساب دخول للساكن',
+                      style: AppType.base(size: 14, weight: FontWeight.w700)),
+                ),
+                AppSwitch(checked: makeAccount, onChanged: (v) => setS(() => makeAccount = v)),
+              ]),
+            ),
+            if (makeAccount) ...[
+              const SizedBox(height: 8),
+              Text('يسجّل الساكن الدخول برقم جواله (رمز OTP)، أو بالبريد وكلمة المرور إن حُدِّدت.',
+                  style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
+              const SizedBox(height: 8),
+              Field(
+                  label: 'كلمة المرور (اختياري)',
+                  icon: 'lock',
+                  placeholder: '6 أحرف على الأقل',
+                  ltr: true,
+                  onChanged: (v) => f['password'] = v),
+            ],
           ],
         ),
       ),

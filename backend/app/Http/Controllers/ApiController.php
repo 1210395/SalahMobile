@@ -13,9 +13,12 @@ use App\Models\Payment;
 use App\Models\Unit;
 use App\Models\WaTemplate;
 use App\Models\Worker;
+use App\Models\User;
 use App\Models\YearSummary;
 use App\Services\AlertGenerator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Hash;
 
 // عمارتي — read + write endpoints for all building data. Every list is scoped
 // by ?btype=residential|commercial (defaults to residential).
@@ -50,7 +53,54 @@ class ApiController extends Controller
 
     public function summary(Request $r)
     {
-        return response()->json(Building::where('key', $this->bk($r))->firstOrFail()->summary);
+        // Computed LIVE from the building's real payments/expenses/units so the
+        // dashboard always reflects current data (the old stored JSON went stale
+        // and never updated when payments/expenses were recorded).
+        $bk = $this->bk($r);
+        Building::where('key', $bk)->firstOrFail();
+        $now = now();
+        $curYear = (int) $now->year;
+        $curMonth0 = (int) $now->month - 1; // app months are 0-indexed
+
+        $payments = Payment::where('building_key', $bk)->get(['amount', 'month', 'year']);
+        $expenses = Expense::where('building_key', $bk)->get(['amount', 'cat', 'date']);
+        $units = Unit::where('building_key', $bk)->where('status', '!=', 'vacant')->get(['balance']);
+
+        $revenueTotal = (int) $payments->sum('amount');
+        $expenseTotal = (int) $expenses->sum('amount');
+        $revenueM = (int) $payments->where('year', $curYear)->where('month', $curMonth0)->sum('amount');
+
+        $inCurMonth = fn ($e) => Carbon::parse($e->date)->year === $curYear
+            && (int) Carbon::parse($e->date)->month === $curMonth0 + 1;
+        $expenseM = (int) $expenses->filter($inCurMonth)->sum('amount');
+        $maintM = (int) $expenses->filter(fn ($e) => $e->cat === 'صيانة' && $inCurMonth($e))->sum('amount');
+
+        $due = (int) $units->filter(fn ($u) => $u->balance < 0)->sum(fn ($u) => abs((int) $u->balance));
+        $opening = (int) (YearSummary::where('building_key', $bk)->where('year', $curYear)->value('opening_balance') ?? 0);
+        $balance = $opening + $revenueTotal - $expenseTotal;
+
+        $arShort = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
+        $trend = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $d = $now->copy()->subMonths($i);
+            $m0 = (int) $d->month - 1;
+            $rev = (int) $payments->where('year', (int) $d->year)->where('month', $m0)->sum('amount');
+            $trend[] = ['label' => $arShort[$m0], 'value' => $rev, 'color' => 'navy600'];
+        }
+
+        return response()->json([
+            'balance' => $balance,
+            'due' => $due,
+            'revenueM' => $revenueM,
+            'expenseM' => $expenseM,
+            'bars' => [
+                ['label' => 'إيرادات', 'value' => $revenueM, 'color' => 'navy600'],
+                ['label' => 'مستحقات', 'value' => $due, 'color' => 'gold500'],
+                ['label' => 'مصروفات', 'value' => $expenseM, 'color' => 'late'],
+                ['label' => 'صيانة', 'value' => $maintM, 'color' => 'ok'],
+            ],
+            'trend' => $trend,
+        ]);
     }
 
     /// Edit building settings (admin only) — name, address, defaults, rates.
@@ -60,8 +110,8 @@ class ApiController extends Controller
         $data = $r->validate([
             'name' => 'nullable|string|max:160',
             'address' => 'nullable|string|max:200',
-            'floors' => 'nullable|integer|min:1|max:200',
-            'units_count' => 'nullable|integer|min:1|max:2000',
+            'floors' => 'nullable|integer|min:-50|max:300',
+            'units_count' => 'nullable|integer|min:0|max:2000',
             'subscription' => 'nullable|integer|min:0',
             'elevator_fee' => 'nullable|integer|min:0',
             'exchange_rate' => 'nullable|numeric|min:0',
@@ -71,6 +121,63 @@ class ApiController extends Controller
         $building->update(array_filter($data, fn ($v) => $v !== null));
 
         return response()->json($building->fresh());
+    }
+
+    /// Admin creates a resident (renter) account directly for their building.
+    /// The renter signs in by phone (OTP) or, if email + password are given, by
+    /// email + password. Optionally bound to a unit.
+    public function storeResident(Request $r)
+    {
+        $this->requireAdmin($r);
+        $bk = $r->user()->building_key ?: $this->bk($r);
+        $data = $r->validate([
+            'name' => 'required|string|max:120',
+            'phone' => 'required|string|max:32|unique:users,phone',
+            'email' => 'nullable|email|unique:users,email',
+            'password' => 'nullable|string|min:6',
+            'unit_no' => 'nullable|string|max:20',
+        ]);
+
+        $user = User::create([
+            'name' => $data['name'],
+            'phone' => $data['phone'],
+            'email' => $data['email'] ?? null,
+            'password' => isset($data['password']) ? Hash::make($data['password']) : null,
+            'role' => 'resident',
+            'building_key' => $bk,
+            'unit_no' => $data['unit_no'] ?? null,
+        ]);
+
+        return response()->json(
+            $user->only(['id', 'name', 'email', 'phone', 'role', 'building_key', 'unit_no']),
+            201,
+        );
+    }
+
+    /// A building admin creates a co-admin for THEIR OWN building (building_key
+    /// is forced to the requester's — they cannot grant access to another building).
+    public function createCoAdmin(Request $r)
+    {
+        $this->requireAdmin($r);
+        $bk = $r->user()->building_key ?: $this->bk($r);
+        $data = $r->validate([
+            'name' => 'required|string|max:120',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|string|min:6',
+        ]);
+
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
+            'role' => 'admin',
+            'building_key' => $bk,
+        ]);
+
+        return response()->json(
+            $user->only(['id', 'name', 'email', 'role', 'building_key']),
+            201,
+        );
     }
 
     /// Recompute alerts from live data and "dispatch" them (admin only).

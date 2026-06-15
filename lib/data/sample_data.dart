@@ -10,9 +10,9 @@ import '../theme/tokens.dart';
 /// Supported currencies (code → symbol). The active building's currency drives
 /// how money is displayed app-wide.
 const Map<String, String> kCurrencySymbols = {
-  'USD': '\$', 'SAR': 'ر.س', 'AED': 'د.إ', 'EGP': 'ج.م', 'JOD': 'د.أ',
-  'KWD': 'د.ك', 'QAR': 'ر.ق', 'BHD': 'د.ب', 'OMR': 'ر.ع', 'TRY': '₺',
-  'EUR': '€', 'GBP': '£', 'JD': 'د.أ',
+  'NIS': '₪', 'JOD': 'د.أ', 'USD': '\$', 'SAR': 'ر.س', 'AED': 'د.إ',
+  'EGP': 'ج.م', 'KWD': 'د.ك', 'QAR': 'ر.ق', 'BHD': 'د.ب', 'OMR': 'ر.ع',
+  'TRY': '₺', 'EUR': '€', 'GBP': '£', 'JD': 'د.أ', 'ILS': '₪',
 };
 List<String> get kCurrencyCodes => kCurrencySymbols.keys.toList();
 

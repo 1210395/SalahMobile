@@ -226,6 +226,7 @@ class BuildingScreen extends StatelessWidget {
           QuickTile(label: 'السنوات', sub: 'الأشهر والأرصدة', icon: 'calendar', tone: 'credit', onTap: () => ctx.go('years')),
           QuickTile(label: 'طلبات الانضمام', sub: 'الموافقة على السكان', icon: 'users', tone: 'gold', onTap: () => ctx.go('approvals')),
           QuickTile(label: 'الاشتراك والإعداد', sub: 'تفعيل ثم إعداد المبنى', icon: 'shield', tone: 'navy', onTap: () => ctx.go('subscribe')),
+          QuickTile(label: 'مسؤول مساعد', sub: 'إضافة مسؤول للمبنى', icon: 'users', tone: 'credit', onTap: () => _openCoAdmin(context, ctx)),
         ], n: 2),
       ],
     );
@@ -300,7 +301,7 @@ class BuildingScreen extends StatelessWidget {
                       icon: 'layers',
                       value: f['floors']!,
                       ltr: true,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(signed: true),
                       onChanged: (v) => f['floors'] = v),
                 ),
                 const SizedBox(width: 10),
@@ -356,6 +357,60 @@ class BuildingScreen extends StatelessWidget {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Building admin creates a co-admin for the same building.
+  void _openCoAdmin(BuildContext context, Ctx ctx) {
+    final f = {'name': '', 'email': '', 'password': ''};
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'إضافة مسؤول مساعد',
+          footer: AppButton(
+            label: 'إنشاء المسؤول',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            disabled: f['name']!.trim().isEmpty ||
+                f['email']!.trim().isEmpty ||
+                f['password']!.trim().length < 6,
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.createCoAdmin(ctx.btype, {
+                  'name': f['name']!.trim(),
+                  'email': f['email']!.trim(),
+                  'password': f['password']!.trim(),
+                });
+                ctx.toast('تم إنشاء حساب المسؤول المساعد');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          children: [
+            Text('سيتمكّن هذا المسؤول من إدارة نفس المبنى (الدفعات والمصروفات والوحدات…).',
+                style: AppType.base(size: 12, weight: FontWeight.w500, color: AppColors.ink500, height: 1.5)),
+            const SizedBox(height: 12),
+            Field(label: 'الاسم', icon: 'user', placeholder: 'اسم المسؤول', onChanged: (v) => setS(() => f['name'] = v)),
+            Field(
+                label: 'البريد الإلكتروني',
+                icon: 'mail',
+                placeholder: 'admin@email.com',
+                ltr: true,
+                keyboardType: TextInputType.emailAddress,
+                onChanged: (v) => setS(() => f['email'] = v)),
+            Field(
+                label: 'كلمة المرور',
+                icon: 'lock',
+                placeholder: '6 أحرف على الأقل',
+                ltr: true,
+                onChanged: (v) => setS(() => f['password'] = v)),
           ],
         ),
       ),

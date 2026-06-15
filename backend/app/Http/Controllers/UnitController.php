@@ -25,7 +25,7 @@ class UnitController extends Controller
     {
         return [
             'no' => 'required|string|max:20',
-            'floor' => 'required|integer|min:0|max:200',
+            'floor' => 'required|integer|min:-50|max:300',
             'resident' => 'nullable|string|max:120',
             'kind' => 'nullable|string|max:20',
             'phone' => 'nullable|string|max:32',
