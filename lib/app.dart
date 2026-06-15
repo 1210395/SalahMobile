@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'common.dart';
 import 'api/auth_store.dart';
@@ -155,6 +156,35 @@ class _AmaratiAppState extends State<AmaratiApp> {
   }
 
   void _go(String s) => setState(() => screen = s);
+
+  // Android hardware/gesture back: navigate WITHIN the app instead of exiting.
+  // sub-screen -> its parent tab -> role home -> (second press within 2s) exit.
+  DateTime? _lastBackAt;
+  void _handleBack() {
+    final maps = switch (role) {
+      AppRole.superadmin => _superTabOf,
+      AppRole.admin => _adminTabOf,
+      AppRole.resident => _resTabOf,
+      AppRole.guest => const <String, String>{},
+    };
+    final home = _homeFor(role);
+    final tab = maps[screen];
+    if (tab != null && tab != screen) {
+      _go(tab); // sub-screen -> its parent tab
+      return;
+    }
+    if (screen != home) {
+      _go(home); // a non-home tab -> role home
+      return;
+    }
+    final now = DateTime.now(); // already on home -> confirm exit
+    if (_lastBackAt != null && now.difference(_lastBackAt!) < const Duration(seconds: 2)) {
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBackAt = now;
+    _toastMsg('اضغط رجوع مرة أخرى للخروج', tone: 'info');
+  }
 
   Future<void> _enterGuest(BType b) async {
     setState(() {
@@ -525,8 +555,13 @@ class _AmaratiAppState extends State<AmaratiApp> {
   @override
   Widget build(BuildContext context) {
     final ctx = _buildCtx();
-    final bottomInset = MediaQuery.of(context).padding.bottom;
-    return Scaffold(
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _handleBack();
+      },
+      child: Scaffold(
       backgroundColor: AppColors.page,
       resizeToAvoidBottomInset: false,
       body: Stack(
@@ -560,6 +595,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
               ),
             ),
         ],
+      ),
       ),
     );
   }

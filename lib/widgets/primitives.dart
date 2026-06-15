@@ -324,7 +324,7 @@ class BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,

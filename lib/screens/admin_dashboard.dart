@@ -204,14 +204,14 @@ class BuildingScreen extends StatelessWidget {
                       style: AppType.base(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
                   tone: 'gold'),
               row('dollar', 'العملة',
-                  Text('دولار أمريكي (\$)',
+                  Text('${b.currency} (${currencySymbol(b.currency)})',
                       style: AppType.base(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
                   tone: 'ok'),
               row('elevator', 'رسوم المصعد',
-                  Text(fmtUSD(15),
+                  Text(fmtUSD(b.elevatorFee),
                       style: AppType.base(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700))),
               row('refresh', 'سعر الصرف',
-                  NumText('\$1 = 3.75 ﷼',
+                  NumText(groupNumber(b.exchangeRate, dec: true),
                       style: AppType.num(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
                   tone: 'credit', divider: false),
             ],
@@ -239,6 +239,8 @@ class BuildingScreen extends StatelessWidget {
       'floors': '${b.floors}',
       'units': '${b.units}',
       'sub': '${b.subscription}',
+      'elevator': '${b.elevatorFee}',
+      'rate': '${b.exchangeRate}',
     };
     BType type = ctx.btype;
     Object currency = b.currency;
@@ -262,6 +264,8 @@ class BuildingScreen extends StatelessWidget {
                   'units_count': int.tryParse(f['units']!.trim()) ?? b.units,
                   'subscription': int.tryParse(f['sub']!.trim()) ?? b.subscription,
                   'currency': currency,
+                  'elevator_fee': int.tryParse(f['elevator']!.trim()) ?? b.elevatorFee,
+                  'exchange_rate': double.tryParse(f['rate']!.trim()) ?? b.exchangeRate,
                 });
                 await ctx.reload();
                 ctx.toast('تم حفظ بيانات المبنى');
@@ -325,6 +329,32 @@ class BuildingScreen extends StatelessWidget {
               options: [for (final c in kCurrencyCodes) SelectOption(c, '$c (${currencySymbol(c)})')],
               value: currency,
               onChanged: (v) => setS(() => currency = v),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Field(
+                      label: 'رسوم المصعد',
+                      icon: 'elevator',
+                      value: f['elevator']!,
+                      ltr: true,
+                      suffix: currencySymbol(currency as String),
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) => f['elevator'] = v),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Field(
+                      label: 'سعر الصرف',
+                      icon: 'refresh',
+                      value: f['rate']!,
+                      ltr: true,
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) => f['rate'] = v),
+                ),
+              ],
             ),
           ],
         ),

@@ -41,7 +41,7 @@ class ScreenScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     final column = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -93,7 +93,7 @@ class SheetShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     final keyboard = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
       padding: EdgeInsets.only(bottom: keyboard),

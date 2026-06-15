@@ -38,6 +38,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       .where((p) => p.month == selMonth && p.year == selYear)
       .fold<int>(0, (s, p) => s + p.amount);
 
+  /// Live annual totals for the selected year (were hardcoded).
+  int _yearRevenue() =>
+      kPayments.where((p) => p.year == selYear).fold<int>(0, (s, p) => s + p.amount);
+  int _yearExpenses() => kExpenses
+      .where((e) => (DateTime.tryParse(e.date)?.year ?? selYear) == selYear)
+      .fold<int>(0, (s, e) => s + e.amount);
+
   /// Export chooser: real .xlsx / .csv files (shared) or copy to clipboard.
   void _exportSheet(Ctx ctx, String title, List<List<String>> rows) {
     showAppSheet(
@@ -68,15 +75,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           const SizedBox(height: 10),
           _exportOption(
-            icon: 'file',
-            label: 'تصدير CSV (ملف)',
-            onTap: () {
-              Navigator.of(context).pop();
-              _shareReport(ctx, rows, excel: false);
-            },
-          ),
-          const SizedBox(height: 10),
-          _exportOption(
             icon: 'receipt',
             label: 'نسخ إلى الحافظة',
             onTap: () {
@@ -86,7 +84,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             },
           ),
           const SizedBox(height: 8),
-          Text('PDF و Excel و CSV — تُصدَّر كملفات فعلية عبر مشاركة النظام.',
+          Text('PDF و Excel — تُصدَّر كملفات فعلية عبر مشاركة النظام.',
               style: AppType.base(size: 11, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
         ],
       ),
@@ -164,8 +162,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ['الشهر', 'القيمة'],
           for (final d in Summary.trend) [d.label, '${d.value}'],
           [],
-          ['إجمالي الإيرادات', '38400'],
-          ['إجمالي المصروفات', '22150'],
+          ['إجمالي الإيرادات', '${_yearRevenue()}'],
+          ['إجمالي المصروفات', '${_yearExpenses()}'],
         ];
       case 'unit':
         final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
@@ -186,25 +184,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ['تقرير المصروفات', '$selYear'],
           [],
           ['التصنيف', 'القيمة'],
-          for (final d in _expData) [d.label, '${d.value}'],
+          for (final d in _expenseData()) [d.label, '${d.value}'],
         ];
     }
   }
 
-  static const List<ChartDatum> _expData = [
-    ChartDatum(label: 'مصعد', value: 350, color: AppColors.navy600),
-    ChartDatum(label: 'نظافة', value: 200, color: AppColors.ok),
-    ChartDatum(label: 'كهرباء', value: 180, color: AppColors.warn),
-    ChartDatum(label: 'صيانة', value: 90, color: AppColors.credit),
-    ChartDatum(label: 'أخرى', value: 60, color: AppColors.gold500),
-  ];
+  /// Live expense breakdown by category for the selected year.
+  List<ChartDatum> _expenseData() {
+    final byCat = <String, int>{};
+    for (final e in kExpenses) {
+      final d = DateTime.tryParse(e.date);
+      if (d != null && d.year != selYear) continue;
+      byCat[e.cat] = (byCat[e.cat] ?? 0) + e.amount;
+    }
+    const palette = [
+      AppColors.navy600, AppColors.ok, AppColors.warn, AppColors.credit, AppColors.gold500
+    ];
+    final cats = byCat.keys.toList();
+    return [
+      for (var i = 0; i < cats.length; i++)
+        ChartDatum(label: cats[i], value: byCat[cats[i]]!, color: palette[i % palette.length]),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
     final lateUnits =
         (ctx.res ? kApartments : kShops).where((u) => u.status == 'late').toList();
-    final expTotal = _expData.fold<num>(0, (s, d) => s + d.value).toInt();
+    final expData = _expenseData();
+    final expTotal = expData.fold<num>(0, (s, d) => s + d.value).toInt();
 
     return ScreenScaffold(
       header: AppHeader(
@@ -232,9 +241,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
         if (tab == 'monthly') ..._monthly(lateUnits),
         if (tab == 'annual') ..._annual(),
         if (tab == 'unit') ..._unit(ctx),
-        if (tab == 'expense') ..._expense(expTotal),
+        if (tab == 'expense') ..._expense(expData, expTotal),
         const SizedBox(height: 4),
         Row(children: [
+          Expanded(
+            child: AppButton(
+                label: 'PDF',
+                variant: BtnVariant.outline,
+                full: true,
+                icon: 'file',
+                onTap: () async {
+                  try {
+                    await exportReportPdf('تصدير التقرير', _reportRows(ctx, lateUnits));
+                  } catch (e) {
+                    ctx.toast(apiErrorText(e), tone: 'late');
+                  }
+                }),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: AppButton(
                 label: 'Excel',
@@ -242,15 +266,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 full: true,
                 icon: 'excel',
                 onTap: () => _shareReport(ctx, _reportRows(ctx, lateUnits), excel: true)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: AppButton(
-                label: 'CSV',
-                variant: BtnVariant.outline,
-                full: true,
-                icon: 'file',
-                onTap: () => _shareReport(ctx, _reportRows(ctx, lateUnits), excel: false)),
           ),
         ]),
       ],
@@ -351,9 +366,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
         const SizedBox(height: 12),
         Row(children: [
-          Expanded(child: StatCard(label: 'إجمالي الإيرادات', value: fmtUSD(38400), icon: 'trend', tone: 'ok')),
+          Expanded(child: StatCard(label: 'إجمالي الإيرادات', value: fmtUSD(_yearRevenue()), icon: 'trend', tone: 'ok')),
           const SizedBox(width: 10),
-          Expanded(child: StatCard(label: 'إجمالي المصروفات', value: fmtUSD(22150), icon: 'expense', tone: 'late')),
+          Expanded(child: StatCard(label: 'إجمالي المصروفات', value: fmtUSD(_yearExpenses()), icon: 'expense', tone: 'late')),
         ]),
         const SizedBox(height: 12),
       ];
@@ -436,7 +451,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ];
   }
 
-  List<Widget> _expense(int expTotal) => [
+  List<Widget> _expense(List<ChartDatum> expData, int expTotal) => [
+        _yearSelect(),
+        if (expData.isEmpty)
+          const EmptyState(icon: 'expense', title: 'لا توجد مصروفات في هذه السنة'),
+        if (expData.isNotEmpty)
         AppCard(
           child: Row(
             children: [
@@ -446,7 +465,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    Donut(data: _expData),
+                    Donut(data: expData),
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -460,7 +479,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               const SizedBox(width: 18),
               Expanded(
                 child: Column(
-                  children: _expData
+                  children: expData
                       .map((d) => Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Row(children: [

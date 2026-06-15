@@ -100,6 +100,8 @@ class Building {
     required this.subscription,
     required this.currency,
     required this.floors,
+    this.exchangeRate = 1,
+    this.elevatorFee = 0,
   });
   final String name;
   final String address;
@@ -108,6 +110,8 @@ class Building {
   final int subscription;
   final String currency;
   final int floors;
+  final double exchangeRate; // entered-currency → base
+  final int elevatorFee;     // monthly elevator fee (base currency)
 
   factory Building.fromJson(Map<String, dynamic> j) => Building(
         name: j['name'] ?? '',
@@ -117,6 +121,10 @@ class Building {
         subscription: _int(j['subscription']),
         currency: j['currency'] ?? 'USD',
         floors: _int(j['floors']),
+        exchangeRate: (j['exchange_rate'] is num)
+            ? (j['exchange_rate'] as num).toDouble()
+            : double.tryParse('${j['exchange_rate'] ?? 1}') ?? 1,
+        elevatorFee: _int(j['elevator_fee']),
       );
 }
 
