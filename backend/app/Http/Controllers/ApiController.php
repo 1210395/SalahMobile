@@ -232,7 +232,14 @@ class ApiController extends Controller
 
     public function guard(Request $r)
     {
-        return Guard::where('building_key', $this->bk($r))->firstOrFail();
+        // An empty building has no guard yet — return a blank default (not a 404)
+        // so the app's bundle load never breaks.
+        $guard = Guard::where('building_key', $this->bk($r))->first();
+
+        return response()->json($guard ?? [
+            'name' => '', 'phone' => '', 'address' => '',
+            'fee' => 0, 'last_payment' => null, 'next_due' => null,
+        ]);
     }
 
     public function craftsmen(Request $r)
@@ -275,8 +282,11 @@ class ApiController extends Controller
     public function yearSummary(Request $r)
     {
         $year = (int) ($r->query('year') ?: 2026);
+        $ys = YearSummary::where('building_key', $this->bk($r))
+            ->where('year', $year)->first();
 
-        return YearSummary::where('building_key', $this->bk($r))
-            ->where('year', $year)->firstOrFail();
+        return response()->json($ys ?? [
+            'year' => $year, 'opening_balance' => 0, 'months' => [],
+        ]);
     }
 }

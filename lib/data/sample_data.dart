@@ -1,10 +1,8 @@
-// عمارتي — models, helpers, seed data, and the runtime DataStore.
+// عمارتي — models, helpers, and the runtime DataStore.
 //
 // Every public accessor (kApartments, kPayments, Summary.*, …) returns LIVE
 // data from [DataStore] once a session has loaded it from the Laravel API, and
-// falls back to the bundled seed data otherwise. This lets every screen read
-// data synchronously, exactly as in the original prototype, while being backed
-// by the real backend.
+// an EMPTY value otherwise. No bundled sample data — real users start empty.
 
 import 'package:flutter/material.dart';
 import '../theme/tokens.dart';
@@ -517,166 +515,49 @@ class DataStore {
   }
 }
 
-// ───────────────────────────── Seed data ─────────────────────────────
-
-const Map<BType, Building> _seedBuildings = {
-  BType.residential: Building(
-    name: 'عمارة الياسمين', address: 'حي النرجس، شارع 12، الرياض',
-    units: 12, type: 'سكني', subscription: 40, currency: 'USD', floors: 6,
-  ),
-  BType.commercial: Building(
-    name: 'مجمع التجارة الذهبي', address: 'طريق الملك فهد، الرياض',
-    units: 10, type: 'تجاري', subscription: 120, currency: 'USD', floors: 3,
-  ),
-};
-
-const List<Unit> _seedApartments = [
-  Unit(id: 'A1', no: '101', floor: 1, resident: 'أحمد العامري', kind: 'مالك', phone: '+966 50 123 4567', sub: 40, status: 'ok', balance: 0, payer: 'الساكن'),
-  Unit(id: 'A2', no: '102', floor: 1, resident: 'سارة المطيري', kind: 'مستأجر', phone: '+966 55 987 6543', sub: 40, status: 'late', balance: -80, payer: 'المالك'),
-  Unit(id: 'A3', no: '201', floor: 2, resident: 'خالد الزهراني', kind: 'مالك', phone: '+966 54 222 1188', sub: 40, status: 'ok', balance: 0, payer: 'الساكن'),
-  Unit(id: 'A4', no: '202', floor: 2, resident: 'نورة القحطاني', kind: 'مستأجر', phone: '+966 56 778 9900', sub: 40, status: 'credit', balance: 40, payer: 'الساكن'),
-  Unit(id: 'A5', no: '301', floor: 3, resident: 'فهد الدوسري', kind: 'مالك', phone: '+966 50 445 6677', sub: 40, status: 'late', balance: -40, payer: 'الساكن'),
-  Unit(id: 'A6', no: '302', floor: 3, resident: 'ليان السبيعي', kind: 'مستأجر', phone: '+966 53 119 2233', sub: 40, status: 'ok', balance: 0, payer: 'المالك'),
-  Unit(id: 'A7', no: '401', floor: 4, resident: 'شقة شاغرة', kind: 'شاغر', phone: '—', sub: 40, status: 'vacant', balance: 0, payer: '—'),
-  Unit(id: 'A8', no: '402', floor: 4, resident: 'ماجد الحربي', kind: 'مالك', phone: '+966 59 332 4455', sub: 40, status: 'ok', balance: 0, payer: 'الساكن'),
-];
-
-const List<Unit> _seedShops = [
-  Unit(id: 'S1', no: 'M-01', floor: 1, resident: 'صيدلية الشفاء', kind: 'مستأجر', phone: '+966 50 200 3040', sub: 120, status: 'ok', balance: 0, payer: 'المستأجر'),
-  Unit(id: 'S2', no: 'M-02', floor: 1, resident: 'مقهى لافندر', kind: 'مستأجر', phone: '+966 55 600 1020', sub: 120, status: 'late', balance: -240, payer: 'المستأجر'),
-  Unit(id: 'S3', no: 'M-03', floor: 1, resident: 'بقالة المدينة', kind: 'مالك', phone: '+966 54 700 8090', sub: 120, status: 'ok', balance: 0, payer: 'المالك'),
-  Unit(id: 'S4', no: 'M-04', floor: 2, resident: 'مكتب محاماة العدل', kind: 'مستأجر', phone: '+966 56 808 1122', sub: 120, status: 'credit', balance: 120, payer: 'المستأجر'),
-  Unit(id: 'S5', no: 'M-05', floor: 2, resident: 'صالون الأناقة', kind: 'مستأجر', phone: '+966 53 909 3344', sub: 120, status: 'ok', balance: 0, payer: 'المستأجر'),
-  Unit(id: 'S6', no: 'M-06', floor: 3, resident: 'محل شاغر', kind: 'شاغر', phone: '—', sub: 120, status: 'vacant', balance: 0, payer: '—'),
-];
-
-const List<Payment> _seedPayments = [
-  Payment(id: 1, unit: '102', name: 'سارة المطيري', amount: 40, kind: 'الاشتراك الشهري', month: 4, year: 2026, date: '2026-05-03', method: 'تحويل بنكي'),
-  Payment(id: 2, unit: '201', name: 'خالد الزهراني', amount: 55, kind: 'اشتراك + مصعد', month: 4, year: 2026, date: '2026-05-02', method: 'نقداً'),
-  Payment(id: 3, unit: '101', name: 'أحمد العامري', amount: 40, kind: 'الاشتراك الشهري', month: 4, year: 2026, date: '2026-05-01', method: 'محفظة رقمية'),
-  Payment(id: 4, unit: '302', name: 'ليان السبيعي', amount: 40, kind: 'الاشتراك الشهري', month: 3, year: 2026, date: '2026-04-28', method: 'تحويل بنكي'),
-  Payment(id: 5, unit: '402', name: 'ماجد الحربي', amount: 70, kind: 'اشتراك + باركينج', month: 3, year: 2026, date: '2026-04-26', method: 'نقداً'),
-  Payment(id: 6, unit: '202', name: 'نورة القحطاني', amount: 80, kind: 'اشتراك (شهرين)', month: 3, year: 2026, date: '2026-04-20', method: 'تحويل بنكي'),
-];
-
-const List<PayType> _seedPayTypes = [
-  PayType(id: 'sub', label: 'الاشتراك الشهري', amount: 40, on: true, opt: false),
-  PayType(id: 'elev', label: 'رسوم المصعد', amount: 15, on: true, opt: false),
-  PayType(id: 'guard', label: 'أجرة الحارس', amount: 10, on: true, opt: true),
-  PayType(id: 'park', label: 'أجرة الباركينج', amount: 20, on: false, opt: true),
-];
-
-const List<Expense> _seedExpenses = [
-  Expense(id: 1, cat: 'مصعد', icon: 'elevator', tone: 'navy', supplier: 'شركة أوتيس للمصاعد', amount: 350, date: '2026-05-04', desc: 'عقد صيانة دورية'),
-  Expense(id: 2, cat: 'نظافة', icon: 'broom', tone: 'ok', supplier: 'مؤسسة النظافة المثالية', amount: 200, date: '2026-05-01', desc: 'أجور شهر مايو'),
-  Expense(id: 3, cat: 'كهرباء', icon: 'alert', tone: 'warn', supplier: 'شركة الكهرباء', amount: 180, date: '2026-04-29', desc: 'فاتورة الأجزاء المشتركة'),
-  Expense(id: 4, cat: 'صيانة', icon: 'wrench', tone: 'credit', supplier: 'سباك - عبدالله', amount: 90, date: '2026-04-22', desc: 'إصلاح تسرب الطابق 3'),
-  Expense(id: 5, cat: 'أخرى', icon: 'receipt', tone: 'gold', supplier: 'متجر مواد', amount: 60, date: '2026-04-18', desc: 'لمبات وأدوات'),
-];
+// ──────────────────── Public accessors (live data only) ────────────────────
+// No bundled sample data. Every accessor returns the live bundle, or an EMPTY
+// value when nothing is loaded — so real users start completely empty and a
+// failed/absent load never shows fake numbers.
 
 const List<String> kExpCats = ['مصعد', 'نظافة', 'كهرباء', 'صيانة', 'أخرى'];
 
-const List<Worker> _seedWorkers = [
-  Worker(id: 1, name: 'مؤسسة النظافة المثالية', type: 'شركة نظافة', phone: '+966 50 111 2233', address: 'حي العليا', cycle: 'شهري', amount: 200, last: '2026-05-01', next: '2026-06-01'),
-  Worker(id: 2, name: 'سعيد - عامل نظافة', type: 'عامل', phone: '+966 56 444 5566', address: 'حي النخيل', cycle: 'أسبوعي', amount: 50, last: '2026-05-02', next: '2026-05-09'),
-];
-
-const List<ParkingSpot> _seedParking = [
-  ParkingSpot(id: 'P1', no: 'P-01', status: 'مشغول', unit: '101', code: '4471', note: 'سيارة بيضاء'),
-  ParkingSpot(id: 'P2', no: 'P-02', status: 'مشغول', unit: '201', code: '2290', note: ''),
-  ParkingSpot(id: 'P3', no: 'P-03', status: 'شاغر', unit: '', code: '—', note: 'متاح للإيجار'),
-  ParkingSpot(id: 'P4', no: 'P-04', status: 'مشغول', unit: '402', code: '8813', note: 'سيارة عائلية'),
-  ParkingSpot(id: 'P5', no: 'P-05', status: 'صيانة', unit: '', code: '—', note: 'إصلاح أرضية'),
-  ParkingSpot(id: 'P6', no: 'P-06', status: 'شاغر', unit: '', code: '—', note: ''),
-];
-
-const Guard _seedGuard = Guard(
-  name: 'محمد عبدالرحمن', phone: '+966 50 777 8899',
-  address: 'سكن الحارس - الدور الأرضي', fee: 10, last: '2026-05-01', next: '2026-06-01',
-);
-
-const List<Craftsman> _seedCraftsmen = [
-  Craftsman(id: 1, name: 'عبدالله السباك', job: 'سباكة', phone: '+966 50 321 0011', note: 'متوفر 24 ساعة'),
-  Craftsman(id: 2, name: 'يوسف الكهربائي', job: 'كهرباء', phone: '+966 55 432 0022', note: 'خبرة 10 سنوات'),
-  Craftsman(id: 3, name: 'ورشة النجار', job: 'نجارة', phone: '+966 54 543 0033', note: 'أبواب وأثاث'),
-  Craftsman(id: 4, name: 'فني التكييف', job: 'تكييف', phone: '+966 56 654 0044', note: 'صيانة وتعبئة فريون'),
-  Craftsman(id: 5, name: 'صباغ المحترف', job: 'دهان', phone: '+966 53 765 0055', note: ''),
-];
-
-const List<AlertItem> _seedAlerts = [
-  AlertItem(id: 1, type: 'subscription', icon: 'wallet', tone: 'late', title: 'اشتراك متأخر — شقة 102', body: 'سارة المطيري متأخرة عن دفع شهرين (\$80).', time: 'قبل ساعة', channel: 'whatsapp'),
-  AlertItem(id: 2, type: 'contract', icon: 'elevator', tone: 'warn', title: 'عقد صيانة المصعد', body: 'ينتهي عقد الصيانة بعد 8 أيام. جدّد العقد.', time: 'اليوم', channel: 'internal'),
-  AlertItem(id: 3, type: 'cleaning', icon: 'broom', tone: 'navy', title: 'استحقاق أجور النظافة', body: 'دفعة شركة النظافة مستحقة في 1 يونيو.', time: 'أمس', channel: 'internal'),
-  AlertItem(id: 4, type: 'insurance', icon: 'shield', tone: 'warn', title: 'تأمين المبنى', body: 'وثيقة التأمين تنتهي خلال 21 يوم.', time: 'قبل 3 أيام', channel: 'internal'),
-  AlertItem(id: 5, type: 'paid', icon: 'checkCircle', tone: 'ok', title: 'تم استلام دفعة', body: 'أحمد العامري — شقة 101 سدّد \$40.', time: 'قبل 4 أيام', channel: 'internal'),
-];
-
-const List<WaTemplate> _seedWaTemplates = [
-  WaTemplate(id: 1, label: 'تذكير اشتراك', text: 'السلام عليكم، نذكّركم بسداد اشتراك الصيانة الشهري (\$40) لشهر مايو. شكراً لتعاونكم 🌿'),
-  WaTemplate(id: 2, label: 'إشعار تأخر', text: 'تنبيه: لديكم مبلغ متأخر بقيمة \$80. يرجى السداد لتفعيل خدمات المبنى.'),
-  WaTemplate(id: 3, label: 'استلام دفعة', text: 'تم استلام دفعتكم بنجاح. شكراً لكم — لجنة المبنى.'),
-];
-
-const List<MonthRow> _seedMonthsGrid = [
-  MonthRow(m: 0, paid: 8, total: 8),
-  MonthRow(m: 1, paid: 8, total: 8),
-  MonthRow(m: 2, paid: 7, total: 8),
-  MonthRow(m: 3, paid: 6, total: 8),
-  MonthRow(m: 4, paid: 5, total: 8),
-  MonthRow(m: 5, paid: 0, total: 8),
-];
-
-const SummaryData _seedSummary = SummaryData(
-  balance: 25840,
-  due: 12650,
-  revenueM: 3200,
-  expenseM: 1860,
-  bars: [
-    ChartDatum(label: 'إيرادات', value: 3200, color: AppColors.navy600),
-    ChartDatum(label: 'مستحقات', value: 2400, color: AppColors.gold500),
-    ChartDatum(label: 'مصروفات', value: 1860, color: AppColors.late),
-    ChartDatum(label: 'صيانة', value: 880, color: AppColors.ok),
-  ],
-  trend: [
-    ChartDatum(label: 'ينا', value: 2800, color: AppColors.navy600),
-    ChartDatum(label: 'فبر', value: 3100, color: AppColors.navy600),
-    ChartDatum(label: 'مار', value: 2950, color: AppColors.navy600),
-    ChartDatum(label: 'أبر', value: 3300, color: AppColors.navy600),
-    ChartDatum(label: 'ماي', value: 3200, color: AppColors.navy600),
-  ],
-);
-
-// ─────────────────────── Public accessors (live ↦ seed) ───────────────────────
+const Building _emptyBuilding = Building(
+    name: '', address: '', units: 0, type: '', subscription: 0, currency: 'USD', floors: 0);
+const Guard _emptyGuard =
+    Guard(name: '', phone: '', address: '', fee: 0, last: '—', next: '—');
+const SummaryData _zeroSummary = SummaryData(
+    balance: 0, due: 0, revenueM: 0, expenseM: 0, bars: [], trend: []);
 
 final DataStore _s = DataStore.I;
 bool get _resLoaded => _s.loaded && _s.loadedBtype == BType.residential;
 bool get _comLoaded => _s.loaded && _s.loadedBtype == BType.commercial;
 
 Building buildingFor(BType b) =>
-    (_s.building != null && _s.loadedBtype == b) ? _s.building! : _seedBuildings[b]!;
+    (_s.building != null && _s.loadedBtype == b) ? _s.building! : _emptyBuilding;
 
-List<Unit> get kApartments => _resLoaded ? _s.units! : _seedApartments;
-List<Unit> get kShops => _comLoaded ? _s.units! : _seedShops;
-List<Payment> get kPayments => _s.payments ?? _seedPayments;
-List<PayType> get kPayTypes => _s.payTypes ?? _seedPayTypes;
-List<Expense> get kExpenses => _s.expenses ?? _seedExpenses;
-List<Worker> get kWorkers => _s.workers ?? _seedWorkers;
-List<ParkingSpot> get kParking => _s.parking ?? _seedParking;
-Guard get kGuard => _s.guard ?? _seedGuard;
-List<Craftsman> get kCraftsmen => _s.craftsmen ?? _seedCraftsmen;
-List<AlertItem> get kAlerts => _s.alerts ?? _seedAlerts;
-List<WaTemplate> get kWaTemplates => _s.waTemplates ?? _seedWaTemplates;
-List<MonthRow> get kMonthsGrid => _s.year?.months ?? _seedMonthsGrid;
-int get kOpeningBalance => _s.year?.openingBalance ?? 8200;
+List<Unit> get kApartments => _resLoaded ? _s.units! : const [];
+List<Unit> get kShops => _comLoaded ? _s.units! : const [];
+List<Payment> get kPayments => _s.payments ?? const [];
+List<PayType> get kPayTypes => _s.payTypes ?? const [];
+List<Expense> get kExpenses => _s.expenses ?? const [];
+List<Worker> get kWorkers => _s.workers ?? const [];
+List<ParkingSpot> get kParking => _s.parking ?? const [];
+Guard get kGuard => _s.guard ?? _emptyGuard;
+List<Craftsman> get kCraftsmen => _s.craftsmen ?? const [];
+List<AlertItem> get kAlerts => _s.alerts ?? const [];
+List<WaTemplate> get kWaTemplates => _s.waTemplates ?? const [];
+List<MonthRow> get kMonthsGrid => _s.year?.months ?? const [];
+int get kOpeningBalance => _s.year?.openingBalance ?? 0;
 
 /// Backwards-compatible map used by older call sites.
 Map<BType, Building> get kBuildings =>
     {for (final b in BType.values) b: buildingFor(b)};
 
-/// Building summary (dashboard / guest / reports), live or seed.
+/// Building summary (dashboard / reports), live or zero.
 class Summary {
   Summary._();
-  static SummaryData get _d => _s.summary ?? _seedSummary;
+  static SummaryData get _d => _s.summary ?? _zeroSummary;
   static int get balance => _d.balance;
   static int get due => _d.due;
   static int get revenueM => _d.revenueM;
