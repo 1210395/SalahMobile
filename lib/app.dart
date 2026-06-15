@@ -320,7 +320,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
               const NavTab(id: 'home', label: 'الرئيسية', icon: 'home', fillOnActive: true),
               NavTab(
                   id: 'units',
-                  label: btype == BType.residential ? 'الوحدات' : 'المحلات',
+                  label: btype == BType.residential ? 'الشقق' : 'محلات',
                   icon: btype == BType.residential ? 'building' : 'store'),
               const NavTab(id: 'payments', label: 'المستحقات', icon: 'wallet'),
               const NavTab(id: 'reports', label: 'التقارير', icon: 'pie'),
