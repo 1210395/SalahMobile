@@ -203,15 +203,17 @@ class Payment {
 }
 
 class PayType {
-  const PayType({required this.id, required this.label, required this.amount, required this.on, required this.opt});
+  const PayType({required this.id, required this.label, required this.amount, required this.on, required this.opt, this.dbId = 0});
   final String id;
   final String label;
   final int amount;
   final bool on;
   final bool opt;
+  final int dbId; // server primary key (for updates)
 
   factory PayType.fromJson(Map<String, dynamic> j) => PayType(
-        id: j['key'] ?? j['id'] ?? '',
+        id: '${j['key'] ?? j['id'] ?? ''}',
+        dbId: _int(j['id']),
         label: j['label'] ?? '',
         amount: _int(j['amount']),
         on: j['enabled'] == true || j['enabled'] == 1,

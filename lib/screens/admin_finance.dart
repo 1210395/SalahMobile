@@ -98,7 +98,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   children: List.generate(list.length, (i) {
                     final p = list[i];
                     return GestureDetector(
-                      onLongPress: () => _confirmDelete(ctx, p),
+                      onLongPress: () => _openEdit(ctx, p),
                       child: ListRow(
                         leading: const IconChip(icon: 'wallet', tone: 'ok', size: 42),
                         title: p.name,
@@ -116,31 +116,59 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
 
   void _openAdd(Ctx ctx) => showAppSheet(context, AddPaymentSheet(ctx: ctx));
 
-  void _confirmDelete(Ctx ctx, Payment p) {
+  void _openEdit(Ctx ctx, Payment p) {
+    final f = {'amount': '${p.amount}', 'kind': p.kind, 'method': p.method};
     showAppSheet(
       context,
-      SheetShell(
-        title: 'حذف الدفعة',
-        children: [
-          Text('حذف دفعة ${fmtUSD(p.amount)} للوحدة ${p.unit}؟ لا يمكن التراجع.',
-              style: AppType.base(size: 14, weight: FontWeight.w600, color: AppColors.ink700, height: 1.6)),
-          const SizedBox(height: 14),
-          AppButton(
-            label: 'حذف الدفعة',
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تعديل الدفعة',
+          footer: AppButton(
+            label: 'حفظ التعديلات',
             full: true,
-            icon: 'trash',
+            size: BtnSize.lg,
+            icon: 'check',
             onTap: () async {
-              Navigator.of(context).pop();
+              Navigator.of(sheetCtx).pop();
               try {
-                await Api.I.deletePayment(ctx.btype, p.id);
+                await Api.I.updatePayment(ctx.btype, p.id, {
+                  'amount': int.tryParse(f['amount']!.trim()) ?? p.amount,
+                  'kind': f['kind'],
+                  'method': f['method'],
+                });
                 await ctx.reload();
-                ctx.toast('تم حذف الدفعة');
+                ctx.toast('تم حفظ التعديلات');
               } catch (e) {
                 ctx.toast(apiErrorText(e), tone: 'late');
               }
             },
           ),
-        ],
+          children: [
+            Text('${p.name} · وحدة ${p.unit}',
+                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink600)),
+            const SizedBox(height: 12),
+            Field(label: 'المبلغ', icon: 'wallet', value: f['amount']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['amount'] = v),
+            Field(label: 'النوع', icon: 'receipt', value: f['kind']!, onChanged: (v) => f['kind'] = v),
+            Field(label: 'طريقة الدفع', icon: 'wallet', value: f['method']!, onChanged: (v) => f['method'] = v),
+            const SizedBox(height: 6),
+            AppButton(
+              label: 'حذف الدفعة',
+              variant: BtnVariant.outline,
+              full: true,
+              icon: 'trash',
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                try {
+                  await Api.I.deletePayment(ctx.btype, p.id);
+                  await ctx.reload();
+                  ctx.toast('تم حذف الدفعة');
+                } catch (e) {
+                  ctx.toast(apiErrorText(e), tone: 'late');
+                }
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -550,7 +578,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             children: List.generate(list.length, (i) {
               final e = list[i];
               return GestureDetector(
-                onLongPress: () => _confirmDelete(ctx, e),
+                onLongPress: () => _openEdit(ctx, e),
                 child: ListRow(
                   leading: IconChip(icon: e.icon, tone: e.tone, size: 42),
                   title: e.supplier,
@@ -566,31 +594,56 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     );
   }
 
-  void _confirmDelete(Ctx ctx, Expense e) {
+  void _openEdit(Ctx ctx, Expense e) {
+    final f = {'supplier': e.supplier, 'amount': '${e.amount}', 'cat': e.cat};
     showAppSheet(
       context,
-      SheetShell(
-        title: 'حذف المصروف',
-        children: [
-          Text('حذف مصروف ${e.supplier} (${fmtUSD(e.amount)})؟ لا يمكن التراجع.',
-              style: AppType.base(size: 14, weight: FontWeight.w600, color: AppColors.ink700, height: 1.6)),
-          const SizedBox(height: 14),
-          AppButton(
-            label: 'حذف المصروف',
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تعديل المصروف',
+          footer: AppButton(
+            label: 'حفظ التعديلات',
             full: true,
-            icon: 'trash',
+            size: BtnSize.lg,
+            icon: 'check',
             onTap: () async {
-              Navigator.of(context).pop();
+              Navigator.of(sheetCtx).pop();
               try {
-                await Api.I.deleteExpense(ctx.btype, e.id);
+                await Api.I.updateExpense(ctx.btype, e.id, {
+                  'supplier': f['supplier'],
+                  'amount': int.tryParse(f['amount']!.trim()) ?? e.amount,
+                  'cat': f['cat'],
+                });
                 await ctx.reload();
-                ctx.toast('تم حذف المصروف');
+                ctx.toast('تم حفظ التعديلات');
               } catch (err) {
                 ctx.toast(apiErrorText(err), tone: 'late');
               }
             },
           ),
-        ],
+          children: [
+            Field(label: 'المورّد', icon: 'receipt', value: f['supplier']!, onChanged: (v) => f['supplier'] = v),
+            Field(label: 'المبلغ', icon: 'wallet', value: f['amount']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['amount'] = v),
+            Field(label: 'التصنيف', icon: 'grid', value: f['cat']!, onChanged: (v) => f['cat'] = v),
+            const SizedBox(height: 6),
+            AppButton(
+              label: 'حذف المصروف',
+              variant: BtnVariant.outline,
+              full: true,
+              icon: 'trash',
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                try {
+                  await Api.I.deleteExpense(ctx.btype, e.id);
+                  await ctx.reload();
+                  ctx.toast('تم حذف المصروف');
+                } catch (err) {
+                  ctx.toast(apiErrorText(err), tone: 'late');
+                }
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -945,6 +998,17 @@ class ParkingScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           AppButton(
+            label: 'تعديل الموقف',
+            variant: BtnVariant.outline,
+            full: true,
+            icon: 'edit',
+            onTap: () {
+              Navigator.of(context).pop();
+              _openEditParking(context, ctx, p);
+            },
+          ),
+          const SizedBox(height: 8),
+          AppButton(
             label: 'حذف الموقف',
             variant: BtnVariant.outline,
             full: true,
@@ -1015,6 +1079,61 @@ class ParkingScreen extends StatelessWidget {
             Field(label: 'الوحدة المرتبطة (اختياري)', icon: 'building', ltr: true, onChanged: (v) => f['unit'] = v),
             Field(label: 'رمز الدخول (اختياري)', icon: 'key', ltr: true, onChanged: (v) => f['code'] = v),
             Field(label: 'ملاحظات (اختياري)', icon: 'edit', onChanged: (v) => f['note'] = v),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openEditParking(BuildContext context, Ctx ctx, ParkingSpot p) {
+    final f = {'no': p.no, 'unit': p.unit, 'code': p.code == '—' ? '' : p.code, 'note': p.note};
+    String status = p.status;
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تعديل موقف ${p.no}',
+          footer: AppButton(
+            label: 'حفظ التعديلات',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.updateParking(ctx.btype, p.id, {
+                  'no': f['no']!.trim(),
+                  'status': status,
+                  'unit_no': f['unit']!.trim(),
+                  'code': f['code']!.trim(),
+                  'note': f['note']!.trim(),
+                });
+                await ctx.reload();
+                ctx.toast('تم حفظ الموقف');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          children: [
+            Field(label: 'رقم الموقف', icon: 'parking', value: f['no']!, ltr: true, onChanged: (v) => f['no'] = v),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('الحالة', style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+            ),
+            Segmented(
+              value: status,
+              onChanged: (v) => setS(() => status = v as String),
+              options: const [
+                SegOption('شاغر', 'شاغر'),
+                SegOption('مشغول', 'مشغول'),
+                SegOption('صيانة', 'صيانة'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Field(label: 'الوحدة المرتبطة (اختياري)', icon: 'building', value: f['unit']!, ltr: true, onChanged: (v) => f['unit'] = v),
+            Field(label: 'رمز الدخول (اختياري)', icon: 'key', value: f['code']!, ltr: true, onChanged: (v) => f['code'] = v),
+            Field(label: 'ملاحظات (اختياري)', icon: 'edit', value: f['note']!, onChanged: (v) => f['note'] = v),
           ],
         ),
       ),

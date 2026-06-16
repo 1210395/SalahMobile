@@ -227,6 +227,7 @@ class BuildingScreen extends StatelessWidget {
           QuickTile(label: 'طلبات الانضمام', sub: 'الموافقة على السكان', icon: 'users', tone: 'gold', onTap: () => ctx.go('approvals')),
           QuickTile(label: 'الاشتراك والإعداد', sub: 'تفعيل ثم إعداد المبنى', icon: 'shield', tone: 'navy', onTap: () => ctx.go('subscribe')),
           QuickTile(label: 'مسؤول مساعد', sub: 'إضافة مسؤول للمبنى', icon: 'users', tone: 'credit', onTap: () => _openCoAdmin(context, ctx)),
+          QuickTile(label: 'الرسوم', sub: 'أنواع الدفعات وقيمها', icon: 'wallet', tone: 'gold', onTap: () => _openPayTypes(context, ctx)),
         ], n: 2),
       ],
     );
@@ -411,6 +412,88 @@ class BuildingScreen extends StatelessWidget {
                 placeholder: '6 أحرف على الأقل',
                 ltr: true,
                 onChanged: (v) => setS(() => f['password'] = v)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// List the building's payment types/fees; tap ✎ to edit amount + enabled.
+  void _openPayTypes(BuildContext context, Ctx ctx) {
+    showAppSheet(
+      context,
+      SheetShell(
+        title: 'الرسوم وأنواع الدفعات',
+        children: [
+          for (final pt in kPayTypes)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                border: Border.all(color: AppColors.line),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(children: [
+                Expanded(child: Text(pt.label, style: AppType.base(size: 14, weight: FontWeight.w700))),
+                NumText(fmtUSD(pt.amount),
+                    style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.gold700)),
+                const SizedBox(width: 10),
+                RoundBtn(icon: 'edit', onTap: () {
+                  Navigator.of(context).pop();
+                  _openEditPayType(context, ctx, pt);
+                }),
+              ]),
+            ),
+          const SizedBox(height: 4),
+          Text('اضغط ✎ لتعديل قيمة أو تفعيل أي رسم.',
+              style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400)),
+        ],
+      ),
+    );
+  }
+
+  void _openEditPayType(BuildContext context, Ctx ctx, PayType pt) {
+    final f = {'amount': '${pt.amount}'};
+    bool enabled = pt.on;
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تعديل: ${pt.label}',
+          footer: AppButton(
+            label: 'حفظ',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.updatePayType(pt.dbId, {
+                  'amount': int.tryParse(f['amount']!.trim()) ?? pt.amount,
+                  'enabled': enabled,
+                });
+                await ctx.reload();
+                ctx.toast('تم تحديث الرسم');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          children: [
+            Field(label: 'القيمة', icon: 'wallet', value: f['amount']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['amount'] = v),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                border: Border.all(color: AppColors.line),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(children: [
+                Expanded(child: Text('مُفعّل', style: AppType.base(size: 14, weight: FontWeight.w700))),
+                AppSwitch(checked: enabled, onChanged: (v) => setS(() => enabled = v)),
+              ]),
+            ),
           ],
         ),
       ),

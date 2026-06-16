@@ -129,6 +129,9 @@ class Api {
   Future<void> deleteParking(BType b, String id) =>
       _dio.delete('/parking/$id', queryParameters: {'btype': btypeKey(b)});
 
+  Future<void> updatePayType(int id, Map<String, dynamic> body) =>
+      _dio.put('/pay-types/$id', data: body);
+
   // ───────────── Resident notes (#4) ─────────────
   Future<void> createNote(String body) => _dio.post('/notes', data: {'body': body});
 
