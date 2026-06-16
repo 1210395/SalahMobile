@@ -575,7 +575,7 @@ class Brand {
   }
 
   static String get appName => _v('app_name', 'عمارتي');
-  static String get slogan => _v('slogan', 'إدارة عماراتك بثقة وراحة');
+  static String get slogan => _v('slogan', 'فخر الصناعة الوطنية');
   static String get description => _v('description',
       'برنامج متكامل لإدارة شؤون العمارات السكنية والمجمعات التجارية — المستحقات، المصروفات، التقارير والتنبيهات في مكان واحد.');
   static String get tagline => _v('tagline', 'عمارتي … تنظيم اليوم، راحة تدوم');
