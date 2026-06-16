@@ -180,6 +180,144 @@ class ApiController extends Controller
         );
     }
 
+    // ─────────── Payments edit / delete ───────────
+    public function updatePayment(Request $r, Payment $payment)
+    {
+        $this->requireAdmin($r);
+        abort_unless($payment->building_key === $this->bk($r), 403);
+        $data = $r->validate([
+            'amount' => 'nullable|integer',
+            'name' => 'nullable|string',
+            'kind' => 'nullable|string',
+            'month' => 'nullable|integer|min:0|max:11',
+            'year' => 'nullable|integer',
+            'date' => 'nullable|date',
+            'method' => 'nullable|string',
+        ]);
+        $payment->update(array_filter($data, fn ($v) => $v !== null));
+
+        return response()->json($payment->fresh());
+    }
+
+    public function deletePayment(Request $r, Payment $payment)
+    {
+        $this->requireAdmin($r);
+        abort_unless($payment->building_key === $this->bk($r), 403);
+        $payment->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    // ─────────── Expenses edit / delete ───────────
+    public function updateExpense(Request $r, Expense $expense)
+    {
+        $this->requireAdmin($r);
+        abort_unless($expense->building_key === $this->bk($r), 403);
+        $data = $r->validate([
+            'cat' => 'nullable|string',
+            'supplier' => 'nullable|string',
+            'amount' => 'nullable|integer',
+            'date' => 'nullable|date',
+            'description' => 'nullable|string',
+            'icon' => 'nullable|string',
+            'tone' => 'nullable|string',
+        ]);
+        $expense->update(array_filter($data, fn ($v) => $v !== null));
+
+        return response()->json($expense->fresh());
+    }
+
+    public function deleteExpense(Request $r, Expense $expense)
+    {
+        $this->requireAdmin($r);
+        abort_unless($expense->building_key === $this->bk($r), 403);
+        $expense->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    // ─────────── Guard set / edit (upsert, one per building) ───────────
+    public function storeGuard(Request $r)
+    {
+        $this->requireAdmin($r);
+        $data = $r->validate([
+            'name' => 'nullable|string|max:120',
+            'phone' => 'nullable|string|max:32',
+            'address' => 'nullable|string|max:200',
+            'fee' => 'nullable|integer|min:0',
+        ]);
+        $bk = $this->bk($r);
+        $cur = Guard::where('building_key', $bk)->first();
+        // All guard columns are NOT NULL — fill every one (keep existing where not edited).
+        $guard = Guard::updateOrCreate(['building_key' => $bk], [
+            'name' => $data['name'] ?? $cur->name ?? '',
+            'phone' => $data['phone'] ?? $cur->phone ?? '—',
+            'address' => $data['address'] ?? $cur->address ?? '',
+            'fee' => $data['fee'] ?? $cur->fee ?? 0,
+            'last_payment' => $cur->last_payment ?? now()->toDateString(),
+            'next_due' => $cur->next_due ?? now()->addMonth()->toDateString(),
+        ]);
+
+        return response()->json($guard->fresh());
+    }
+
+    // ─────────── Parking CRUD ───────────
+    public function storeParking(Request $r)
+    {
+        $this->requireAdmin($r);
+        $data = $r->validate([
+            'no' => 'required|string|max:20',
+            'status' => 'nullable|string|max:20',
+            'unit_no' => 'nullable|string|max:20',
+            'code' => 'nullable|string|max:20',
+            'note' => 'nullable|string|max:200',
+        ]);
+        $data['building_key'] = $this->bk($r);
+        $data['status'] ??= 'شاغر';
+
+        return response()->json(ParkingSpot::create($data), 201);
+    }
+
+    public function updateParking(Request $r, ParkingSpot $parking)
+    {
+        $this->requireAdmin($r);
+        abort_unless($parking->building_key === $this->bk($r), 403);
+        $data = $r->validate([
+            'no' => 'nullable|string|max:20',
+            'status' => 'nullable|string|max:20',
+            'unit_no' => 'nullable|string|max:20',
+            'code' => 'nullable|string|max:20',
+            'note' => 'nullable|string|max:200',
+        ]);
+        $parking->update(array_filter($data, fn ($v) => $v !== null));
+
+        return response()->json($parking->fresh());
+    }
+
+    public function deleteParking(Request $r, ParkingSpot $parking)
+    {
+        $this->requireAdmin($r);
+        abort_unless($parking->building_key === $this->bk($r), 403);
+        $parking->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    // ─────────── Pay-type edit (amounts / enabled) ───────────
+    public function updatePayType(Request $r, PayType $payType)
+    {
+        $this->requireAdmin($r);
+        $data = $r->validate([
+            'label' => 'nullable|string|max:120',
+            'amount' => 'nullable|integer|min:0',
+            'enabled' => 'nullable|boolean',
+            'optional' => 'nullable|boolean',
+        ]);
+        $payType->update(array_filter($data, fn ($v) => $v !== null));
+
+        return response()->json($payType->fresh());
+    }
+
     /// Recompute alerts from live data and "dispatch" them (admin only).
     public function regenerateAlerts(Request $r, AlertGenerator $gen)
     {

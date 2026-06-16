@@ -20,7 +20,7 @@ class GuardScreen extends StatelessWidget {
       header: AppHeader(
         title: 'إدارة الحارس',
         onBack: () => ctx.go('home'),
-        right: RoundBtn(icon: 'edit', onTap: () => ctx.toast('تعديل البيانات', tone: 'info')),
+        right: RoundBtn(icon: 'edit', onTap: () => _openEdit(context, ctx, g)),
       ),
       nav: ctx.adminNav,
       children: [
@@ -119,6 +119,45 @@ class GuardScreen extends StatelessWidget {
           onTap: () => ctx.toast('تم تسجيل دفعة الحارس'),
         ),
       ],
+    );
+  }
+
+  void _openEdit(BuildContext context, Ctx ctx, Guard g) {
+    final f = {'name': g.name, 'phone': g.phone, 'address': g.address, 'fee': '${g.fee}'};
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تعديل بيانات الحارس',
+          footer: AppButton(
+            label: 'حفظ',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.setGuard(ctx.btype, {
+                  'name': f['name'],
+                  'phone': f['phone'],
+                  'address': f['address'],
+                  'fee': int.tryParse(f['fee']!.trim()) ?? g.fee,
+                });
+                await ctx.reload();
+                ctx.toast('تم حفظ بيانات الحارس');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          children: [
+            Field(label: 'اسم الحارس', icon: 'user', value: f['name']!, onChanged: (v) => f['name'] = v),
+            Field(label: 'رقم الجوال', icon: 'phone', value: f['phone']!, ltr: true, keyboardType: TextInputType.phone, onChanged: (v) => f['phone'] = v),
+            Field(label: 'العنوان', icon: 'pin', value: f['address']!, onChanged: (v) => f['address'] = v),
+            Field(label: 'الأجرة الشهرية', icon: 'wallet', value: f['fee']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['fee'] = v),
+          ],
+        ),
+      ),
     );
   }
 

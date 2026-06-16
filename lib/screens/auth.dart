@@ -338,13 +338,15 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        // Full (four-part) name — captured on first sign-up.
-        Field(
-          label: 'الاسم الرباعي',
-          icon: 'user',
-          placeholder: 'الاسم الأول والأب والجد والعائلة',
-          onChanged: (v) => setState(() => name = v),
-        ),
+        // Full (four-part) name — only needed for first-time phone/OTP sign-up,
+        // not for email login.
+        if (phone)
+          Field(
+            label: 'الاسم الرباعي',
+            icon: 'user',
+            placeholder: 'الاسم الأول والأب والجد والعائلة',
+            onChanged: (v) => setState(() => name = v),
+          ),
         if (phone)
           Field(
             label: 'رقم الجوال',

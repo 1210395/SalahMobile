@@ -45,15 +45,25 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/payments', [ApiController::class, 'payments']);
     Route::post('/payments', [ApiController::class, 'storePayment']);
+    Route::put('/payments/{payment}', [ApiController::class, 'updatePayment']);
+    Route::delete('/payments/{payment}', [ApiController::class, 'deletePayment']);
 
     Route::get('/expenses', [ApiController::class, 'expenses']);
     Route::post('/expenses', [ApiController::class, 'storeExpense']);
+    Route::put('/expenses/{expense}', [ApiController::class, 'updateExpense']);
+    Route::delete('/expenses/{expense}', [ApiController::class, 'deleteExpense']);
 
     Route::get('/workers', [ApiController::class, 'workers']);
     Route::post('/workers', [ApiController::class, 'storeWorker']);
 
     Route::get('/parking', [ApiController::class, 'parking']);
+    Route::post('/parking', [ApiController::class, 'storeParking']);
+    Route::put('/parking/{parking}', [ApiController::class, 'updateParking']);
+    Route::delete('/parking/{parking}', [ApiController::class, 'deleteParking']);
+
     Route::get('/guard', [ApiController::class, 'guard']);
+    Route::put('/guard', [ApiController::class, 'storeGuard']);
+    Route::put('/pay-types/{payType}', [ApiController::class, 'updatePayType']);
 
     Route::get('/craftsmen', [ApiController::class, 'craftsmen']);
     Route::post('/craftsmen', [ApiController::class, 'storeCraftsman']);

@@ -224,10 +224,10 @@ class _UnitsScreenState extends State<UnitsScreen> {
             DetailRow('dollar', 'الرصيد', fmtUSD(u.balance),
                 tone: u.balance < 0 ? 'late' : u.balance > 0 ? 'credit' : 'ok'),
           ]),
-          const SizedBox(height: 10),
-          _notes(u.kind == 'شاغر'
-              ? 'الوحدة متاحة للإيجار.'
-              : 'يفضل التواصل عبر واتساب بعد الساعة 5 مساءً.'),
+          if (u.kind == 'شاغر') ...[
+            const SizedBox(height: 10),
+            _notes('الوحدة متاحة للإيجار.'),
+          ],
           const SizedBox(height: 10),
           AppButton(
             label: 'تعديل بيانات الوحدة',

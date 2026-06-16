@@ -109,6 +109,26 @@ class Api {
   Future<void> createCoAdmin(BType b, Map<String, dynamic> body) =>
       _dio.post('/co-admins', queryParameters: {'btype': btypeKey(b)}, data: body);
 
+  // ───────────── Payments / expenses edit + delete ─────────────
+  Future<void> updatePayment(BType b, int id, Map<String, dynamic> body) =>
+      _dio.put('/payments/$id', queryParameters: {'btype': btypeKey(b)}, data: body);
+  Future<void> deletePayment(BType b, int id) =>
+      _dio.delete('/payments/$id', queryParameters: {'btype': btypeKey(b)});
+  Future<void> updateExpense(BType b, int id, Map<String, dynamic> body) =>
+      _dio.put('/expenses/$id', queryParameters: {'btype': btypeKey(b)}, data: body);
+  Future<void> deleteExpense(BType b, int id) =>
+      _dio.delete('/expenses/$id', queryParameters: {'btype': btypeKey(b)});
+
+  // ───────────── Guard upsert + parking CRUD ─────────────
+  Future<void> setGuard(BType b, Map<String, dynamic> body) =>
+      _dio.put('/guard', queryParameters: {'btype': btypeKey(b)}, data: body);
+  Future<void> createParking(BType b, Map<String, dynamic> body) =>
+      _dio.post('/parking', queryParameters: {'btype': btypeKey(b)}, data: body);
+  Future<void> updateParking(BType b, String id, Map<String, dynamic> body) =>
+      _dio.put('/parking/$id', queryParameters: {'btype': btypeKey(b)}, data: body);
+  Future<void> deleteParking(BType b, String id) =>
+      _dio.delete('/parking/$id', queryParameters: {'btype': btypeKey(b)});
+
   // ───────────── Resident notes (#4) ─────────────
   Future<void> createNote(String body) => _dio.post('/notes', data: {'body': body});
 

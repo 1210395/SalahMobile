@@ -18,7 +18,7 @@ class Dashboard extends StatelessWidget {
       QuickTile(label: 'المصروفات', sub: 'إدارة المصروفات', icon: 'expense', tone: 'late', onTap: () => ctx.go('expenses')),
       QuickTile(label: 'التقارير', sub: 'تقارير شاملة', icon: 'pie', tone: 'credit', onTap: () => ctx.go('reports')),
       QuickTile(label: 'المصعد', sub: 'صلاحية الوصول', icon: 'elevator', tone: 'navy', onTap: () => ctx.go('elevator')),
-      QuickTile(label: 'التنبيهات', sub: 'إشعارات وتذكير', icon: 'bell', tone: 'ok', badge: 3, onTap: () => ctx.go('alerts')),
+      QuickTile(label: 'التنبيهات', sub: 'إشعارات وتذكير', icon: 'bell', tone: 'ok', badge: kAlerts.length, onTap: () => ctx.go('alerts')),
     ];
 
     return ScreenScaffold(
@@ -28,7 +28,7 @@ class Dashboard extends StatelessWidget {
         right: Row(mainAxisSize: MainAxisSize.min, children: [
           RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
           const SizedBox(width: 8),
-          RoundBtn(icon: 'bell', dark: true, badge: true, onTap: () => ctx.go('alerts')),
+          RoundBtn(icon: 'bell', dark: true, badge: kAlerts.isNotEmpty, onTap: () => ctx.go('alerts')),
         ]),
       ),
       nav: ctx.adminNav,
