@@ -99,7 +99,7 @@ class _SuperReportScreenState extends State<SuperReportScreen> {
                     border: Border.all(color: on ? AppColors.navy700 : AppColors.line2),
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: Text(i == 0 ? 'كل الأشهر' : arMonths[i - 1],
+                  child: Text(i == 0 ? 'كل الأشهر' : monthLabelNum(i - 1),
                       style: AppType.base(
                           size: 12.5, weight: FontWeight.w700,
                           color: on ? Colors.white : AppColors.ink600)),

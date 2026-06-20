@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EmailCode;
 use App\Models\OtpCode;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -18,11 +19,23 @@ class AuthController extends Controller
         ];
     }
 
+    /// A short, unique, uppercase login code (QR / shareable). 8 hex chars.
+    private function loginCode(): string
+    {
+        do {
+            $code = strtoupper(bin2hex(random_bytes(4)));
+        } while (User::where('login_code', $code)->exists());
+
+        return $code;
+    }
+
     public function register(Request $r)
     {
         $data = $r->validate([
             'name' => 'required|string|max:120',
             'email' => 'required|email|unique:users,email',
+            'phone' => 'nullable|string|max:32|unique:users,phone',
+            'whatsapp' => 'nullable|string|max:32',
             'password' => 'required|string|min:6',
             'building_key' => 'in:residential,commercial',
         ]);
@@ -32,6 +45,8 @@ class AuthController extends Controller
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
+            'phone' => $data['phone'] ?? null,
+            'whatsapp' => $data['whatsapp'] ?? null,
             'password' => Hash::make($data['password']),
             'role' => 'resident',
             'building_key' => $data['building_key'] ?? 'residential',
@@ -42,13 +57,91 @@ class AuthController extends Controller
 
     public function login(Request $r)
     {
+        // Identifier is EITHER email OR phone (plus password).
         $data = $r->validate([
-            'email' => 'required|email',
+            'email' => 'required_without:phone|email',
+            'phone' => 'required_without:email|string|max:32',
             'password' => 'required|string',
         ]);
-        $user = User::where('email', $data['email'])->first();
+        $user = isset($data['email'])
+            ? User::where('email', $data['email'])->first()
+            : User::where('phone', $data['phone'])->first();
         if (! $user || ! $user->password || ! Hash::check($data['password'], $user->password)) {
             throw ValidationException::withMessages(['email' => ['بيانات الدخول غير صحيحة']]);
+        }
+
+        return response()->json($this->payload($user));
+    }
+
+    public function requestEmailCode(Request $r)
+    {
+        $data = $r->validate(['email' => 'required|email']);
+
+        // Invalidate any outstanding codes for this email, then issue one fresh
+        // 6-digit code stored only as a hash.
+        EmailCode::where('email', $data['email'])->where('used', false)->update(['used' => true]);
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        EmailCode::create([
+            'email' => $data['email'],
+            'code' => Hash::make($code),
+            'expires_at' => now()->addMinutes(10),
+        ]);
+
+        // In production this is sent over SMTP. Locally — or on a demo deploy with
+        // AMARATI_EXPOSE_OTP_DEV_CODE=true — we return it so the email-verify flow
+        // is testable without a mail provider.
+        $body = ['sent' => true];
+        if (app()->environment('local') || config('amarati.expose_otp_dev_code')) {
+            $body['dev_code'] = $code;
+        }
+
+        return response()->json($body);
+    }
+
+    public function verifyEmailCode(Request $r)
+    {
+        $data = $r->validate([
+            'email' => 'required|email',
+            'code' => 'required|string',
+        ]);
+
+        $ec = EmailCode::where('email', $data['email'])
+            ->where('used', false)
+            ->where('expires_at', '>', now())
+            ->latest()
+            ->first();
+
+        $invalid = fn () => throw ValidationException::withMessages(
+            ['code' => ['رمز التحقق غير صحيح أو منتهٍ']]
+        );
+
+        if (! $ec) {
+            $invalid();
+        }
+        if ($ec->attempts >= 5) {
+            $ec->update(['used' => true]);
+            $invalid();
+        }
+        if (! Hash::check($data['code'], $ec->code)) {
+            $ec->increment('attempts');
+            $invalid();
+        }
+        $ec->update(['used' => true]);
+
+        // If an account already uses this email, mark it verified.
+        User::where('email', $data['email'])->whereNull('email_verified_at')
+            ->update(['email_verified_at' => now()]);
+
+        return response()->json(['verified' => true]);
+    }
+
+    /// QR / short-code resident login: the code is matched case-insensitively.
+    public function redeemCode(Request $r)
+    {
+        $data = $r->validate(['code' => 'required|string']);
+        $user = User::where('login_code', strtoupper(trim($data['code'])))->first();
+        if (! $user) {
+            throw ValidationException::withMessages(['code' => ['رمز الدخول غير صحيح']]);
         }
 
         return response()->json($this->payload($user));

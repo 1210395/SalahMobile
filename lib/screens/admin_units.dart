@@ -45,7 +45,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
 
     return ScreenScaffold(
       header: AppHeader(
-        title: res ? 'إدارة الشقق' : 'إدارة المحلات',
+        title: res ? 'إدارة الشقق السكنية' : 'إدارة المحلات التجارية',
         subtitle: '${all.length} ${res ? 'شقة' : 'محل'} · $lateCount متأخرة',
         onBack: () => ctx.go('home'),
         right: RoundBtn(icon: 'qr', onTap: () => _openAdd(ctx)),
@@ -93,8 +93,9 @@ class _UnitsScreenState extends State<UnitsScreen> {
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 52,
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 3),
             decoration: BoxDecoration(
                 color: vacant ? AppColors.page : AppColors.navy700,
                 borderRadius: BorderRadius.circular(14)),
@@ -104,7 +105,10 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 NumText(u.no,
                     style: AppType.num(
                         size: 14, weight: FontWeight.w800, color: vacant ? AppColors.ink400 : Colors.white)),
-                Text('دور ${u.floor}',
+                Text('طابق ${u.floor}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    semanticsLabel: floorUnitLabel(u, res),
                     style: AppType.base(
                         size: 9,
                         weight: FontWeight.w500,
@@ -217,20 +221,35 @@ class _UnitsScreenState extends State<UnitsScreen> {
           const SizedBox(height: 16),
           DetailGrid(rows: [
             DetailRow('phone', 'الجوال / واتساب', u.phone, ltr: true),
-            DetailRow('wallet', 'الاشتراك الشهري', fmtUSD(u.sub)),
-            DetailRow('calendar', 'بداية العقد', '2026-01-01'),
-            DetailRow('calendar', 'نهاية العقد', '2026-12-31'),
-            DetailRow('user', 'مسؤول الدفع', u.payer),
+            DetailRow('user', 'نوع العقار', u.kind),
+            DetailRow('wallet', 'الدفعة الشهرية', fmtUSD(u.sub)),
             DetailRow('dollar', 'الرصيد', fmtUSD(u.balance),
                 tone: u.balance < 0 ? 'late' : u.balance > 0 ? 'credit' : 'ok'),
+            DetailRow('calendar', 'بداية العقد',
+                u.contractStart.isEmpty ? '—' : u.contractStart, ltr: u.contractStart.isNotEmpty),
+            DetailRow('calendar', 'نهاية العقد',
+                u.ongoing ? 'مستمر' : u.contractEnd, ltr: !u.ongoing),
           ]),
           if (u.kind == 'شاغر') ...[
             const SizedBox(height: 10),
-            _notes('الوحدة متاحة للإيجار.'),
+            _notes('${res ? 'الشقة' : 'المحل'} ${res ? 'متاحة' : 'متاح'} للإيجار.'),
+          ],
+          if (u.loginCode.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            AppButton(
+              label: 'رمز الدخول / QR',
+              variant: BtnVariant.outline,
+              full: true,
+              icon: 'qr',
+              onTap: () {
+                Navigator.of(context).pop();
+                _openLoginCode(ctx, u);
+              },
+            ),
           ],
           const SizedBox(height: 10),
           AppButton(
-            label: 'تعديل بيانات الوحدة',
+            label: 'تعديل بيانات ${res ? 'الشقة' : 'المحل'}',
             variant: BtnVariant.outline,
             full: true,
             icon: 'edit',
@@ -244,9 +263,67 @@ class _UnitsScreenState extends State<UnitsScreen> {
     );
   }
 
-  /// Manual new-resident form (name, phone, floor, unit no, optional email).
+  /// QR + short login code the resident scans/enters to sign in. Shareable to
+  /// the resident over WhatsApp.
+  void _openLoginCode(Ctx ctx, Unit u) {
+    showAppSheet(
+      context,
+      SheetShell(
+        title: 'رمز الدخول',
+        footer: AppButton(
+          label: 'إرسال للساكن عبر واتساب',
+          full: true,
+          size: BtnSize.lg,
+          icon: 'whatsapp',
+          onTap: () {
+            shareViaWhatsApp(
+              phone: u.phone,
+              text: 'كود الدخول إلى تطبيق عمارتي: ${u.loginCode}',
+            );
+          },
+        ),
+        children: [
+          Center(child: QrBox(data: u.loginCode)),
+          const SizedBox(height: 16),
+          Text('يمسح الساكن الرمز أو يُدخل الكود التالي لتسجيل الدخول:',
+              textAlign: TextAlign.center,
+              style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.ink700, height: 1.6)),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Center(
+              child: NumText(u.loginCode,
+                  style: AppType.num(size: 20, weight: FontWeight.w800, color: AppColors.navy700)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Manual new-resident form: identity, property kind, location, the monthly
+  /// dues + any prior receivables, the contract window, and an optional login
+  /// account (mobile = username).
   void _openManualAdd(Ctx ctx, bool res) {
-    final f = {'name': '', 'phone': '', 'floor': '', 'no': '', 'email': '', 'password': ''};
+    // sub defaults to the building's subscription but stays editable.
+    final f = {
+      'name': '',
+      'phone': '',
+      'floor': '',
+      'no': '',
+      'sub': '${ctx.building.subscription}',
+      'prev': '',
+      'password': '',
+    };
+    String kind = 'مالك';
+    String start = todayIso();
+    String end = '';
+    bool ongoing = true; // start open-ended; the switch toggles an end date.
     bool makeAccount = false;
     showAppSheet(
       context,
@@ -263,22 +340,25 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 (makeAccount && f['phone']!.trim().isEmpty),
             onTap: () {
               Navigator.of(sheetCtx).pop();
+              final prev = int.tryParse(f['prev']!.trim()) ?? 0;
               _save(
                 () async {
                   await Api.I.createUnit(ctx.btype, {
                     'no': f['no']!.trim(),
                     'floor': int.tryParse(f['floor']!.trim()) ?? 0,
                     'resident': f['name']!.trim(),
-                    'kind': 'مالك',
+                    'kind': kind,
                     'phone': f['phone']!.trim().isEmpty ? '—' : f['phone']!.trim(),
-                    'sub': ctx.building.subscription,
+                    'sub': int.tryParse(f['sub']!.trim()) ?? ctx.building.subscription,
+                    'balance': -prev, // ذمم سابقة → opening debit
+                    'contract_start': start,
+                    'contract_end': ongoing ? '' : end,
                     'status': 'ok',
                   });
                   if (makeAccount) {
                     await Api.I.createResident(ctx.btype, {
                       'name': f['name']!.trim(),
                       'phone': f['phone']!.trim(),
-                      if (f['email']!.trim().isNotEmpty) 'email': f['email']!.trim(),
                       if (f['password']!.trim().isNotEmpty) 'password': f['password']!.trim(),
                       'unit_no': f['no']!.trim(),
                     });
@@ -292,17 +372,27 @@ class _UnitsScreenState extends State<UnitsScreen> {
           ),
           children: [
             Field(
-                label: 'الاسم الرباعي',
+                label: 'الاسم',
                 icon: 'user',
                 placeholder: 'الاسم الكامل',
                 onChanged: (v) => setS(() => f['name'] = v)),
             Field(
-                label: 'رقم الجوال',
+                label: 'رقم الموبايل',
                 icon: 'phone',
                 placeholder: '5X XXX XXXX',
                 ltr: true,
                 keyboardType: TextInputType.phone,
                 onChanged: (v) => setS(() => f['phone'] = v)),
+            SelectField(
+              label: 'نوع العقار',
+              icon: 'user',
+              options: const [
+                SelectOption('مالك', 'ملك'),
+                SelectOption('مستأجر', 'مستأجر'),
+              ],
+              value: kind,
+              onChanged: (v) => setS(() => kind = v as String),
+            ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -327,31 +417,47 @@ class _UnitsScreenState extends State<UnitsScreen> {
               ],
             ),
             Field(
-                label: 'البريد الإلكتروني (اختياري)',
-                icon: 'mail',
-                placeholder: 'name@email.com',
+                label: 'الدفعة الشهرية',
+                icon: 'wallet',
+                value: f['sub']!,
                 ltr: true,
-                keyboardType: TextInputType.emailAddress,
-                onChanged: (v) => setS(() => f['email'] = v)),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.surface2,
-                border: Border.all(color: AppColors.line),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(children: [
-                Expanded(
-                  child: Text('إنشاء حساب دخول للساكن',
-                      style: AppType.base(size: 14, weight: FontWeight.w700)),
-                ),
-                AppSwitch(checked: makeAccount, onChanged: (v) => setS(() => makeAccount = v)),
-              ]),
+                suffix: '\$',
+                keyboardType: TextInputType.number,
+                onChanged: (v) => f['sub'] = v),
+            Field(
+                label: 'ذمم سابقة (اختياري)',
+                icon: 'dollar',
+                placeholder: '0',
+                ltr: true,
+                suffix: '\$',
+                keyboardType: TextInputType.number,
+                onChanged: (v) => f['prev'] = v),
+            DateField(
+                label: 'تاريخ بداية العقد',
+                value: start,
+                onChanged: (v) => setS(() => start = v)),
+            DateField(
+                label: 'تاريخ نهاية العقد',
+                value: ongoing ? '' : end,
+                enabled: !ongoing,
+                onChanged: (v) => setS(() => end = v)),
+            _switchRow(
+              label: 'مستمر (بدون تاريخ نهاية)',
+              checked: ongoing,
+              onChanged: (v) => setS(() {
+                ongoing = v;
+                if (v) end = ''; // clear the end date when going open-ended
+              }),
+            ),
+            const SizedBox(height: 12),
+            _switchRow(
+              label: 'إنشاء حساب دخول للساكن',
+              checked: makeAccount,
+              onChanged: (v) => setS(() => makeAccount = v),
             ),
             if (makeAccount) ...[
               const SizedBox(height: 8),
-              Text('يسجّل الساكن الدخول برقم جواله (رمز OTP)، أو بالبريد وكلمة المرور إن حُدِّدت.',
+              Text('اسم المستخدم هو رقم الموبايل. يسجّل الساكن الدخول برمز OTP، أو بكلمة المرور إن حُدِّدت.',
                   style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
               const SizedBox(height: 8),
               Field(
@@ -367,11 +473,22 @@ class _UnitsScreenState extends State<UnitsScreen> {
     );
   }
 
-  /// Edit an existing unit, including a "vacant" status that excludes it from
-  /// accounts and payments.
+  /// Edit an existing unit — all fields, plus a "vacant" status that excludes it
+  /// from accounts and payments.
   void _openEdit(Ctx ctx, Unit u, bool res) {
-    final f = {'name': u.resident, 'phone': u.phone, 'sub': '${u.sub}'};
+    final f = {
+      'name': u.resident,
+      'phone': u.phone,
+      'floor': '${u.floor}',
+      'no': u.no,
+      'sub': '${u.sub}',
+      'balance': '${u.balance}',
+    };
+    String kind = u.kind == 'مالك' || u.kind == 'مستأجر' ? u.kind : 'مالك';
     String status = u.status;
+    String start = u.contractStart;
+    String end = u.contractEnd;
+    bool ongoing = u.ongoing;
     showAppSheet(
       context,
       StatefulBuilder(
@@ -386,36 +503,100 @@ class _UnitsScreenState extends State<UnitsScreen> {
               Navigator.of(sheetCtx).pop();
               _save(
                 () => Api.I.updateUnit(ctx.btype, u.dbId, {
-                  'no': u.no,
-                  'floor': u.floor,
+                  'no': f['no']!.trim().isEmpty ? u.no : f['no']!.trim(),
+                  'floor': int.tryParse(f['floor']!.trim()) ?? u.floor,
                   'resident': f['name'],
                   'phone': f['phone'],
+                  'kind': kind,
                   'sub': int.tryParse(f['sub']!.trim()) ?? u.sub,
+                  'balance': int.tryParse(f['balance']!.trim()) ?? u.balance,
+                  'contract_start': start,
+                  'contract_end': ongoing ? '' : end,
                   'status': status,
                 }),
                 status == 'vacant'
-                    ? 'تم تعيين الوحدة كشاغرة — مستبعَدة من الحسابات والدفعات'
-                    : 'تم حفظ تعديلات الوحدة',
+                    ? 'تم تعيين ${res ? 'الشقة' : 'المحل'} كشاغر — مستبعَد من الحسابات والدفعات'
+                    : 'تم حفظ التعديلات',
               );
             },
           ),
           children: [
-            Field(label: 'اسم الساكن', icon: 'user', value: f['name']!, onChanged: (v) => f['name'] = v),
+            Field(label: 'الاسم', icon: 'user', value: f['name']!, onChanged: (v) => f['name'] = v),
             Field(
-                label: 'رقم الجوال',
+                label: 'رقم الموبايل',
                 icon: 'phone',
                 value: f['phone']!,
                 ltr: true,
                 keyboardType: TextInputType.phone,
                 onChanged: (v) => f['phone'] = v),
+            SelectField(
+              label: 'نوع العقار',
+              icon: 'user',
+              options: const [
+                SelectOption('مالك', 'ملك'),
+                SelectOption('مستأجر', 'مستأجر'),
+              ],
+              value: kind,
+              onChanged: (v) => setS(() => kind = v as String),
+            ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Field(
+                      label: 'الطابق',
+                      icon: 'building',
+                      value: f['floor']!,
+                      ltr: true,
+                      keyboardType: const TextInputType.numberWithOptions(signed: true),
+                      onChanged: (v) => f['floor'] = v),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Field(
+                      label: res ? 'رقم الشقة' : 'رقم المحل',
+                      icon: 'grid',
+                      value: f['no']!,
+                      ltr: true,
+                      onChanged: (v) => f['no'] = v),
+                ),
+              ],
+            ),
             Field(
-                label: 'الاشتراك الشهري',
+                label: 'الدفعة الشهرية',
                 icon: 'wallet',
                 value: f['sub']!,
                 ltr: true,
                 suffix: '\$',
                 keyboardType: TextInputType.number,
                 onChanged: (v) => f['sub'] = v),
+            Field(
+                label: 'الرصيد / الذمم',
+                hint: 'سالب = على الساكن · موجب = رصيد دائن',
+                icon: 'dollar',
+                value: f['balance']!,
+                ltr: true,
+                suffix: '\$',
+                keyboardType: const TextInputType.numberWithOptions(signed: true),
+                onChanged: (v) => f['balance'] = v),
+            DateField(
+                label: 'تاريخ بداية العقد',
+                value: start,
+                onChanged: (v) => setS(() => start = v)),
+            DateField(
+                label: 'تاريخ نهاية العقد',
+                value: ongoing ? '' : end,
+                enabled: !ongoing,
+                onChanged: (v) => setS(() => end = v)),
+            _switchRow(
+              label: 'مستمر (بدون تاريخ نهاية)',
+              checked: ongoing,
+              onChanged: (v) => setS(() {
+                ongoing = v;
+                if (v) end = '';
+              }),
+            ),
+            const SizedBox(height: 12),
             SelectField(
               label: 'الحالة',
               icon: 'filter',
@@ -429,10 +610,10 @@ class _UnitsScreenState extends State<UnitsScreen> {
               onChanged: (v) => setS(() => status = v as String),
             ),
             if (status == 'vacant')
-              _notes('عند جعل الوحدة شاغرة تُستبعَد تلقائياً من الحسابات والدفعات والتقارير.'),
+              _notes('عند جعل ${res ? 'الشقة' : 'المحل'} شاغراً يُستبعَد تلقائياً من الحسابات والدفعات والتقارير.'),
             const SizedBox(height: 12),
             AppButton(
-              label: 'حذف الوحدة نهائياً',
+              label: 'حذف ${res ? 'الشقة' : 'المحل'} نهائياً',
               variant: BtnVariant.danger,
               full: true,
               icon: 'trash',
@@ -454,6 +635,27 @@ class _UnitsScreenState extends State<UnitsScreen> {
       context,
       SheetShell(
         title: 'إضافة ${res ? 'ساكن' : 'مستأجر'}',
+        // Manual-add lives in the footer so SheetShell pads it above the
+        // Android nav bar (footer padding includes viewPadding.bottom).
+        footer: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('أو أضف يدوياً',
+                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+            const SizedBox(height: 10),
+            AppButton(
+              label: 'إدخال البيانات يدوياً',
+              variant: BtnVariant.outline,
+              full: true,
+              icon: 'plus',
+              onTap: () {
+                Navigator.of(context).pop();
+                _openManualAdd(ctx, res);
+              },
+            ),
+          ],
+        ),
         children: [
           _addOption(
             bg: AppColors.okBg,
@@ -472,35 +674,11 @@ class _UnitsScreenState extends State<UnitsScreen> {
             iconColor: AppColors.navy700,
             icon: 'qr',
             title: 'إنشاء رمز QR',
-            sub: 'يمسح الساكن الرمز للانضمام للوحدة',
+            sub: 'يمسح الساكن الرمز للانضمام ${res ? 'للشقة' : 'للمحل'}',
             onTap: () {
               Navigator.of(context).pop();
               _openInvite(ctx, res, qr: true);
             },
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.only(top: 14),
-            decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.line))),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('أو أضف يدوياً',
-                    style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-                const SizedBox(height: 10),
-                AppButton(
-                  label: 'إدخال البيانات يدوياً',
-                  variant: BtnVariant.outline,
-                  full: true,
-                  icon: 'plus',
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    _openManualAdd(ctx, res);
-                  },
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -622,6 +800,27 @@ class _UnitsScreenState extends State<UnitsScreen> {
       ),
     );
   }
+
+  /// Labelled switch row inside a tinted card (used in the add/edit forms).
+  Widget _switchRow({
+    required String label,
+    required bool checked,
+    required ValueChanged<bool> onChanged,
+  }) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surface2,
+          border: Border.all(color: AppColors.line),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Text(label, style: AppType.base(size: 14, weight: FontWeight.w700)),
+          ),
+          AppSwitch(checked: checked, onChanged: onChanged),
+        ]),
+      );
 
   Widget _notes(String text) => Container(
         width: double.infinity,

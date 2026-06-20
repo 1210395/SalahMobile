@@ -1,7 +1,9 @@
 // Data-pipeline test (no network): feeds API-shaped JSON through the model
 // fromJson factories + DataStore, and asserts the synchronous getters surface
-// the live data. The real network path is exercised by the running app in a
-// browser (see the ?demo= deep link), and the API itself is verified via curl.
+// the live data. The app is LIVE-DATA-ONLY (no bundled seed fallback — see
+// commit a7852a7), so every getter is empty until a bundle is loaded. The real
+// network path is exercised by the running app; the API itself is verified via
+// the backend's PHPUnit suite.
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,12 +12,13 @@ import 'package:amarati/data/sample_data.dart';
 void main() {
   setUp(() => DataStore.I.clear());
 
-  test('seed fallback when nothing loaded', () {
+  test('empty when nothing loaded (no seed fallback)', () {
     expect(DataStore.I.loaded, isFalse);
-    expect(kApartments.length, 8);
-    expect(kShops.length, 6);
-    expect(kPayments.length, 6);
-    expect(Summary.balance, 25840);
+    expect(kApartments, isEmpty);
+    expect(kShops, isEmpty);
+    expect(kPayments, isEmpty);
+    expect(Summary.balance, 0);
+    expect(Summary.due, 0);
   });
 
   test('live JSON populates getters for the active btype', () {
@@ -43,13 +46,58 @@ void main() {
     expect(Summary.balance, 99000);
     expect(Summary.bars.first.color, isNotNull);
 
-    // …while residential apartments fall back to seed (active btype is commercial).
-    expect(kApartments.length, 8);
+    // …while residential apartments stay empty (active btype is commercial,
+    // and there is no seed fallback).
+    expect(kApartments, isEmpty);
   });
 
   test('btype key round-trips', () {
     expect(btypeKey(BType.commercial), 'commercial');
     expect(btypeFromKey('commercial'), BType.commercial);
     expect(btypeFromKey(null), BType.residential);
+  });
+
+  test('Unit parses contract dates + login code (overhaul fields)', () {
+    final open = Unit.fromJson({
+      'no': '101', 'floor': 2, 'resident': 'أحمد', 'kind': 'مالك',
+      'contract_start': '2026-01-01T00:00:00', 'contract_end': null,
+      'login_code': 'A1B2C3D4',
+    });
+    expect(open.contractStart, '2026-01-01');
+    expect(open.contractEnd, '');
+    expect(open.ongoing, isTrue); // no end date → مستمر
+    expect(open.loginCode, 'A1B2C3D4');
+
+    final fixed = Unit.fromJson({
+      'no': '102', 'floor': 2, 'resident': 'سارة', 'kind': 'مستأجر',
+      'contract_start': '2026-01-01', 'contract_end': '2026-12-31',
+    });
+    expect(fixed.ongoing, isFalse);
+    expect(fixed.contractEnd, '2026-12-31');
+    expect(fixed.loginCode, '');
+  });
+
+  test('display helpers: months numbered, floor/unit label', () {
+    expect(monthLabelNum(0), 'شهر 1');
+    expect(monthLabelNum(11), 'شهر 12');
+    expect(arMonthsNum.length, 12);
+    expect(arMonthsNum.last, 'شهر 12');
+
+    final apt = Unit.fromJson({'no': '5', 'floor': 3, 'resident': 'ليان', 'kind': 'مالك'});
+    expect(floorUnitLabel(apt, true), 'طابق 3 شقة 5');
+    expect(floorUnitLabel(apt, false), 'طابق 3 محل 5');
+  });
+
+  test('kYears unions live payment years with the recent window', () {
+    final s = DataStore.I;
+    s.payments = [
+      Payment.fromJson({'id': 1, 'unit_no': '1', 'amount': 10, 'month': 0, 'year': 2022, 'date': '2022-01-01'}),
+    ];
+    final now = DateTime.now().year;
+    expect(kYears, contains(2022));
+    expect(kYears, contains(now));
+    // sorted ascending
+    final sorted = [...kYears]..sort();
+    expect(kYears, sorted);
   });
 }

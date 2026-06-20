@@ -86,12 +86,56 @@ class AuthStore {
     return user!;
   }
 
-  /// Create a new account (always a resident — role is server-decided).
-  Future<AuthUser> register(String name, String email, String password) async {
-    final res = await _dio.post('/auth/register',
-        data: {'name': name, 'email': email, 'password': password});
+  /// Sign in with an identifier that may be an email OR a mobile number plus a
+  /// password (the backend's `login` now accepts either). Sends `email` when the
+  /// identifier looks like an email, otherwise `phone`.
+  Future<AuthUser> loginIdentifier(String identifier, String password) async {
+    final key = identifier.contains('@') ? 'email' : 'phone';
+    final res = await _dio.post('/auth/login', data: {key: identifier, 'password': password});
     await _persist(Map<String, dynamic>.from(res.data));
     return user!;
+  }
+
+  /// Redeem a resident login code (typed or scanned from a QR) and log in as
+  /// that resident. Persists the token+user like [loginEmail].
+  Future<AuthUser> redeemCode(String code) async {
+    final res = await _dio.post('/auth/redeem-code', data: {'code': code});
+    await _persist(Map<String, dynamic>.from(res.data));
+    return user!;
+  }
+
+  /// Create a new account (always a resident — role is server-decided).
+  Future<AuthUser> register(String name, String email, String password,
+      {String? phone, String? whatsapp}) async {
+    final res = await _dio.post('/auth/register', data: {
+      'name': name,
+      'email': email,
+      'password': password,
+      'phone': ?phone,
+      'whatsapp': ?whatsapp,
+    });
+    await _persist(Map<String, dynamic>.from(res.data));
+    return user!;
+  }
+
+  /// Send an email confirmation code (mirrors the OTP flow). Returns the dev
+  /// code in local environments so the flow is testable without SMTP, or null.
+  Future<String?> requestEmailCode(String email) async {
+    final res = await _dio.post('/auth/request-email-code', data: {'email': email});
+    return res.data['dev_code'] as String?;
+  }
+
+  /// Verify an email confirmation code. Returns an error message on failure, or
+  /// null when the code is accepted.
+  Future<String?> verifyEmailCode(String email, String code) async {
+    try {
+      await _dio.post('/auth/verify-email-code', data: {'email': email, 'code': code});
+      return null;
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map && data['message'] is String) return data['message'] as String;
+      return 'رمز التأكيد غير صحيح';
+    }
   }
 
   /// Returns the dev OTP code in local environments (so the flow is testable

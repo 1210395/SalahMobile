@@ -13,8 +13,8 @@ class Dashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final res = ctx.res;
     final tiles = [
-      QuickTile(label: res ? 'الوحدات' : 'المحلات', sub: res ? 'الشقق والملاك' : 'المحلات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
-      QuickTile(label: 'المستحقات', sub: 'متابعة التحصيل', icon: 'wallet', tone: 'gold', onTap: () => ctx.go('payments')),
+      QuickTile(label: res ? 'الشقق السكنية' : 'المحلات التجارية', sub: res ? 'الشقق والملاك' : 'المحلات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
+      QuickTile(label: 'الإيرادات', sub: 'متابعة التحصيل', icon: 'wallet', tone: 'gold', onTap: () => ctx.go('payments')),
       QuickTile(label: 'المصروفات', sub: 'إدارة المصروفات', icon: 'expense', tone: 'late', onTap: () => ctx.go('expenses')),
       QuickTile(label: 'التقارير', sub: 'تقارير شاملة', icon: 'pie', tone: 'credit', onTap: () => ctx.go('reports')),
       QuickTile(label: 'المصعد', sub: 'صلاحية الوصول', icon: 'elevator', tone: 'navy', onTap: () => ctx.go('elevator')),
@@ -60,31 +60,45 @@ class Dashboard extends StatelessWidget {
                     const SizedBox(height: 6),
                     NumText(fmtUSD(Summary.balance),
                         style: AppType.num(size: 22, weight: FontWeight.w800, color: Colors.white)),
+                    const SizedBox(height: 4),
+                    // رصيد الصندوق = إجمالي الإيرادات ناقص المصروفات.
+                    Text('رصيد الصندوق = الإيرادات − المصروفات',
+                        style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.navy300)),
                   ],
                 ),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: AppColors.gold50,
-                  border: Border.all(color: AppColors.gold200),
-                  borderRadius: BorderRadius.circular(AppRadii.md),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('المستحقات',
-                        style: AppType.base(size: 11.5, weight: FontWeight.w600, color: AppColors.gold700)),
-                    const SizedBox(height: 6),
-                    NumText(fmtUSD(Summary.due),
-                        style: AppType.num(size: 22, weight: FontWeight.w800, color: AppColors.gold700)),
-                  ],
-                ),
-              ),
+              child: Builder(builder: (_) {
+                // ذمم السكان: موجب = مطلوب من السكان (مدين)، سالب = رصيد دائن لهم.
+                final credit = Summary.due < 0;
+                final tone = credit ? AppColors.credit700 : AppColors.late700;
+                final bg = credit ? AppColors.creditBg : AppColors.lateBg;
+                final border = credit ? AppColors.credit : AppColors.late;
+                return Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    border: Border.all(color: border.withValues(alpha: 0.35)),
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('الذمم',
+                          style: AppType.base(size: 11.5, weight: FontWeight.w600, color: tone)),
+                      const SizedBox(height: 6),
+                      NumText(fmtUSD(Summary.due.abs()),
+                          style: AppType.num(size: 22, weight: FontWeight.w800, color: tone)),
+                      const SizedBox(height: 4),
+                      Text(credit ? 'رصيد دائن للسكان' : 'مطلوب من السكان (مدين)',
+                          style: AppType.base(size: 10, weight: FontWeight.w500, color: tone)),
+                    ],
+                  ),
+                );
+              }),
             ),
           ],
           ),
@@ -97,7 +111,26 @@ class Dashboard extends StatelessWidget {
           action: 'عرض التقارير',
           onAction: () => ctx.go('reports'),
         ),
-        AppCard(child: BarChart(data: Summary.bars)),
+        // ثلاثة أعمدة فقط، القيمة فوق كل عمود (label2). الذمم بالقيمة المطلقة.
+        AppCard(
+          child: BarChart(data: [
+            ChartDatum(
+                label: 'الاشتراكات',
+                value: Summary.revenueM,
+                color: AppColors.ok,
+                label2: fmtUSD(Summary.revenueM)),
+            ChartDatum(
+                label: 'المصروفات',
+                value: Summary.expenseM,
+                color: AppColors.late,
+                label2: fmtUSD(Summary.expenseM)),
+            ChartDatum(
+                label: 'الذمم',
+                value: Summary.due.abs(),
+                color: AppColors.gold500,
+                label2: fmtUSD(Summary.due.abs())),
+          ]),
+        ),
       ],
     );
   }

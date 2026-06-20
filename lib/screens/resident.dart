@@ -5,8 +5,28 @@ import 'package:flutter/material.dart';
 import '../common.dart';
 import 'admin_services.dart' show kElevPhone;
 
-Unit _meUnit(Ctx ctx) =>
-    (ctx.res ? kApartments : kShops).firstWhere((u) => u.status != 'vacant');
+// Placeholder used when there is no occupied unit yet (empty/live data). Status
+// 'vacant' + zeroed fields lets callers detect "no real unit" via [_hasUnit].
+const Unit _noUnit = Unit(
+  id: '',
+  no: '',
+  floor: 0,
+  resident: '',
+  kind: '',
+  phone: '—',
+  sub: 0,
+  status: 'vacant',
+  balance: 0,
+  payer: '—',
+);
+
+// First occupied unit for the current role, or [_noUnit] when the list is empty
+// / all vacant — orElse keeps empty data from throwing (resHome/resReport/…).
+Unit _meUnit(Ctx ctx) => (ctx.res ? kApartments : kShops)
+    .firstWhere((u) => u.status != 'vacant', orElse: () => _noUnit);
+
+// Whether [me] is a real occupied unit (vs the empty-data placeholder).
+bool _hasUnit(Unit me) => me.status != 'vacant';
 
 class ResidentHome extends StatelessWidget {
   const ResidentHome({super.key, required this.ctx});
@@ -18,16 +38,34 @@ class ResidentHome extends StatelessWidget {
     final res = ctx.res;
     final paid = me.status != 'late';
 
+    final header = AppHeader(
+      accent: true,
+      logo: true,
+      right: Row(mainAxisSize: MainAxisSize.min, children: [
+        RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
+        const SizedBox(width: 8),
+        RoundBtn(icon: 'bell', dark: true, badge: true, onTap: () => ctx.go('alerts')),
+      ]),
+    );
+
+    // No occupied unit yet (empty / live data) — show a friendly placeholder.
+    if (!_hasUnit(me)) {
+      return ScreenScaffold(
+        header: header,
+        nav: ctx.resNav,
+        children: const [
+          SizedBox(height: 40),
+          EmptyState(
+            icon: 'building',
+            title: 'لا توجد بيانات وحدة بعد',
+            sub: 'سيظهر اشتراكك وتقاريرك هنا بعد ربط وحدتك بالمبنى.',
+          ),
+        ],
+      );
+    }
+
     return ScreenScaffold(
-      header: AppHeader(
-        accent: true,
-        logo: true,
-        right: Row(mainAxisSize: MainAxisSize.min, children: [
-          RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
-          const SizedBox(width: 8),
-          RoundBtn(icon: 'bell', dark: true, badge: true, onTap: () => ctx.go('alerts')),
-        ]),
-      ),
+      header: header,
       nav: ctx.resNav,
       children: [
         Padding(
@@ -43,7 +81,7 @@ class ResidentHome extends StatelessWidget {
                   Text('أهلاً، ${me.resident.split(' ').first}',
                       style: AppType.base(size: 15, weight: FontWeight.w800)),
                   const SizedBox(height: 1),
-                  Text('${res ? 'شقة' : 'محل'} ${me.no} · ${ctx.building.name}',
+                  Text('${floorUnitLabel(me, res)} · ${ctx.building.name}',
                       style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
                 ],
               ),
@@ -68,7 +106,7 @@ class ResidentHome extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('حالة اشتراكي — مايو',
+                        Text('حالة اشتراكي — ${monthLabelNum(DateTime.now().month - 1)}',
                             style: AppType.base(size: 12.5, weight: FontWeight.w500, color: Colors.white70)),
                         const SizedBox(height: 6),
                         Text(paid ? 'مسدّد بالكامل' : 'يوجد مبلغ متأخر',
@@ -126,7 +164,7 @@ class ResidentReport extends StatefulWidget {
 }
 
 class _ResidentReportState extends State<ResidentReport> {
-  int selYear = 2026;
+  int selYear = DateTime.now().year;
   int selMonth = -1; // -1 = كل الأشهر
 
   @override
@@ -134,6 +172,25 @@ class _ResidentReportState extends State<ResidentReport> {
     final ctx = widget.ctx;
     final me = _meUnit(ctx);
     final res = ctx.res;
+
+    // No occupied unit yet — render the empty state instead of an empty report.
+    if (!_hasUnit(me)) {
+      return ScreenScaffold(
+        header: AppHeader(
+          title: 'تقريري',
+          onBack: () => ctx.go('resHome'),
+        ),
+        nav: ctx.resNav,
+        children: const [
+          SizedBox(height: 40),
+          EmptyState(
+            icon: 'pie',
+            title: 'لا توجد بيانات وحدة بعد',
+            sub: 'سيظهر سجل مدفوعاتك ونسبة سدادك هنا بعد ربط وحدتك.',
+          ),
+        ],
+      );
+    }
     final myPays = kPayments
         .where((p) =>
             p.unit == me.no &&
@@ -148,18 +205,16 @@ class _ResidentReportState extends State<ResidentReport> {
     final remaining = (required - paidAmt).clamp(0, required).toInt();
     final pct = required > 0 ? ((paidAmt / required) * 100).round() : 0;
 
-    final years = [2024, 2025, 2026]
-        .map((y) => SelectOption(y, '$y'))
-        .toList();
+    final years = kYears.map((y) => SelectOption(y, '$y')).toList();
     final months = <SelectOption>[
       const SelectOption(-1, 'كل الأشهر'),
-      for (var i = 0; i < arMonths.length; i++) SelectOption(i, arMonths[i]),
+      for (var i = 0; i < 12; i++) SelectOption(i, monthLabelNum(i)),
     ];
 
     return ScreenScaffold(
       header: AppHeader(
         title: 'تقريري',
-        subtitle: '${res ? 'شقة' : 'محل'} ${me.no}',
+        subtitle: floorUnitLabel(me, res),
         onBack: () => ctx.go('resHome'),
         right: RoundBtn(icon: 'download', onTap: () => ctx.toast('تصدير تقريري PDF')),
       ),
@@ -258,7 +313,7 @@ class _ResidentReportState extends State<ResidentReport> {
               ),
               const SizedBox(height: 14),
               DetailGrid(rows: [
-                DetailRow('wallet', 'المطلوب (٢٠٢٦)', fmtUSD(me.sub * 12)),
+                DetailRow('wallet', 'المطلوب ($selYear)', fmtUSD(me.sub * 12)),
                 DetailRow('checkCircle', 'المسدّد', fmtUSD(me.sub * 12 + me.balance), tone: 'ok'),
                 DetailRow('dollar', 'الرصيد', fmtUSD(me.balance), tone: me.balance < 0 ? 'late' : 'ok'),
                 DetailRow('calendar', 'آخر دفعة', myPays.isNotEmpty ? myPays.first.date : '—', ltr: true),
@@ -321,6 +376,22 @@ class ResidentElevator extends StatelessWidget {
   Widget build(BuildContext context) {
     final me = _meUnit(ctx);
     final paid = me.status != 'late';
+
+    // No occupied unit yet — nothing to gate the elevator number on.
+    if (!_hasUnit(me)) {
+      return ScreenScaffold(
+        header: AppHeader(title: 'المصعد', onBack: () => ctx.go('resHome')),
+        nav: ctx.resNav,
+        children: const [
+          SizedBox(height: 40),
+          EmptyState(
+            icon: 'elevator',
+            title: 'لا توجد بيانات وحدة بعد',
+            sub: 'سيظهر رقم هاتف المصعد هنا بعد ربط وحدتك بالمبنى.',
+          ),
+        ],
+      );
+    }
 
     return ScreenScaffold(
       header: AppHeader(title: 'المصعد', onBack: () => ctx.go('resHome')),
@@ -407,13 +478,13 @@ class MoreHub extends StatelessWidget {
     final groups = <(String, List<(String, String, String)>)>[
       ('الإدارة', [
         ('building', 'إدارة المبنى', 'building2'),
-        ('units', res ? 'الشقق' : 'المحلات', res ? 'building' : 'store'),
+        ('units', res ? 'الشقق السكنية' : 'المحلات التجارية', res ? 'building' : 'store'),
         ('approvals', 'طلبات الانضمام', 'users'),
         ('subscribe', 'الاشتراك والإعداد', 'shield'),
         ('years', 'السنوات والأشهر', 'calendar'),
       ]),
       ('المالية', [
-        ('payments', 'الدفعات', 'wallet'),
+        ('payments', 'الإيرادات', 'wallet'),
         ('expenses', 'المصروفات', 'expense'),
         ('reports', 'التقارير', 'pie'),
       ]),

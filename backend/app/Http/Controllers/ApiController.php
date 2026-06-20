@@ -46,6 +46,16 @@ class ApiController extends Controller
             403, 'يتطلب صلاحية المسؤول');
     }
 
+    /// A short, unique, uppercase login code (QR / shareable) for a resident.
+    private function loginCode(): string
+    {
+        do {
+            $code = strtoupper(bin2hex(random_bytes(4)));
+        } while (User::where('login_code', $code)->exists());
+
+        return $code;
+    }
+
     public function building(Request $r)
     {
         return Building::where('key', $this->bk($r))->firstOrFail();
@@ -81,10 +91,9 @@ class ApiController extends Controller
 
         $arShort = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
         $trend = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $d = $now->copy()->subMonths($i);
-            $m0 = (int) $d->month - 1;
-            $rev = (int) $payments->where('year', (int) $d->year)->where('month', $m0)->sum('amount');
+        // Full 12-month trend for the current year (Jan…Dec).
+        for ($m0 = 0; $m0 < 12; $m0++) {
+            $rev = (int) $payments->where('year', $curYear)->where('month', $m0)->sum('amount');
             $trend[] = ['label' => $arShort[$m0], 'value' => $rev, 'color' => 'navy600'];
         }
 
@@ -146,10 +155,11 @@ class ApiController extends Controller
             'role' => 'resident',
             'building_key' => $bk,
             'unit_no' => $data['unit_no'] ?? null,
+            'login_code' => $this->loginCode(),  // QR / shareable resident login
         ]);
 
         return response()->json(
-            $user->only(['id', 'name', 'email', 'phone', 'role', 'building_key', 'unit_no']),
+            $user->only(['id', 'name', 'email', 'phone', 'role', 'building_key', 'unit_no', 'login_code']),
             201,
         );
     }
@@ -194,7 +204,14 @@ class ApiController extends Controller
             'date' => 'nullable|date',
             'method' => 'nullable|string',
         ]);
+        $before = (int) $payment->amount;
         $payment->update(array_filter($data, fn ($v) => $v !== null));
+
+        // Carry-over: shift the unit's balance by the change in (base) amount.
+        $delta = (int) $payment->amount - $before;
+        if ($delta !== 0) {
+            $this->unitFor($payment)?->increment('balance', $delta);
+        }
 
         return response()->json($payment->fresh());
     }
@@ -203,9 +220,18 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         abort_unless($payment->building_key === $this->bk($r), 403);
+        // Carry-over: removing a payment reverts its credit to the unit balance.
+        $this->unitFor($payment)?->decrement('balance', (int) $payment->amount);
         $payment->delete();
 
         return response()->json(['ok' => true]);
+    }
+
+    /// The unit a payment belongs to (same building + unit_no), or null.
+    private function unitFor(Payment $payment): ?Unit
+    {
+        return Unit::where('building_key', $payment->building_key)
+            ->where('no', $payment->unit_no)->first();
     }
 
     // ─────────── Expenses edit / delete ───────────
@@ -333,8 +359,20 @@ class ApiController extends Controller
 
     public function units(Request $r)
     {
-        return Unit::where('building_key', $this->bk($r))
+        $bk = $this->bk($r);
+        $units = Unit::where('building_key', $bk)
             ->orderBy('floor')->orderBy('no')->get();
+
+        // Attach each unit's resident login code (matched by building + unit_no),
+        // so the admin can show a QR / share the code. Null if no such user.
+        $codes = User::where('building_key', $bk)
+            ->whereNotNull('unit_no')->whereNotNull('login_code')
+            ->pluck('login_code', 'unit_no');
+
+        return $units->map(fn ($u) => array_merge(
+            $u->toArray(),
+            ['login_code' => $codes[$u->no] ?? null],
+        ));
     }
 
     public function payments(Request $r)
@@ -390,6 +428,9 @@ class ApiController extends Controller
             'method' => $data['method'],
             'notes' => $data['notes'] ?? null,
         ]);
+
+        // Carry-over: a payment credits the unit's balance (base currency).
+        $unit->increment('balance', $payment->amount);
 
         return response()->json($payment, 201);
     }

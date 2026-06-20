@@ -21,13 +21,38 @@ class SubscribeScreen extends StatefulWidget {
 }
 
 class _SubscribeScreenState extends State<SubscribeScreen> {
-  final f = {'card': '', 'name': '', 'exp': '', 'cvc': ''};
+  // The annual subscription price shown on the gateway, in the base currency.
+  static const _amount = 299;
 
-  bool get _valid =>
-      f['card']!.replaceAll(' ', '').length >= 12 &&
-      f['name']!.trim().isNotEmpty &&
-      f['exp']!.isNotEmpty &&
-      f['cvc']!.length >= 3;
+  // True while we fake the redirect hop to the bank's payment page.
+  bool _redirecting = false;
+
+  // SIMULATION — bank e-payment redirect (Note 4: "transferred to the bank's
+  // electronic payment screen to pay the subscription"). We round-trip a fake
+  // gateway entirely in-app: no real checkout URL, no card capture. A real
+  // integration would push the user to the bank's hosted page via env-keyed
+  // credentials (merchant id / API key) and confirm the result with a *signed
+  // webhook* — never trust the client. This mirrors the backend's own
+  // subscription-activate simulation note. The seam: replace _payViaGateway
+  // with a url_launcher hop + server-verified payment_ref, then keep the same
+  // activate-on-return path below.
+  Future<void> _payViaGateway() async {
+    final ctx = widget.ctx;
+    setState(() => _redirecting = true);
+    // Brief "redirecting to the gateway" beat before the checkout sheet.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    setState(() => _redirecting = false);
+
+    final paid = await showAppSheet<bool>(context, _GatewaySheet(amount: _amount));
+    if (paid != true || !mounted) return;
+
+    // Gateway approved. The subscription is actually activated on the server in
+    // the building-setup step (for the chosen building type) — keep that path
+    // intact and just hand off to it, exactly as before.
+    ctx.toast('تم الدفع بنجاح — أكمل إعداد المبنى');
+    ctx.go('buildingSetup');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +74,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                   style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.gold400)),
               const SizedBox(height: 8),
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                NumText(fmtUSD(299),
+                NumText(fmtUSD(_amount),
                     style: AppType.num(size: 30, weight: FontWeight.w800, color: Colors.white)),
                 const SizedBox(width: 6),
                 Padding(
@@ -59,51 +84,51 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 ),
               ]),
               const SizedBox(height: 10),
-              Text('وحدات غير محدودة · تقارير · تنبيهات واتساب · نسخ احتياطي',
+              Text('شقق ومحلات غير محدودة · تقارير · تنبيهات واتساب · نسخ احتياطي',
                   style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.navy300, height: 1.6)),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        const SectionTitle(text: 'بيانات البطاقة البنكية'),
+        const SectionTitle(text: 'الدفع عبر البوابة البنكية'),
         AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Field(
-                  label: 'رقم البطاقة',
-                  icon: 'wallet',
-                  placeholder: '0000 0000 0000 0000',
-                  ltr: true,
-                  keyboardType: TextInputType.number,
-                  onChanged: (v) => setState(() => f['card'] = v)),
-              Field(
-                  label: 'الاسم على البطاقة',
-                  icon: 'user',
-                  placeholder: 'الاسم كما يظهر على البطاقة',
-                  onChanged: (v) => setState(() => f['name'] = v)),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Field(
-                        label: 'تاريخ الانتهاء',
-                        placeholder: 'MM/YY',
-                        ltr: true,
-                        marginBottom: 0,
-                        onChanged: (v) => setState(() => f['exp'] = v)),
+              Row(children: [
+                const IconChip(icon: 'building2', tone: 'navy', size: 44),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('بوابة الدفع البنكية',
+                          style: AppType.base(size: 14.5, weight: FontWeight.w800, color: AppColors.ink900)),
+                      const SizedBox(height: 3),
+                      Text('سيتم تحويلك إلى صفحة الدفع الإلكتروني الخاصة بالبنك لإتمام الاشتراك.',
+                          style: AppType.base(size: 12, weight: FontWeight.w500, color: AppColors.ink500, height: 1.55)),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Field(
-                        label: 'CVC',
-                        placeholder: '123',
-                        ltr: true,
-                        keyboardType: TextInputType.number,
-                        marginBottom: 0,
-                        onChanged: (v) => setState(() => f['cvc'] = v)),
-                  ),
-                ],
+                ),
+              ]),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.navy50,
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: AppColors.navy100),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('المبلغ المستحق',
+                        style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+                    NumText(fmtUSD(_amount),
+                        style: AppType.num(size: 18, weight: FontWeight.w800, color: AppColors.navy700)),
+                  ],
+                ),
               ),
             ],
           ),
@@ -113,24 +138,101 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           const AppIcon('lock', size: 14, color: AppColors.ink400),
           const SizedBox(width: 6),
           Expanded(
-            child: Text('دفع آمن ومشفّر. لن يتم تخزين بيانات بطاقتك على الجهاز.',
+            child: Text('دفع آمن عبر بوابة البنك. لا يتم تخزين بيانات بطاقتك على الجهاز.',
                 style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400)),
           ),
         ]),
         const SizedBox(height: 16),
         AppButton(
-          label: 'الدفع والمتابعة · ${fmtUSD(299)}',
+          label: _redirecting ? 'جارٍ التحويل إلى بوابة الدفع البنكية…' : 'الدفع عبر البوابة البنكية',
           size: BtnSize.lg,
           full: true,
-          icon: 'check',
-          disabled: !_valid || ctx.busy,
-          // Card capture is simulated; the subscription is actually activated on
-          // the server in the building-setup step (for the chosen building type).
-          onTap: () {
-            ctx.toast('تم قبول الدفع — أكمل إعداد المبنى');
-            ctx.go('buildingSetup');
-          },
+          icon: _redirecting ? null : 'wallet',
+          disabled: _redirecting || ctx.busy,
+          onTap: _payViaGateway,
         ),
+      ],
+    );
+  }
+}
+
+// Simulated bank checkout, presented via showAppSheet and styled as the bank's
+// hosted payment page. Pops `true` on "تأكيد الدفع", `false`/null otherwise.
+// SIMULATION: a real gateway would render the bank's own page (or an in-app
+// webview / url_launcher hop) and the approval would arrive via a signed webhook.
+class _GatewaySheet extends StatelessWidget {
+  const _GatewaySheet({required this.amount});
+  final int amount;
+
+  @override
+  Widget build(BuildContext context) {
+    return SheetShell(
+      title: 'بوابة الدفع البنكية',
+      onClose: () => Navigator.of(context).pop(false),
+      footer: Row(children: [
+        Expanded(
+          child: AppButton(
+            label: 'إلغاء',
+            variant: BtnVariant.ghost,
+            size: BtnSize.lg,
+            full: true,
+            onTap: () => Navigator.of(context).pop(false),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: AppButton(
+            label: 'تأكيد الدفع',
+            size: BtnSize.lg,
+            full: true,
+            icon: 'check',
+            onTap: () => Navigator.of(context).pop(true),
+          ),
+        ),
+      ]),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.navy700, AppColors.navy800],
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(children: [
+                const AppIcon('shield', size: 16, color: AppColors.gold400),
+                const SizedBox(width: 6),
+                Text('دفع إلكتروني آمن',
+                    style: AppType.base(size: 12.5, weight: FontWeight.w700, color: AppColors.gold400)),
+              ]),
+              const SizedBox(height: 14),
+              Text('المبلغ',
+                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.navy300)),
+              const SizedBox(height: 4),
+              NumText(fmtUSD(amount),
+                  style: AppType.num(size: 30, weight: FontWeight.w800, color: Colors.white)),
+              const SizedBox(height: 4),
+              Text('اشتراك إدارة المبنى · سنوياً',
+                  style: AppType.base(size: 12, weight: FontWeight.w500, color: AppColors.navy300)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(children: [
+          const AppIcon('lock', size: 14, color: AppColors.ink400),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('بيئة محاكاة للدفع. عند الربط الفعلي، تتم العملية على صفحة البنك '
+                'ويُؤكَّد القبول عبر إشعار موقّع من البنك.',
+                style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.55)),
+          ),
+        ]),
       ],
     );
   }
@@ -307,6 +409,16 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
   bool get _valid =>
       f['name']!.trim().isNotEmpty && f['phone']!.trim().isNotEmpty && f['no']!.trim().isNotEmpty;
 
+  // Scan the unit's QR (e.g. a sticker on the door) to prefill the unit number.
+  // QRs in this app encode a raw short code; if it's a plain unit number we use
+  // it directly, otherwise we drop any "unit:"/"no:" prefix.
+  Future<void> _scanUnit() async {
+    final raw = await scanQr(context);
+    if (raw == null || raw.trim().isEmpty || !mounted) return;
+    final code = raw.trim().split(RegExp(r'[:#/]')).last.trim();
+    setState(() => f['no'] = code);
+  }
+
   Future<void> _send() async {
     final ctx = widget.ctx;
     if (!AuthStore.I.isAuthed) {
@@ -361,12 +473,12 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Field(
-                  label: 'الاسم الرباعي',
+                  label: 'الاسم',
                   icon: 'user',
                   placeholder: 'الاسم الكامل',
                   onChanged: (v) => setState(() => f['name'] = v)),
               Field(
-                  label: 'رقم الجوال',
+                  label: 'رقم الموبايل',
                   icon: 'phone',
                   placeholder: '5X XXX XXXX',
                   ltr: true,
@@ -387,14 +499,28 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Field(
-                        label: 'رقم الشقة',
+                        // Key on the scanned value so a QR scan remounts the
+                        // field and shows the prefilled number.
+                        key: ValueKey('unit-${f['no']}'),
+                        label: ctx.res ? 'رقم الشقة' : 'رقم المحل',
                         icon: 'grid',
                         placeholder: '203',
+                        value: f['no']!,
                         ltr: true,
                         onChanged: (v) => setState(() => f['no'] = v)),
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              AppButton(
+                label: 'مسح رمز QR',
+                variant: BtnVariant.outline,
+                size: BtnSize.sm,
+                full: true,
+                icon: 'qr',
+                onTap: _scanUnit,
+              ),
+              const SizedBox(height: 14),
               Field(
                   label: 'البريد الإلكتروني (اختياري)',
                   icon: 'mail',
@@ -451,10 +577,11 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
   Future<void> _act(int id, bool approve, String name, String unit) async {
     final ctx = widget.ctx;
+    final noun = ctx.res ? 'شقة' : 'محل';
     try {
       if (approve) {
         await Api.I.approveJoinRequest(ctx.btype, id);
-        ctx.toast('تمت الموافقة على $name — وحدة $unit');
+        ctx.toast('تمت الموافقة على $name — $noun $unit');
       } else {
         await Api.I.rejectJoinRequest(ctx.btype, id);
         ctx.toast('تم رفض الطلب', tone: 'late');
@@ -515,7 +642,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                           ],
                         ),
                       ),
-                      AppBadge(label: 'وحدة $unit', tone: 'navy', small: true),
+                      AppBadge(label: '${ctx.res ? 'شقة' : 'محل'} $unit', tone: 'navy', small: true),
                     ]),
                     const SizedBox(height: 12),
                     Row(children: [

@@ -9,3 +9,4 @@ export 'widgets/controls.dart';
 export 'widgets/charts.dart';
 export 'widgets/scaffold.dart';
 export 'widgets/shared.dart';
+export 'widgets/extras.dart';

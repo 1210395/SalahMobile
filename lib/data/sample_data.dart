@@ -59,6 +59,32 @@ const List<String> arMonths = [
   'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
 ];
 
+/// Numbered month label (per the spec: months show as "شهر 1 … شهر 12", not
+/// Arabic month names). [i] is the 0-based month index used across the data
+/// layer (Payment.month, report selectors, …).
+String monthLabelNum(int i) => 'شهر ${i + 1}';
+
+/// All month labels as numbered "شهر N" strings (0-based index → label).
+List<String> get arMonthsNum =>
+    [for (var i = 0; i < 12; i++) monthLabelNum(i)];
+
+/// Right-hand square label for a unit row: "طابق 1 شقة 1" (residential) /
+/// "طابق 1 محل 1" (commercial), derived from the unit's own floor + number.
+String floorUnitLabel(Unit u, bool residential) =>
+    'طابق ${u.floor} ${residential ? 'شقة' : 'محل'} ${u.no}';
+
+/// Years available for selectors: every year present in live payments, unioned
+/// with a sensible default window ending at the current year. Always sorted.
+List<int> get kYears {
+  final now = DateTime.now().year;
+  final ys = <int>{now, now - 1, now - 2};
+  for (final p in kPayments) {
+    if (p.year > 1900) ys.add(p.year);
+  }
+  final list = ys.toList()..sort();
+  return list;
+}
+
 enum BType { residential, commercial }
 
 BType btypeFromKey(String? k) =>
@@ -138,6 +164,9 @@ class Unit {
     required this.status,
     required this.balance,
     required this.payer,
+    this.contractStart = '',
+    this.contractEnd = '',
+    this.loginCode = '',
     this.dbId = 0,
   });
   final String id;
@@ -150,7 +179,13 @@ class Unit {
   final String status;
   final int balance;
   final String payer;
+  final String contractStart; // ISO date, '' if none
+  final String contractEnd;   // ISO date, '' = open-ended / مستمر
+  final String loginCode;     // QR / code-login token issued to the resident
   final int dbId; // server primary key (0 for bundled seed units)
+
+  /// True when the contract has no end date (ongoing / مستمر).
+  bool get ongoing => contractEnd.trim().isEmpty;
 
   factory Unit.fromJson(Map<String, dynamic> j) => Unit(
         id: '${j['ext_id'] ?? j['id']}',
@@ -164,7 +199,18 @@ class Unit {
         status: j['status'] ?? 'ok',
         balance: _int(j['balance']),
         payer: j['payer'] ?? '—',
+        contractStart: _dateStr(j['contract_start']),
+        contractEnd: _dateStr(j['contract_end']),
+        loginCode: '${j['login_code'] ?? ''}',
       );
+}
+
+/// Normalise a nullable API date ("2026-01-01T00:00:00" / null) to "2026-01-01".
+String _dateStr(Object? v) {
+  if (v == null) return '';
+  final s = '$v';
+  if (s.isEmpty || s == 'null') return '';
+  return s.split('T').first;
 }
 
 class Payment {

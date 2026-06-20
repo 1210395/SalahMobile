@@ -29,13 +29,53 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   String tab = 'monthly';
-  int selYear = 2026;
-  int selMonth = 4; // مايو
+  late int selYear = kYears.isNotEmpty ? kYears.last : DateTime.now().year;
+  int selMonth = DateTime.now().month - 1;
   String? selUnitNo;
 
   /// Building-wide amount collected in the selected month/year.
   int _collected() => kPayments
       .where((p) => p.month == selMonth && p.year == selYear)
+      .fold<int>(0, (s, p) => s + p.amount);
+
+  /// Expenses dated within the selected month/year.
+  int _monthExpenses() => kExpenses.where((e) {
+        final d = DateTime.tryParse(e.date);
+        return d != null && d.year == selYear && d.month - 1 == selMonth;
+      }).fold<int>(0, (s, e) => s + e.amount);
+
+  /// Outstanding dues across late units of the active building type.
+  int _monthDue(Ctx ctx) => (ctx.res ? kApartments : kShops)
+      .where((u) => u.balance < 0)
+      .fold<int>(0, (s, u) => s + -u.balance);
+
+  /// Monthly chart built from LIVE figures (was static Summary.bars): collected
+  /// vs expenses vs dues — recomputes whenever month/year/building changes.
+  List<ChartDatum> _monthlyBars(Ctx ctx) => [
+        ChartDatum(label: 'محصّل', value: _collected(), color: AppColors.ok),
+        ChartDatum(label: 'مصروفات', value: _monthExpenses(), color: AppColors.late),
+        ChartDatum(label: 'ذمم', value: _monthDue(ctx), color: AppColors.gold500),
+      ];
+
+  /// Annual 12-month revenue series for [selYear], summed straight from
+  /// kPayments (robust regardless of any backend trend length).
+  List<ChartDatum> _annualSeries() {
+    final byMonth = List<int>.filled(12, 0);
+    for (final p in kPayments) {
+      if (p.year != selYear) continue;
+      if (p.month < 0 || p.month > 11) continue;
+      byMonth[p.month] += p.amount;
+    }
+    return [
+      for (var i = 0; i < 12; i++)
+        ChartDatum(label: monthLabelNum(i), value: byMonth[i], color: AppColors.navy600),
+    ];
+  }
+
+  /// Sum of [unitNo]'s payments for a given 0-based [month] and [year].
+  /// Values are kept signed (carry-over may be negative) — never clamped.
+  int _paymentFor(String unitNo, int month, int year) => kPayments
+      .where((p) => p.unit == unitNo && p.month == month && p.year == year)
       .fold<int>(0, (s, p) => s + p.amount);
 
   /// Live annual totals for the selected year (were hardcoded).
@@ -137,22 +177,64 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  /// "تقرير شامل" — a workbook with one sheet per year, each a resident-by-month
+  /// matrix of payments (signed, carry-over included) drawn straight from live data.
+  Future<void> _shareComprehensive(Ctx ctx) async {
+    final residents =
+        (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
+    if (residents.isEmpty) {
+      ctx.toast('لا يوجد سكّان لإصدار تقرير شامل', tone: 'late');
+      return;
+    }
+    final years = kYears.isNotEmpty ? kYears : [selYear];
+    try {
+      final book = xlsx.Excel.createExcel();
+      final defaultSheet = book.getDefaultSheet();
+      for (final y in years) {
+        final sheet = book['$y'];
+        sheet.appendRow([
+          xlsx.TextCellValue('الشهر'),
+          for (final u in residents) xlsx.TextCellValue(u.resident),
+        ]);
+        for (var m = 0; m < 12; m++) {
+          sheet.appendRow([
+            xlsx.TextCellValue(monthLabelNum(m)),
+            for (final u in residents) xlsx.IntCellValue(_paymentFor(u.no, m, y)),
+          ]);
+        }
+      }
+      // Drop the auto-created default sheet (we only want the per-year ones).
+      if (defaultSheet != null && !years.map((y) => '$y').contains(defaultSheet)) {
+        book.delete(defaultSheet);
+      }
+      final dir = await getTemporaryDirectory();
+      final bytes = book.encode() ?? <int>[];
+      final file = File('${dir.path}/amarati-comprehensive.xlsx');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(file.path)], text: 'التقرير الشامل — عمارتي');
+    } catch (_) {
+      ctx.toast('تعذّر تصدير الملف', tone: 'late');
+    }
+  }
+
   String _rowsToCsv(List<List<String>> rows) => rows.map((r) => r.map(_csvCell).join(',')).join('\n');
 
   String _csvCell(String v) =>
       v.contains(',') || v.contains('"') || v.contains('\n') ? '"${v.replaceAll('"', '""')}"' : v;
 
   List<List<String>> _reportRows(Ctx ctx, List<Unit> lateUnits) {
+    final unitWord = ctx.res ? 'الشقة' : 'المحل';
     switch (tab) {
       case 'monthly':
         return [
-          ['التقرير الشهري', '${arMonths[selMonth]} $selYear'],
+          ['التقرير الشهري', '${monthLabelNum(selMonth)} $selYear'],
           [],
           ['البند', 'القيمة'],
           ['إجمالي محصّل', '${_collected()}'],
-          ['متبقٍ', '${Summary.due}'],
+          ['المصروفات', '${_monthExpenses()}'],
+          ['الذمم', '${_monthDue(ctx)}'],
           [],
-          ['المتأخرون', 'الوحدة', 'الرصيد'],
+          ['المتأخرون', unitWord, 'الرصيد'],
           for (final u in lateUnits) [u.resident, u.no, '${u.balance}'],
         ];
       case 'annual':
@@ -160,16 +242,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ['التقرير السنوي', '$selYear'],
           [],
           ['الشهر', 'القيمة'],
-          for (final d in Summary.trend) [d.label, '${d.value}'],
+          for (final d in _annualSeries()) [d.label, '${d.value}'],
           [],
           ['إجمالي الإيرادات', '${_yearRevenue()}'],
           ['إجمالي المصروفات', '${_yearExpenses()}'],
         ];
       case 'unit':
         final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
+        if (units.isEmpty) {
+          return [['تقرير ${ctx.res ? 'الشقة' : 'المحل'}', '—']];
+        }
         final u = units.firstWhere((x) => x.no == (selUnitNo ?? units.first.no), orElse: () => units.first);
         return [
-          ['تقرير الوحدة', '${u.no} — ${u.resident}'],
+          ['تقرير ${ctx.res ? 'الشقة' : 'المحل'}', '${u.no} — ${u.resident}'],
           [],
           ['البند', 'القيمة'],
           ['المطلوب سنوياً', '${u.sub * 12}'],
@@ -220,9 +305,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
         title: 'التقارير',
         subtitle: 'تحليل شامل للمبنى',
         onBack: () => ctx.go('home'),
-        right: RoundBtn(
-            icon: 'download',
-            onTap: () => _exportSheet(ctx, 'تصدير التقرير', _reportRows(ctx, lateUnits))),
+        right: Row(mainAxisSize: MainAxisSize.min, children: [
+          RoundBtn(icon: 'excel', onTap: () => _shareComprehensive(ctx)),
+          const SizedBox(width: 8),
+          RoundBtn(
+              icon: 'download',
+              onTap: () => _exportSheet(ctx, 'تصدير التقرير', _reportRows(ctx, lateUnits))),
+        ]),
       ),
       nav: ctx.adminNav,
       children: [
@@ -230,19 +319,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
           small: true,
           value: tab,
           onChanged: (v) => setState(() => tab = v as String),
-          options: const [
-            SegOption('monthly', 'شهري'),
-            SegOption('annual', 'سنوي'),
-            SegOption('unit', 'وحدة'),
-            SegOption('expense', 'مصروفات'),
+          options: [
+            const SegOption('monthly', 'شهري'),
+            const SegOption('annual', 'سنوي'),
+            SegOption('unit', ctx.res ? 'شقة' : 'محل'),
+            const SegOption('expense', 'مصروفات'),
           ],
         ),
         const SizedBox(height: 14),
-        if (tab == 'monthly') ..._monthly(lateUnits),
+        if (tab == 'monthly') ..._monthly(ctx, lateUnits),
         if (tab == 'annual') ..._annual(),
         if (tab == 'unit') ..._unit(ctx),
         if (tab == 'expense') ..._expense(expData, expTotal),
         const SizedBox(height: 4),
+        AppButton(
+          label: 'تقرير شامل (Excel)',
+          full: true,
+          icon: 'excel',
+          onTap: () => _shareComprehensive(ctx),
+        ),
+        const SizedBox(height: 10),
         Row(children: [
           Expanded(
             child: AppButton(
@@ -272,42 +368,54 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _yearSelect() => SelectField(
-        label: 'السنة',
-        icon: 'calendar',
-        options: [for (final y in const [2024, 2025, 2026]) SelectOption(y, '$y')],
-        value: selYear,
-        onChanged: (v) => setState(() => selYear = v as int),
-      );
+  Widget _yearSelect() {
+    final years = kYears.isNotEmpty ? kYears : [selYear];
+    return SelectField(
+      label: 'السنة',
+      icon: 'calendar',
+      options: [for (final y in years) SelectOption(y, '$y')],
+      value: years.contains(selYear) ? selYear : years.last,
+      onChanged: (v) => setState(() => selYear = v as int),
+    );
+  }
 
   Widget _monthSelect() => SelectField(
         label: 'الشهر',
-        options: [for (var i = 0; i < arMonths.length; i++) SelectOption(i, arMonths[i])],
+        options: [for (var i = 0; i < 12; i++) SelectOption(i, monthLabelNum(i))],
         value: selMonth,
         onChanged: (v) => setState(() => selMonth = v as int),
       );
 
-  List<Widget> _monthly(List<Unit> lateUnits) => [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: _monthSelect()),
-            const SizedBox(width: 10),
-            Expanded(child: _yearSelect()),
-          ],
-        ),
-        Row(children: [
-          Expanded(child: StatCard(label: 'إجمالي محصّل', value: fmtUSD(_collected()), icon: 'trend', tone: 'ok')),
+  List<Widget> _monthly(Ctx ctx, List<Unit> lateUnits) {
+    final collected = _collected();
+    final expenses = _monthExpenses();
+    final due = _monthDue(ctx);
+    final unitWord = ctx.res ? 'شقة' : 'محل';
+    return [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _monthSelect()),
           const SizedBox(width: 10),
-          Expanded(child: StatCard(label: 'متبقٍ', value: fmtUSD(Summary.due), icon: 'alert', tone: 'gold')),
-        ]),
-        const SizedBox(height: 12),
+          Expanded(child: _yearSelect()),
+        ],
+      ),
+      Row(children: [
+        Expanded(child: StatCard(label: 'إجمالي محصّل', value: fmtUSD(collected), icon: 'trend', tone: 'ok')),
+        const SizedBox(width: 10),
+        Expanded(child: StatCard(label: 'الذمم', value: fmtUSD(due), icon: 'alert', tone: 'gold')),
+      ]),
+      const SizedBox(height: 12),
+      // Nothing collected / spent / owed this month → show the empty state.
+      if (collected == 0 && expenses == 0 && due == 0)
+        const EmptyState(icon: 'trend', title: 'لا توجد حركة في هذا الشهر')
+      else ...[
         AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SectionTitle(text: 'الحركة الشهرية', margin: EdgeInsets.only(bottom: 10)),
-              BarChart(data: _withValueLabels(Summary.bars)),
+              BarChart(data: _withValueLabels(_monthlyBars(ctx))),
             ],
           ),
         ),
@@ -321,25 +429,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
                 child: Text('المتأخرون عن السداد', style: AppType.base(size: 13, weight: FontWeight.w800)),
               ),
-              ...List.generate(lateUnits.length, (i) {
-                final u = lateUnits[i];
-                return ListRow(
-                  leading: Avatar(name: u.resident, size: 38, tone: 'navy'),
-                  title: u.resident,
-                  sub: 'وحدة ${u.no}',
-                  dividerBelow: i < lateUnits.length - 1,
-                  trailing: NumText(fmtUSD(u.balance),
-                      style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.late700)),
-                );
-              }),
+              if (lateUnits.isEmpty)
+                const EmptyState(icon: 'checkCircle', title: 'لا يوجد متأخرون')
+              else
+                ...List.generate(lateUnits.length, (i) {
+                  final u = lateUnits[i];
+                  return ListRow(
+                    leading: Avatar(name: u.resident, size: 38, tone: 'navy'),
+                    title: u.resident,
+                    sub: '$unitWord ${u.no}',
+                    dividerBelow: i < lateUnits.length - 1,
+                    trailing: NumText(fmtUSD(u.balance),
+                        style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.late700)),
+                  );
+                }),
             ],
           ),
         ),
         const SizedBox(height: 12),
-      ];
+      ],
+    ];
+  }
 
-  List<Widget> _annual() => [
-        _yearSelect(),
+  List<Widget> _annual() {
+    final series = _annualSeries();
+    final revenue = _yearRevenue();
+    final hasData = revenue != 0 || _yearExpenses() != 0 || series.any((d) => d.value != 0);
+    return [
+      _yearSelect(),
+      if (!hasData)
+        const EmptyState(icon: 'trend', title: 'لا توجد بيانات لهذه السنة')
+      else ...[
         HeroBanner(
           gradient: const [AppColors.navy700, AppColors.navy800],
           child: Column(
@@ -349,7 +469,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               Text('الرصيد النهائي — $selYear',
                   style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.navy300)),
               const SizedBox(height: 6),
-              NumText(fmtUSD(Summary.balance),
+              NumText(fmtUSD(revenue - _yearExpenses()),
                   style: AppType.num(size: 28, weight: FontWeight.w800, color: Colors.white)),
             ],
           ),
@@ -360,23 +480,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SectionTitle(text: 'الإيرادات الشهرية', margin: EdgeInsets.only(bottom: 10)),
-              BarChart(data: _withValueLabels(Summary.trend)),
+              BarChart(data: series),
             ],
           ),
         ),
         const SizedBox(height: 12),
         Row(children: [
-          Expanded(child: StatCard(label: 'إجمالي الإيرادات', value: fmtUSD(_yearRevenue()), icon: 'trend', tone: 'ok')),
+          Expanded(child: StatCard(label: 'إجمالي الإيرادات', value: fmtUSD(revenue), icon: 'trend', tone: 'ok')),
           const SizedBox(width: 10),
           Expanded(child: StatCard(label: 'إجمالي المصروفات', value: fmtUSD(_yearExpenses()), icon: 'expense', tone: 'late')),
         ]),
         const SizedBox(height: 12),
-      ];
+      ],
+    ];
+  }
 
   List<Widget> _unit(Ctx ctx) {
     final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
     if (units.isEmpty) {
-      return const [EmptyState(icon: 'building', title: 'لا توجد وحدات فعّالة')];
+      return [EmptyState(icon: 'building', title: ctx.res ? 'لا توجد شقق فعّالة' : 'لا توجد محلات فعّالة')];
     }
     final no = selUnitNo ?? units.first.no;
     final u = units.firstWhere((x) => x.no == no, orElse: () => units.first);
@@ -439,7 +561,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   return ListRow(
                     leading: const IconChip(icon: 'wallet', tone: 'ok', size: 40),
                     title: p.kind,
-                    sub: '${p.method} · ${arMonths[p.month]} ${p.year}',
+                    sub: '${p.method} · ${monthLabelNum(p.month)} ${p.year}',
                     dividerBelow: i < pays.length - 1,
                     trailing: NumText('+${fmtUSD(p.amount)}',
                         style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.ok700)),
@@ -813,12 +935,13 @@ class YearsScreen extends StatefulWidget {
 }
 
 class _YearsScreenState extends State<YearsScreen> {
-  int year = 2026;
+  late int year = kYears.isNotEmpty ? kYears.last : DateTime.now().year;
 
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
     final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').length;
+    final years = kYears.isNotEmpty ? kYears : [year];
 
     return ScreenScaffold(
       header: AppHeader(
@@ -830,11 +953,11 @@ class _YearsScreenState extends State<YearsScreen> {
       nav: ctx.adminNav,
       children: [
         Row(
-          children: [2024, 2025, 2026].map((y) {
+          children: years.map((y) {
             final on = year == y;
             return Expanded(
               child: Padding(
-                padding: EdgeInsets.only(left: y != 2026 ? 8 : 0),
+                padding: EdgeInsets.only(left: y != years.last ? 8 : 0),
                 child: GestureDetector(
                   onTap: () => setState(() => year = y),
                   child: Container(
@@ -899,8 +1022,8 @@ class _YearsScreenState extends State<YearsScreen> {
                 child: Row(
                   children: [
                     SizedBox(
-                      width: 44,
-                      child: Text(arMonths[m.m], style: AppType.base(size: 13, weight: FontWeight.w800, color: AppColors.ink700)),
+                      width: 52,
+                      child: Text(monthLabelNum(m.m), style: AppType.base(size: 13, weight: FontWeight.w800, color: AppColors.ink700)),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -927,7 +1050,7 @@ class _YearsScreenState extends State<YearsScreen> {
         ),
         const SizedBox(height: 12),
         Center(
-          child: Text('$units وحدة فعّالة في $year',
+          child: Text('$units ${ctx.res ? 'شقة' : 'محل'} فعّالة في $year',
               style: AppType.base(size: 11.5, weight: FontWeight.w600, color: AppColors.ink400)),
         ),
       ],

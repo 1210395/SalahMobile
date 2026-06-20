@@ -57,10 +57,16 @@ class Ctx {
   /// Request a phone OTP. Returns the dev code in local environments.
   final Future<String?> Function(String phone) requestOtp;
 
-  /// Create a new account (name/email/password). Returns an error or null.
-  final Future<String?> Function(String name, String email, String password) register;
+  /// Create a new account (name/email/password, with optional phone/whatsapp).
+  /// Returns an error or null; on success routes to the bank subscription screen.
+  final Future<String?> Function(String name, String email, String password,
+      {String? phone, String? whatsapp}) register;
 
-  /// Sign in by email+password or phone+code, then load the building bundle.
+  /// Sign in, then load the building bundle. Supported modes:
+  /// - email+password (email may be an address)
+  /// - phone+password (mobile-number identifier)
+  /// - phone+code (OTP)
+  /// - code + codeLogin:true (redeem a resident QR/login code)
   /// Returns an error message on failure, or null on success.
   final Future<String?> Function({
     String? email,
@@ -68,6 +74,7 @@ class Ctx {
     String? phone,
     String? code,
     String? name,
+    bool codeLogin,
     required AppRole role,
     required BType btype,
   }) signIn;

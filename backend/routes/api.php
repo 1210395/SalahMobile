@@ -16,6 +16,9 @@ Route::middleware('throttle:6,1')->group(function () {
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/request-otp', [AuthController::class, 'requestOtp']);
     Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp']);
+    Route::post('/auth/request-email-code', [AuthController::class, 'requestEmailCode']);
+    Route::post('/auth/verify-email-code', [AuthController::class, 'verifyEmailCode']);
+    Route::post('/auth/redeem-code', [AuthController::class, 'redeemCode']);
 });
 
 // ───────────── Public (guest mode + brand theming) ─────────────

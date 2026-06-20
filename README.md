@@ -77,8 +77,8 @@ The Flutter app talks to it through a small data layer:
   via `shared_preferences`.
 - `lib/api/repository.dart` — loads the building bundle into `DataStore`.
 - `lib/data/sample_data.dart` — every accessor (`kApartments`, `Summary.*`, …)
-  returns **live** data once loaded, and **seed** data otherwise, so the app runs
-  offline/demo too.
+  returns **live** data once loaded, and an **empty** value otherwise (live-data
+  only — no bundled seed, so a real/empty building never shows fake numbers).
 
 Real login flow: Splash → "تسجيل الدخول" → email (`admin@amarati.app` /
 `password`) or phone OTP (tap "إرسال رمز التحقق", the dev code is shown in a
@@ -94,9 +94,37 @@ For local web review you can deep-link: `/?demo=admin` performs a real login, or
 
 ## Notes
 
-- Write forms (add payment/expense/etc.) currently confirm with a toast; the
-  backend endpoints exist (`POST /payments`, …) and are the natural next wire-up.
 - The prototype's design-tool "Tweaks" panel was intentionally dropped; the
   dashboard uses the **hero** layout and the building-type/role toggles live in
   the in-app role-switcher sheet.
-- Currency is **USD**; the Building screen shows an adjustable SAR exchange row.
+- Currency is the building's chosen base (NIS/USD/…); per-payment foreign
+  currency is converted to the base via the entered exchange rate.
+
+## Redesign overhaul (notes.docx)
+
+The app was reworked against `notes.docx` (see [`CHANGES_SPEC.md`](CHANGES_SPEC.md)
+for the full spec). Highlights:
+
+- **Brand** — new عمارتي / AMARTI logo (gold + red), palette harmonised to it.
+- **Sign-up** — name · phone · WhatsApp · email · password **+ email confirmation
+  code**, then a **bank e-payment** step for the subscription.
+- **Resident login** — mobile/email + password, **or scan a QR / enter a login
+  code** issued by the admin (per-resident `login_code`).
+- **Apartments** — full add/edit (نوع العقار, monthly amount, ذمم سابقة, contract
+  start/end + "مستمر"), rows read "طابق X شقة/محل Y" from real data, per-resident QR.
+- **Revenues (formerly المستحقات)** — months shown as "شهر N", year list-picker,
+  cash-first methods, today-default dates, fixed foreign-currency conversion
+  (stored in the base currency), over/under-payment carries via the unit balance,
+  per-payment **receipt (سند قبض)** shareable to WhatsApp / PDF, edit-delete on tap.
+- **Dashboard** — fund balance, ذمم (دائن/مدين), and a 3-column "this month"
+  summary (الاشتراكات · المصروفات · الذمم) with values shown above each column.
+- **Reports** — figures/charts compute from live data per month/year; new
+  **تقرير شامل** exports an Excel workbook (one sheet per year, residents × months).
+
+### Simulated / seams (no external credentials in the repo)
+- **Bank payment** is a clean in-app simulation that round-trips and activates the
+  subscription. Real gateway = env keys + a signed webhook (marked in code).
+- **Email codes** mirror the phone-OTP flow: a `dev_code` is returned in local
+  mode (shown in a toast) and sent via `Mail` once `MAIL_*` is configured.
+- **QR scanning** uses `mobile_scanner` (camera) — works on device; can't be
+  exercised in headless tests on a desktop without a camera.

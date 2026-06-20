@@ -30,6 +30,7 @@ class DatabaseSeeder extends Seeder
         // the buildings/users already exist.
         $this->seedSuperAdmin();
         $this->seedSubscriptions();
+        $this->backfillLoginCodes();
 
         // Idempotent: skip the bulk sample data if already seeded. Keyed on
         // buildings (the canonical seed marker) — NOT users, since the helpers
@@ -209,7 +210,27 @@ class DatabaseSeeder extends Seeder
             'role' => 'admin', 'building_key' => 'residential']);
         User::create(['name' => 'أحمد العامري', 'email' => 'resident@amarati.app',
             'phone' => '+966500000002', 'password' => Hash::make('password'),
-            'role' => 'resident', 'building_key' => 'residential', 'unit_no' => '101']);
+            'role' => 'resident', 'building_key' => 'residential', 'unit_no' => '101',
+            'login_code' => $this->loginCode()]);
+
+        // Make sure every seeded resident has a QR / login code.
+        $this->backfillLoginCodes();
+    }
+
+    /// Give every resident without a login code a unique one (QR / shareable).
+    private function backfillLoginCodes(): void
+    {
+        User::where('role', 'resident')->whereNull('login_code')->get()
+            ->each(fn ($u) => $u->update(['login_code' => $this->loginCode()]));
+    }
+
+    private function loginCode(): string
+    {
+        do {
+            $code = strtoupper(bin2hex(random_bytes(4)));
+        } while (User::where('login_code', $code)->exists());
+
+        return $code;
     }
 
     private function seedSuperAdmin(): void

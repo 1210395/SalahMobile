@@ -31,8 +31,10 @@ class UnitController extends Controller
             'phone' => 'nullable|string|max:32',
             'sub' => 'nullable|integer|min:0',
             'status' => ['nullable', Rule::in(['ok', 'late', 'credit', 'vacant'])],
-            'balance' => 'nullable|integer',
+            'balance' => 'nullable|integer',           // frontend pre-negates ذمم سابقة
             'payer' => 'nullable|string|max:60',
+            'contract_start' => 'nullable|date',
+            'contract_end' => 'nullable|date',
             'notes' => 'nullable|string|max:300',
         ];
     }
@@ -61,8 +63,8 @@ class UnitController extends Controller
             'status' => $vacant ? 'vacant' : ($data['status'] ?? 'ok'),
             'balance' => $vacant ? 0 : ($data['balance'] ?? 0),
             'payer' => $vacant ? '—' : ($data['payer'] ?? 'الساكن'),
-            'contract_start' => $vacant ? null : now()->startOfYear()->toDateString(),
-            'contract_end' => $vacant ? null : now()->endOfYear()->toDateString(),
+            'contract_start' => $vacant ? null : ($data['contract_start'] ?? now()->startOfYear()->toDateString()),
+            'contract_end' => $vacant ? null : ($data['contract_end'] ?? now()->endOfYear()->toDateString()),
             'notes' => $data['notes'] ?? null,
         ]);
 
@@ -87,6 +89,8 @@ class UnitController extends Controller
             'status' => $vacant ? 'vacant' : ($data['status'] ?? ($unit->status === 'vacant' ? 'ok' : $unit->status)),
             'balance' => $vacant ? 0 : ($data['balance'] ?? $unit->balance),
             'payer' => $vacant ? '—' : ($data['payer'] ?? $unit->payer),
+            'contract_start' => $vacant ? null : ($data['contract_start'] ?? $unit->contract_start),
+            'contract_end' => $vacant ? null : ($data['contract_end'] ?? $unit->contract_end),
             'notes' => $data['notes'] ?? $unit->notes,
         ]);
 

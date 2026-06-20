@@ -212,14 +212,21 @@ class _AmaratiAppState extends State<AmaratiApp> {
     String? phone,
     String? code,
     String? name,
+    bool codeLogin = false,
     required AppRole role,
     required BType btype,
   }) async {
     setState(() => _busy = true);
     try {
-      if (phone != null && code != null) {
+      if (codeLogin) {
+        // Resident QR / login-code redemption.
+        await AuthStore.I.redeemCode(code ?? '');
+      } else if (phone != null && code != null) {
         await AuthStore.I.verifyOtp(phone, code,
             role: role.name, buildingKey: btypeKey(btype), name: name);
+      } else if (phone != null && password != null) {
+        // Mobile-number identifier + password.
+        await AuthStore.I.loginIdentifier(phone, password);
       } else {
         await AuthStore.I.loginEmail(email ?? '', password ?? '');
       }
@@ -241,11 +248,13 @@ class _AmaratiAppState extends State<AmaratiApp> {
     }
   }
 
-  /// Create a new account (always a resident), then land on the resident home.
-  Future<String?> _register(String name, String email, String password) async {
+  /// Create a new account (always a resident), then route to the bank
+  /// subscription screen (Note 4: pay the subscription right after signup).
+  Future<String?> _register(String name, String email, String password,
+      {String? phone, String? whatsapp}) async {
     setState(() => _busy = true);
     try {
-      await AuthStore.I.register(name, email, password);
+      await AuthStore.I.register(name, email, password, phone: phone, whatsapp: whatsapp);
       final u = AuthStore.I.user!;
       final b = btypeFromKey(u.buildingKey);
       await Api.I.loadBundle(b);
@@ -254,7 +263,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
         _busy = false;
         role = _roleFromString(u.role);
         btype = b;
-        screen = _homeFor(role);
+        screen = 'subscribe';
       });
       return null;
     } catch (e) {
@@ -352,7 +361,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
                   id: 'units',
                   label: btype == BType.residential ? 'الشقق' : 'محلات',
                   icon: btype == BType.residential ? 'building' : 'store'),
-              const NavTab(id: 'payments', label: 'المستحقات', icon: 'wallet'),
+              const NavTab(id: 'payments', label: 'الإيرادات', icon: 'wallet'),
               const NavTab(id: 'reports', label: 'التقارير', icon: 'pie'),
               const NavTab(id: 'more', label: 'المزيد', icon: 'grid'),
             ],

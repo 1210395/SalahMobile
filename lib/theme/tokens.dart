@@ -18,14 +18,19 @@ class AppColors {
   static const navy100 = Color(0xFFE7E9F4);
   static const navy50 = Color(0xFFF1F2FA);
 
-  // Brand — gold
-  static const gold700 = Color(0xFF8E7327);
-  static const gold600 = Color(0xFFA9892F);
-  static const gold500 = Color(0xFFC2A24E); // primary gold
-  static const gold400 = Color(0xFFD6BC74);
-  static const gold200 = Color(0xFFECDDAE);
-  static const gold100 = Color(0xFFF5ECCF);
+  // Brand — gold (aligned to the عمارتي / AMARTI logo gold)
+  static const gold700 = Color(0xFF8A6A1C);
+  static const gold600 = Color(0xFFAE831D);
+  static const gold500 = Color(0xFFC8941E); // primary gold — logo
+  static const gold400 = Color(0xFFD9B257);
+  static const gold200 = Color(0xFFEEDDA8);
+  static const gold100 = Color(0xFFF6EDCE);
   static const gold50 = Color(0xFFFBF6E8);
+
+  // Brand — red (logo checkmark accent). Distinct from the semantic `late` red.
+  static const brandRed = Color(0xFFB5342B);
+  static const brandRed700 = Color(0xFF92271F);
+  static const brandRedBg = Color(0xFFF8E7E5);
 
   // Neutrals
   static const ink900 = Color(0xFF1A1C2E);
@@ -88,7 +93,7 @@ class AppShadows {
     BoxShadow(color: Color(0x2914163A), offset: Offset(0, 16), blurRadius: 40),
   ];
   static const gold = [
-    BoxShadow(color: Color(0x47A9892F), offset: Offset(0, 8), blurRadius: 22),
+    BoxShadow(color: Color(0x47AE831D), offset: Offset(0, 8), blurRadius: 22),
   ];
   static const navy = [
     BoxShadow(color: Color(0x4D232858), offset: Offset(0, 10), blurRadius: 26),

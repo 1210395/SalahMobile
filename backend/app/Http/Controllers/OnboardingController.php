@@ -29,6 +29,16 @@ class OnboardingController extends Controller
         return $u->only(['id', 'name', 'email', 'phone', 'role', 'building_key', 'unit_no']);
     }
 
+    /// A short, unique, uppercase login code (QR / shareable) for a resident.
+    private function loginCode(): string
+    {
+        do {
+            $code = strtoupper(bin2hex(random_bytes(4)));
+        } while (User::where('login_code', $code)->exists());
+
+        return $code;
+    }
+
     // ───────────── Subscription ─────────────
 
     public function subscription(Request $r)
@@ -165,11 +175,13 @@ class OnboardingController extends Controller
         abort_unless($joinRequest->building_key === $this->bk($r), 403);
 
         $joinRequest->update(['status' => 'approved']);
-        if ($joinRequest->user_id) {
-            User::where('id', $joinRequest->user_id)->update([
+        if ($joinRequest->user_id && ($u = User::find($joinRequest->user_id))) {
+            $u->update([
                 'role' => 'resident',
                 'building_key' => $joinRequest->building_key,
                 'unit_no' => $joinRequest->unit_no,
+                // Give the resident a QR / shareable login code if they lack one.
+                'login_code' => $u->login_code ?: $this->loginCode(),
             ]);
         }
 

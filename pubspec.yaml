@@ -31,6 +31,12 @@ dependencies:
   printing: ^5.13.3
   # Pick a logo image for the brand-editing panel.
   image_picker: ^1.1.2
+  # Generate QR codes (resident login / join QR issued by the admin).
+  qr_flutter: ^4.1.0
+  # Scan a resident's login QR with the camera.
+  mobile_scanner: ^5.2.3
+  # Open WhatsApp / bank-payment URLs (wa.me deep links, gateway redirect).
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
