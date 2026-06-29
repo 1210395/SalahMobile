@@ -761,6 +761,122 @@ class _AlertsScreenState extends State<AlertsScreen> {
     }
   }
 
+  // Ready-made notification choices (title + body) the manager can pick, plus a
+  // free-text option.
+  static const _templates = [
+    ['تذكير بدفع الاشتراك', 'نرجو سداد الاشتراك الشهري المستحق في أقرب وقت ممكن. شكراً لتعاونكم.'],
+    ['صيانة المصعد', 'سيتم إجراء صيانة دورية للمصعد. نعتذر عن أي إزعاج.'],
+    ['انقطاع الكهرباء', 'يوجد انقطاع مجدول للكهرباء عن المبنى. يرجى أخذ الاحتياط.'],
+    ['اجتماع لجنة المبنى', 'يُعقد اجتماع لسكان المبنى لمناقشة شؤون العمارة. حضوركم مهم.'],
+  ];
+
+  /// Manager composes a notification: pick all residents or one unit, choose a
+  /// ready template or write custom text, then send.
+  void _openCompose(Ctx ctx) {
+    final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
+    String target = 'all';
+    String unitNo = units.isNotEmpty ? units.first.no : '';
+    String title = '';
+    String body = '';
+    int seq = 0; // bump to re-seed title/body fields when a template is chosen
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'إرسال إشعار',
+          footer: AppButton(
+            label: 'إرسال',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'send',
+            disabled: title.trim().isEmpty || body.trim().isEmpty || (target == 'unit' && unitNo.isEmpty),
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.sendNotification(ctx.btype, {
+                  'title': title.trim(),
+                  'body': body.trim(),
+                  'target': target == 'unit' ? unitNo : 'all',
+                });
+                await ctx.reload();
+                ctx.toast('تم إرسال الإشعار');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          children: [
+            Segmented(
+              small: true,
+              value: target,
+              onChanged: (v) => setS(() => target = v as String),
+              options: [
+                const SegOption('all', 'كل السكان'),
+                SegOption('unit', ctx.res ? 'شقة محددة' : 'محل محدد'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (target == 'unit')
+              SelectField(
+                label: ctx.res ? 'الشقة' : 'المحل',
+                icon: 'building',
+                options: [for (final u in units) SelectOption(u.no, '${u.no} — ${u.resident}')],
+                value: unitNo.isEmpty ? null : unitNo,
+                onChanged: (v) => setS(() => unitNo = v as String),
+              ),
+            Text('اختيارات جاهزة',
+                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in _templates)
+                  GestureDetector(
+                    onTap: () => setS(() {
+                      title = t[0];
+                      body = t[1];
+                      seq++;
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: title == t[0] ? AppColors.navy700 : AppColors.surface,
+                        border: Border.all(
+                            color: title == t[0] ? AppColors.navy700 : AppColors.line2, width: 1.5),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(t[0],
+                          style: AppType.base(
+                              size: 12.5,
+                              weight: FontWeight.w700,
+                              color: title == t[0] ? Colors.white : AppColors.ink600)),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Field(
+              key: ValueKey('notif-title-$seq'),
+              label: 'العنوان',
+              icon: 'bell',
+              value: title,
+              placeholder: 'عنوان الإشعار',
+              onChanged: (v) => setS(() => title = v),
+            ),
+            AppTextArea(
+              key: ValueKey('notif-body-$seq'),
+              label: 'النص',
+              value: body,
+              placeholder: 'اكتب نص الإشعار…',
+              onChanged: (v) => setS(() => body = v),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
@@ -780,6 +896,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
         ]),
       ),
       nav: isAdmin ? ctx.adminNav : ctx.resNav,
+      fab: isAdmin && tab == 'alerts'
+          ? AppFab(icon: 'send', label: 'إرسال إشعار', onTap: () => _openCompose(ctx))
+          : null,
       children: [
         Segmented(
           value: tab,

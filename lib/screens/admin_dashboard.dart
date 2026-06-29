@@ -5,12 +5,40 @@ import 'package:flutter/material.dart';
 import '../common.dart';
 import '../api/repository.dart';
 
-class Dashboard extends StatelessWidget {
+class Dashboard extends StatefulWidget {
   const Dashboard({super.key, required this.ctx});
   final Ctx ctx;
 
   @override
+  State<Dashboard> createState() => _DashboardState();
+}
+
+class _DashboardState extends State<Dashboard> {
+  // Dashboard period: a year + an optional 0-based month (null = whole year).
+  late int selYear = kYears.isNotEmpty ? kYears.last : DateTime.now().year;
+  int? selMonth; // null = whole year (matches the bundle's default summary)
+  bool _loadingPeriod = false;
+
+  String get _periodLabel =>
+      selMonth == null ? 'سنة $selYear' : '${monthLabelNum(selMonth!)} $selYear';
+
+  Future<void> _applyPeriod({int? year, Object? month = _unset}) async {
+    setState(() {
+      if (year != null) selYear = year;
+      if (!identical(month, _unset)) selMonth = month as int?;
+      _loadingPeriod = true;
+    });
+    try {
+      await Api.I.fetchSummary(widget.ctx.btype, year: selYear, month: selMonth);
+    } catch (_) {}
+    if (mounted) setState(() => _loadingPeriod = false);
+  }
+
+  static const _unset = Object();
+
+  @override
   Widget build(BuildContext context) {
+    final ctx = widget.ctx;
     final res = ctx.res;
     final tiles = [
       QuickTile(label: res ? 'الشقق السكنية' : 'المحلات التجارية', sub: res ? 'الشقق والملاك' : 'المحلات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
@@ -107,10 +135,49 @@ class Dashboard extends StatelessWidget {
         gridRows(tiles, n: 3),
         const SizedBox(height: 16),
         SectionTitle(
-          text: 'ملخص سريع — هذا الشهر',
+          text: 'ملخص سريع — $_periodLabel',
           action: 'عرض التقارير',
           onAction: () => ctx.go('reports'),
         ),
+        // Period filter — the totals below (and the cash balance) follow it.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SelectField(
+                  label: 'السنة',
+                  icon: 'calendar',
+                  options: [for (final y in (kYears.isNotEmpty ? kYears : [selYear])) SelectOption(y, '$y')],
+                  value: selYear,
+                  onChanged: (v) => _applyPeriod(year: v as int),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SelectField(
+                  label: 'الفترة',
+                  icon: 'calendar',
+                  options: [
+                    const SelectOption(-1, 'كل السنة'),
+                    for (var i = 0; i < 12; i++) SelectOption(i, monthLabelNum(i)),
+                  ],
+                  value: selMonth ?? -1,
+                  onChanged: (v) {
+                    final m = v as int;
+                    _applyPeriod(month: m < 0 ? null : m);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_loadingPeriod)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
         // ثلاثة أعمدة فقط، القيمة فوق كل عمود (label2). الذمم بالقيمة المطلقة.
         AppCard(
           child: BarChart(data: [

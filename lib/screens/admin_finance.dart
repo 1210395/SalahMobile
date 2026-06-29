@@ -1358,6 +1358,24 @@ class WorkersScreen extends StatelessWidget {
                       const SizedBox(width: 8),
                       MiniStat(label: 'الاستحقاق القادم', value: w.next, tone: 'late', num: true),
                     ]),
+                    const SizedBox(height: 10),
+                    // Attendance + payment status for the current cycle.
+                    Row(children: [
+                      AppBadge(
+                        label: w.came ? 'حضر' : 'لم يحضر',
+                        tone: w.came ? 'ok' : 'late',
+                        icon: w.came ? 'checkCircle' : 'xCircle',
+                      ),
+                      const SizedBox(width: 8),
+                      AppBadge(
+                        label: _payStatusLabel(w.payStatus),
+                        tone: w.payStatus == 'full'
+                            ? 'ok'
+                            : w.payStatus == 'partial'
+                                ? 'gold'
+                                : 'late',
+                      ),
+                    ]),
                     const SizedBox(height: 12),
                     Row(children: [
                       Expanded(
@@ -1367,16 +1385,21 @@ class WorkersScreen extends StatelessWidget {
                             size: BtnSize.sm,
                             full: true,
                             icon: 'phone',
-                            onTap: () => ctx.toast('اتصال…', tone: 'info')),
+                            onTap: () async {
+                              final ph = w.phone.trim();
+                              await shareViaWhatsApp(
+                                  phone: (ph.isEmpty || ph == '—') ? null : ph,
+                                  text: 'مرحباً ${w.name}');
+                            }),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: AppButton(
-                            label: 'دفع',
+                            label: 'تحديث الحالة',
                             size: BtnSize.sm,
                             full: true,
-                            icon: 'wallet',
-                            onTap: () => ctx.toast('تم تسجيل الدفعة')),
+                            icon: 'check',
+                            onTap: () => _openVisit(context, ctx, w)),
                       ),
                     ]),
                   ],
@@ -1384,6 +1407,88 @@ class WorkersScreen extends StatelessWidget {
               ),
             )),
       ],
+    );
+  }
+
+  static String _payStatusLabel(String s) =>
+      s == 'full' ? 'مدفوع بالكامل' : (s == 'partial' ? 'مدفوع جزئياً' : 'غير مدفوع');
+
+  /// Record this cycle's attendance (came?) + payment status (full/partial/none).
+  void _openVisit(BuildContext context, Ctx ctx, Worker w) {
+    bool came = w.came;
+    String payStatus = w.payStatus;
+    String partial = w.paidAmount > 0 ? '${w.paidAmount}' : '';
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تحديث حالة ${w.name}',
+          footer: AppButton(
+            label: 'حفظ',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.updateWorker(ctx.btype, w.id, {
+                  'came': came,
+                  if (came) 'last_visit': todayIso(),
+                  'pay_status': payStatus,
+                  if (payStatus == 'partial') 'paid_amount': int.tryParse(partial) ?? 0,
+                  if (payStatus == 'none') 'paid_amount': 0,
+                });
+                await ctx.reload();
+                ctx.toast('تم تحديث حالة ${w.name}');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+              decoration: BoxDecoration(
+                color: came ? AppColors.navy50 : AppColors.surface,
+                border: Border.all(color: came ? AppColors.navy100 : AppColors.line, width: 1.5),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Row(children: [
+                const AppIcon('checkCircle', size: 20, color: AppColors.navy700),
+                const SizedBox(width: 11),
+                Expanded(child: Text('حضر في هذه الدورة', style: AppType.base(size: 14, weight: FontWeight.w700))),
+                AppSwitch(checked: came, onChanged: (v) => setS(() => came = v)),
+              ]),
+            ),
+            const SizedBox(height: 14),
+            Text('حالة الدفع',
+                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+            const SizedBox(height: 8),
+            Segmented(
+              small: true,
+              value: payStatus,
+              onChanged: (v) => setS(() => payStatus = v as String),
+              options: const [
+                SegOption('none', 'لم يُدفع'),
+                SegOption('partial', 'جزئي'),
+                SegOption('full', 'كامل'),
+              ],
+            ),
+            if (payStatus == 'partial') ...[
+              const SizedBox(height: 12),
+              Field(
+                label: 'المبلغ المدفوع',
+                icon: 'wallet',
+                value: partial,
+                ltr: true,
+                keyboardType: TextInputType.number,
+                marginBottom: 0,
+                onChanged: (v) => setS(() => partial = v),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 

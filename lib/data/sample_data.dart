@@ -126,6 +126,13 @@ class Building {
     required this.floors,
     this.exchangeRate = 1,
     this.elevatorFee = 0,
+    this.elevatorPhone = '',
+    this.elevatorCompany = '',
+    this.elevatorContractStart = '',
+    this.elevatorContractEnd = '',
+    this.elevatorLastCheck = '',
+    this.elevatorCheckNotify = false,
+    this.elevatorCheckInterval = 6,
   });
   final String name;
   final String address;
@@ -136,6 +143,14 @@ class Building {
   final int floors;
   final double exchangeRate; // entered-currency → base
   final int elevatorFee;     // monthly elevator fee (base currency)
+  // Elevator maintenance contract + periodic-inspection reminder.
+  final String elevatorPhone;
+  final String elevatorCompany;
+  final String elevatorContractStart;
+  final String elevatorContractEnd;
+  final String elevatorLastCheck;     // تاريخ آخر فحص دوري للمصعد
+  final bool elevatorCheckNotify;
+  final int elevatorCheckInterval;    // months between periodic checks
 
   factory Building.fromJson(Map<String, dynamic> j) => Building(
         name: j['name'] ?? '',
@@ -149,6 +164,13 @@ class Building {
             ? (j['exchange_rate'] as num).toDouble()
             : double.tryParse('${j['exchange_rate'] ?? 1}') ?? 1,
         elevatorFee: _int(j['elevator_fee']),
+        elevatorPhone: j['elevator_phone'] ?? '',
+        elevatorCompany: j['elevator_company'] ?? '',
+        elevatorContractStart: _dateStr(j['elevator_contract_start']),
+        elevatorContractEnd: _dateStr(j['elevator_contract_end']),
+        elevatorLastCheck: _dateStr(j['elevator_last_check']),
+        elevatorCheckNotify: j['elevator_check_notify'] == true || j['elevator_check_notify'] == 1,
+        elevatorCheckInterval: j['elevator_check_interval'] == null ? 6 : _int(j['elevator_check_interval']),
       );
 }
 
@@ -310,6 +332,10 @@ class Worker {
     required this.amount,
     required this.last,
     required this.next,
+    this.came = false,
+    this.lastVisit = '',
+    this.payStatus = 'none',
+    this.paidAmount = 0,
   });
   final int id;
   final String name;
@@ -320,6 +346,10 @@ class Worker {
   final int amount;
   final String last;
   final String next;
+  final bool came;          // حضر في هذه الدورة؟
+  final String lastVisit;   // تاريخ آخر حضور
+  final String payStatus;   // full | partial | none
+  final int paidAmount;     // المدفوع (إن كان جزئياً)
 
   factory Worker.fromJson(Map<String, dynamic> j) => Worker(
         id: _int(j['id']),
@@ -331,6 +361,10 @@ class Worker {
         amount: _int(j['amount']),
         last: '${j['last_payment'] ?? j['last']}'.split('T').first,
         next: '${j['next_due'] ?? j['next']}'.split('T').first,
+        came: j['came'] == true || j['came'] == 1,
+        lastVisit: _dateStr(j['last_visit']),
+        payStatus: j['pay_status'] ?? 'none',
+        paidAmount: _int(j['paid_amount']),
       );
 }
 

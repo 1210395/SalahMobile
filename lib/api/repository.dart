@@ -72,6 +72,18 @@ class Api {
     s.payTypes = _list(payTypes).map(PayType.fromJson).toList();
   }
 
+  /// Re-fetch only the live summary for a period (year + optional 0-based month)
+  /// so the dashboard totals reflect the selected time window.
+  Future<void> fetchSummary(BType b, {required int year, int? month}) async {
+    final q = {
+      'btype': btypeKey(b),
+      'year': '$year',
+      if (month != null) 'month': '$month', // backend month param is 0-based
+    };
+    final summary = (await _dio.get('/summary', queryParameters: q)).data;
+    DataStore.I.summary = SummaryData.fromJson(_obj(summary));
+  }
+
   // ───────────────────────────── Writes ─────────────────────────────
   // building_key is derived server-side from ?btype for admins, so every write
   // carries the active building type as a query param.
@@ -84,6 +96,16 @@ class Api {
 
   Future<void> createWorker(BType b, Map<String, dynamic> body) =>
       _dio.post('/workers', queryParameters: {'btype': btypeKey(b)}, data: body);
+
+  Future<void> updateWorker(BType b, int id, Map<String, dynamic> body) =>
+      _dio.put('/workers/$id', queryParameters: {'btype': btypeKey(b)}, data: body);
+
+  Future<void> deleteWorker(BType b, int id) =>
+      _dio.delete('/workers/$id', queryParameters: {'btype': btypeKey(b)});
+
+  /// Manager composes a push/internal notification to all residents or one unit.
+  Future<void> sendNotification(BType b, Map<String, dynamic> body) =>
+      _dio.post('/notifications', queryParameters: {'btype': btypeKey(b)}, data: body);
 
   Future<void> createCraftsman(Map<String, dynamic> body) =>
       _dio.post('/craftsmen', data: body);
