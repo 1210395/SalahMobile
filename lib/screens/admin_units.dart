@@ -325,6 +325,10 @@ class _UnitsScreenState extends State<UnitsScreen> {
     String end = '';
     bool ongoing = true; // start open-ended; the switch toggles an end date.
     bool makeAccount = false;
+    // When on, the opening debt is auto-computed server-side as
+    // (sub × whole months since the contract start) instead of starting fresh
+    // this month — "احتساب الإيجار من بداية العقد".
+    bool backDebt = false;
     showAppSheet(
       context,
       StatefulBuilder(
@@ -350,7 +354,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
                     'kind': kind,
                     'phone': f['phone']!.trim().isEmpty ? '—' : f['phone']!.trim(),
                     'sub': int.tryParse(f['sub']!.trim()) ?? ctx.building.subscription,
-                    'balance': -prev, // ذمم سابقة → opening debit
+                    'balance': -prev, // ذمم سابقة → opening debit (ignored if back_debt)
+                    'back_debt': backDebt,
                     'contract_start': start,
                     'contract_end': ongoing ? '' : end,
                     'status': 'ok',
@@ -424,18 +429,33 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 suffix: '\$',
                 keyboardType: TextInputType.number,
                 onChanged: (v) => f['sub'] = v),
-            Field(
-                label: 'ذمم سابقة (اختياري)',
-                icon: 'dollar',
-                placeholder: '0',
-                ltr: true,
-                suffix: '\$',
-                keyboardType: TextInputType.number,
-                onChanged: (v) => f['prev'] = v),
+            if (!backDebt)
+              Field(
+                  label: 'ذمم سابقة (اختياري)',
+                  icon: 'dollar',
+                  placeholder: '0',
+                  ltr: true,
+                  suffix: '\$',
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) => f['prev'] = v),
             DateField(
                 label: 'تاريخ بداية العقد',
                 value: start,
                 onChanged: (v) => setS(() => start = v)),
+            _switchRow(
+              label: 'احتساب الإيجار من بداية العقد',
+              checked: backDebt,
+              onChanged: (v) => setS(() => backDebt = v),
+            ),
+            if (backDebt)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: Text(
+                    'سيُحتسب الدين الافتتاحي = الدفعة الشهرية × عدد الأشهر منذ بداية العقد. '
+                    'بدون التفعيل يبدأ الحساب من الشهر الحالي.',
+                    style: AppType.base(
+                        size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
+              ),
             DateField(
                 label: 'تاريخ نهاية العقد',
                 value: ongoing ? '' : end,
