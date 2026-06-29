@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 
 import '../common.dart';
 import '../api/repository.dart';
+import 'admin_reports.dart' show pendingReportTab;
 
 // ───────────────────────────── Payments ─────────────────────────────
 
@@ -243,6 +244,18 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           ]),
           const SizedBox(height: 12),
           AppButton(
+            label: 'كل دفعات ${ctx.res ? 'هذه الشقة' : 'هذا المحل'}',
+            full: true,
+            size: BtnSize.lg,
+            variant: BtnVariant.outline,
+            icon: 'list',
+            onTap: () {
+              Navigator.of(context).pop();
+              _openUnitPayments(ctx, p.unit, p.name);
+            },
+          ),
+          const SizedBox(height: 8),
+          AppButton(
             label: 'سند قبض',
             full: true,
             size: BtnSize.lg,
@@ -280,6 +293,76 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               }
             },
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Every payment recorded for one unit (newest first) + a running total.
+  void _openUnitPayments(Ctx ctx, String unitNo, String name) {
+    final list = kPayments.where((x) => x.unit == unitNo).toList()
+      ..sort((a, b) {
+        final byYear = b.year.compareTo(a.year);
+        return byYear != 0 ? byYear : b.month.compareTo(a.month);
+      });
+    final total = list.fold<int>(0, (s, x) => s + x.amount);
+    showAppSheet(
+      context,
+      SheetShell(
+        title: 'كل الدفعات — $name',
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+                color: AppColors.surface2, borderRadius: BorderRadius.circular(12)),
+            child: Text('${list.length} دفعة بإجمالي ${fmtUSD(total)} لـ '
+                '${ctx.res ? 'الشقة' : 'المحل'} $unitNo.',
+                style: AppType.base(
+                    size: 13, weight: FontWeight.w600, color: AppColors.ink600, height: 1.5)),
+          ),
+          const SizedBox(height: 12),
+          if (list.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Text('لا توجد دفعات مسجّلة.',
+                  textAlign: TextAlign.center,
+                  style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.ink500)),
+            )
+          else
+            for (final x in list)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    border: Border.all(color: AppColors.line, width: 1.5),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Row(
+                    children: [
+                      const AppIcon('wallet', size: 18, color: AppColors.navy600),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('${monthLabelNum(x.month)} ${x.year}',
+                                style: AppType.base(size: 13.5, weight: FontWeight.w700)),
+                            Text(_kindNoGuard(x.kind),
+                                style: AppType.base(
+                                    size: 11.5, weight: FontWeight.w600, color: AppColors.ink500)),
+                          ],
+                        ),
+                      ),
+                      NumText(fmtUSD(x.amount),
+                          style: AppType.num(size: 13.5, weight: FontWeight.w800, color: AppColors.ok)),
+                    ],
+                  ),
+                ),
+              ),
         ],
       ),
     );
@@ -439,7 +522,12 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
   static bool _isSub(PayType t) => t.id == 'sub' || t.label.contains('الاشتراك الشهري');
   Object unit = '';
   Object method = 'نقداً';
-  Object payMonth = 4;
+  // Months this payment covers — multi-select (one payment row saved per month).
+  // Defaults to the current calendar month.
+  late final Set<int> payMonths = {DateTime.now().month - 1};
+  // Per-type override prices captured via the zero-fee popup (id → amount), so a
+  // بند whose stored fee is 0 can be priced inline without re-opening settings.
+  final Map<String, int> priceOverride = {};
   // Currency the amount is entered in + its rate to the building's base currency.
   late Object currency = activeCurrency;
   String rateStr = '';
@@ -460,7 +548,8 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     final ctx = widget.ctx;
     // Sum of the currently-ON بنود (+ the optional "أخرى" amount) — this seeds
     // the editable total field unless the admin has overridden it manually.
-    final itemsSum = kPayTypes.where((t) => types[t.id] == true).fold<int>(0, (s, t) => s + t.amount) +
+    int feeOf(PayType t) => priceOverride[t.id] ?? t.amount;
+    final itemsSum = kPayTypes.where((t) => types[t.id] == true).fold<int>(0, (s, t) => s + feeOf(t)) +
         (otherOn ? (int.tryParse(otherAmount) ?? 0) : 0);
     final defaultStr = '$itemsSum';
     // The amount that actually gets saved (manual override wins).
@@ -473,17 +562,22 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         {'sub': 'wallet', 'elev': 'elevator', 'guard': 'shield'}[id] ?? 'parking';
 
     final sameCur = currency == activeCurrency;
-    final rateOk = sameCur || (double.tryParse(rateStr) ?? 0) > 0;
+    final rate = sameCur ? 1.0 : (double.tryParse(rateStr) ?? 0);
+    final rateOk = sameCur || rate > 0;
+    // The total expressed in the building's base currency (exchange applied) —
+    // this is what reflects on the dashboard/reports, so the button shows it.
+    final baseTotal = sameCur ? total : (total * rate).round();
     final canSave = ((target == 'one' && unit != '') ||
             (target == 'group' && selUnits.isNotEmpty) ||
             target == 'all') &&
         rateOk &&
+        payMonths.isNotEmpty &&
         total > 0;
 
     return SheetShell(
       title: 'تسجيل دفعة جديدة',
       footer: AppButton(
-        label: 'حفظ الدفعة · ${fmtMoney(total, currency as String)}',
+        label: 'حفظ الدفعة · ${fmtMoney(baseTotal, activeCurrency)}',
         full: true,
         size: BtnSize.lg,
         icon: 'check',
@@ -583,12 +677,23 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                             Text(' (اختياري)',
                                 style: AppType.base(size: 11, weight: FontWeight.w600, color: AppColors.ink400)),
                         ]),
-                        NumText(fmtUSD(t.amount),
+                        NumText(fmtUSD(feeOf(t)),
                             style: AppType.num(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
                       ],
                     ),
                   ),
-                  AppSwitch(checked: on, onChanged: (v) => setState(() => types[t.id] = v)),
+                  AppSwitch(
+                      checked: on,
+                      onChanged: (v) async {
+                        // Turning ON a بند whose fee is 0 → ask for its price +
+                        // service description first, and persist it as the new
+                        // default (per client note: handle zero-fee checkboxes).
+                        if (v && feeOf(t) <= 0) {
+                          await _promptZeroFee(ctx, t);
+                          return;
+                        }
+                        setState(() => types[t.id] = v);
+                      }),
                 ],
               ),
             ),
@@ -691,26 +796,58 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                 '${fmtMoney((total * (double.tryParse(rateStr) ?? 0)).round(), activeCurrency)} '
                 '($activeCurrency) بعملة المبنى.'),
           ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: SelectField(
-                label: 'الشهر',
-                options: [for (var i = 0; i < 12; i++) SelectOption(i, monthLabelNum(i))],
-                value: payMonth,
-                onChanged: (v) => setState(() => payMonth = v),
+        // Months covered — multi-select. One payment row is saved per month, so
+        // ticking 3 months records the bill three times for the chosen unit(s).
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            children: [
+              Text('الأشهر المشمولة (${payMonths.length})',
+                  style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() => payMonths
+                  ..clear()
+                  ..add(DateTime.now().month - 1)),
+                child: Text('الشهر الحالي',
+                    style: AppType.base(size: 12, weight: FontWeight.w700, color: AppColors.navy600)),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: DateField(
-                label: 'التاريخ',
-                value: dateIso,
-                onChanged: (v) => setState(() => dateIso = v),
-              ),
-            ),
-          ],
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < 12; i++)
+                GestureDetector(
+                  onTap: () => setState(() =>
+                      payMonths.contains(i) ? payMonths.remove(i) : payMonths.add(i)),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: payMonths.contains(i) ? AppColors.navy700 : AppColors.surface,
+                      border: Border.all(
+                          color: payMonths.contains(i) ? AppColors.navy700 : AppColors.line2,
+                          width: 1.5),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(monthLabelNum(i),
+                        style: AppType.base(
+                            size: 12.5,
+                            weight: FontWeight.w700,
+                            color: payMonths.contains(i) ? Colors.white : AppColors.ink600)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        DateField(
+          label: 'تاريخ الدفع',
+          value: dateIso,
+          onChanged: (v) => setState(() => dateIso = v),
         ),
         SelectField(
           label: 'طريقة الدفع',
@@ -729,6 +866,61 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     );
   }
 
+  /// A بند whose stored fee is 0 prompts for a price + service description when
+  /// switched on; the price is saved as the new default (server) and applied to
+  /// this payment immediately.
+  Future<void> _promptZeroFee(Ctx ctx, PayType t) async {
+    String priceStr = '';
+    String serviceDesc = '';
+    await showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'تحديد سعر ${t.label}',
+          footer: AppButton(
+            label: 'حفظ كقيمة افتراضية',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            disabled: (int.tryParse(priceStr) ?? 0) <= 0,
+            onTap: () async {
+              final price = int.tryParse(priceStr) ?? 0;
+              Navigator.of(sheetCtx).pop();
+              setState(() {
+                priceOverride[t.id] = price;
+                types[t.id] = true;
+              });
+              if (t.dbId > 0) {
+                try {
+                  await Api.I.updatePayType(t.dbId, {'amount': price});
+                  await ctx.reload();
+                } catch (_) {}
+              }
+              final extra = serviceDesc.trim().isEmpty ? '' : ' — ${serviceDesc.trim()}';
+              ctx.toast('تم تحديد سعر ${t.label}: ${fmtUSD(price)}$extra');
+            },
+          ),
+          children: [
+            _infoNote('قيمة هذا البند 0 حالياً. حدّد سعره ووصف الخدمة؛ سيُحفظ '
+                'كقيمة افتراضية للمرات القادمة.'),
+            const SizedBox(height: 12),
+            Field(
+                label: 'السعر',
+                icon: 'wallet',
+                placeholder: '0',
+                ltr: true,
+                keyboardType: TextInputType.number,
+                onChanged: (v) => setS(() => priceStr = v)),
+            AppTextArea(
+                label: 'وصف الخدمة (اختياري)',
+                placeholder: 'مثال: صيانة شاملة شهرية للمصعد',
+                onChanged: (v) => serviceDesc = v),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// POST one payment per target unit, then refresh the bundle.
   Future<void> _save(Ctx ctx, int total, List<Unit> unitList) async {
     final targets = target == 'all'
@@ -742,7 +934,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
       if (otherOn && otherLabel.trim().isNotEmpty) otherLabel.trim(),
     ];
     final kind = labels.isEmpty ? 'دفعة' : labels.join(' + ');
-    final m = payMonth as int;
+    final months = payMonths.isEmpty ? {DateTime.now().month - 1} : payMonths;
     final date = dateIso;
     // Year follows the picked date so the payment lands in the right report year.
     final year = int.tryParse(date.split('-').first) ?? DateTime.now().year;
@@ -760,19 +952,22 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         for (final x in unitList) {
           if (x.no == no) { u = x; break; }
         }
-        await Api.I.createPayment(ctx.btype, {
-          'unit_no': no,
-          if (u != null && u.resident.trim().isNotEmpty) 'name': u.resident,
-          'amount': baseAmount,
-          'original_amount': total,
-          'currency': cur,
-          'exchange_rate': rate,
-          'kind': kind,
-          'month': m,
-          'year': year,
-          'date': date,
-          'method': method as String,
-        });
+        // One row per covered month.
+        for (final m in months) {
+          await Api.I.createPayment(ctx.btype, {
+            'unit_no': no,
+            if (u != null && u.resident.trim().isNotEmpty) 'name': u.resident,
+            'amount': baseAmount,
+            'original_amount': total,
+            'currency': cur,
+            'exchange_rate': rate,
+            'kind': kind,
+            'month': m,
+            'year': year,
+            'date': date,
+            'method': method as String,
+          });
+        }
       }
       await ctx.reload();
       final who = target == 'all'
@@ -780,7 +975,8 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
           : target == 'group'
               ? '${targets.length} $unitWord'
               : '$unitWord $unit';
-      ctx.toast('تم تسجيل دفعة بقيمة ${fmtMoney(total, cur)} لـ $who');
+      final mLabel = months.length == 1 ? 'شهر واحد' : '${months.length} أشهر';
+      ctx.toast('تم تسجيل دفعة بقيمة ${fmtMoney(total, cur)} لـ $who عن $mLabel');
     } catch (_) {
       ctx.toast('تعذّر حفظ الدفعة، تحقّق من الاتصال', tone: 'late');
     }
@@ -821,10 +1017,28 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         title: 'إدارة المصروفات',
         subtitle: 'نفقات المبنى',
         onBack: () => ctx.go('home'),
+        right: RoundBtn(
+          icon: 'pie',
+          onTap: () {
+            pendingReportTab = 'expense';
+            ctx.go('reports');
+          },
+        ),
       ),
       nav: ctx.adminNav,
       fab: AppFab(icon: 'plus', label: 'مصروف جديد', onTap: () => _openAdd(ctx)),
       children: [
+        AppButton(
+          label: 'الانتقال إلى تقرير المصروفات',
+          variant: BtnVariant.outline,
+          full: true,
+          icon: 'pie',
+          onTap: () {
+            pendingReportTab = 'expense';
+            ctx.go('reports');
+          },
+        ),
+        const SizedBox(height: 12),
         HeroBanner(
           gradient: const [AppColors.late700, Color(0xFF8C2019)],
           shadow: const [BoxShadow(color: Color(0x4DAF2E26), offset: Offset(0, 10), blurRadius: 26)],
@@ -955,78 +1169,138 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   };
 
   void _openAdd(Ctx ctx) {
-    final f = {'cat': kExpCats.first, 'supplier': '', 'amount': '', 'date': todayIso(), 'desc': ''};
+    final f = {
+      'cat': kExpCats.first,
+      'supplier': '',
+      'amount': '',
+      'date': todayIso(),
+      'desc': '',
+      'currency': activeCurrency,
+      'rate': '',
+    };
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
-          title: 'تسجيل مصروف',
-          footer: AppButton(
-            label: 'حفظ المصروف',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            disabled: f['supplier']!.trim().isEmpty || (int.tryParse(f['amount']!) ?? 0) <= 0,
-            onTap: () async {
-              final meta = _expMeta[f['cat']] ?? const ['receipt', 'gold'];
-              Navigator.of(sheetCtx).pop();
-              try {
-                await Api.I.createExpense(ctx.btype, {
-                  'cat': f['cat'],
-                  'icon': meta[0],
-                  'tone': meta[1],
-                  'supplier': f['supplier']!.trim(),
-                  'amount': int.tryParse(f['amount']!) ?? 0,
-                  'date': f['date'],
-                  'description': f['desc'],
-                });
-                await ctx.reload();
-                ctx.toast('تم تسجيل المصروف');
-              } catch (_) {
-                ctx.toast('تعذّر حفظ المصروف، تحقّق من الاتصال', tone: 'late');
-              }
-            },
-          ),
-          children: [
-            SelectField(
-              label: 'التصنيف',
-              icon: 'grid',
-              options: [for (final c in kExpCats) SelectOption(c, c)],
-              value: f['cat'],
-              onChanged: (v) => setS(() => f['cat'] = v as String),
+        builder: (sheetCtx, setS) {
+          final cur = f['currency']!;
+          final sameCur = cur == activeCurrency;
+          final rate = sameCur ? 1.0 : (double.tryParse(f['rate']!) ?? 0);
+          final original = int.tryParse(f['amount']!) ?? 0;
+          final baseAmount = sameCur ? original : (original * rate).round();
+          final rateOk = sameCur || rate > 0;
+          return SheetShell(
+            title: 'تسجيل مصروف',
+            footer: AppButton(
+              label: 'حفظ المصروف · ${fmtMoney(baseAmount, activeCurrency)}',
+              full: true,
+              size: BtnSize.lg,
+              icon: 'check',
+              disabled: f['supplier']!.trim().isEmpty || original <= 0 || !rateOk,
+              onTap: () async {
+                final meta = _expMeta[f['cat']] ?? const ['receipt', 'gold'];
+                Navigator.of(sheetCtx).pop();
+                try {
+                  await Api.I.createExpense(ctx.btype, {
+                    'cat': f['cat'],
+                    'icon': meta[0],
+                    'tone': meta[1],
+                    'supplier': f['supplier']!.trim(),
+                    'amount': baseAmount,
+                    'original_amount': original,
+                    'currency': cur,
+                    'exchange_rate': rate,
+                    'date': f['date'],
+                    'description': f['desc'],
+                  });
+                  await ctx.reload();
+                  ctx.toast('تم تسجيل المصروف');
+                } catch (_) {
+                  ctx.toast('تعذّر حفظ المصروف، تحقّق من الاتصال', tone: 'late');
+                }
+              },
             ),
-            Field(
-                label: 'المورّد / الجهة',
-                icon: 'store',
-                placeholder: 'اسم المورّد',
-                onChanged: (v) => setS(() => f['supplier'] = v)),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                    child: Field(
-                        label: 'المبلغ',
-                        icon: 'dollar',
-                        placeholder: '0',
-                        ltr: true,
-                        suffix: '\$',
-                        keyboardType: TextInputType.number,
-                        onChanged: (v) => setS(() => f['amount'] = v))),
-                const SizedBox(width: 10),
-                Expanded(
-                    child: Field(
-                        label: 'التاريخ',
-                        value: f['date']!,
-                        ltr: true,
-                        onChanged: (v) => f['date'] = v)),
-              ],
-            ),
-            AppTextArea(
-                label: 'الوصف',
-                placeholder: 'تفاصيل المصروف…',
-                onChanged: (v) => f['desc'] = v),
-          ],
-        ),
+            children: [
+              SelectField(
+                label: 'التصنيف',
+                icon: 'grid',
+                options: [for (final c in kExpCats) SelectOption(c, c)],
+                value: f['cat'],
+                onChanged: (v) => setS(() => f['cat'] = v as String),
+              ),
+              Field(
+                  label: 'المورّد / الجهة',
+                  icon: 'store',
+                  placeholder: 'اسم المورّد',
+                  onChanged: (v) => setS(() => f['supplier'] = v)),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                      child: Field(
+                          label: 'المبلغ',
+                          icon: 'dollar',
+                          placeholder: '0',
+                          ltr: true,
+                          suffix: currencySymbol(cur),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) => setS(() => f['amount'] = v))),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      child: DateField(
+                          label: 'التاريخ',
+                          value: f['date']!,
+                          onChanged: (v) => setS(() => f['date'] = v))),
+                ],
+              ),
+              // Currency + exchange rate (mirrors payments) so a NIS/other-currency
+              // expense is stored converted, not silently kept as dollars.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: SelectField(
+                      label: 'العملة',
+                      icon: 'dollar',
+                      options: [for (final c in kCurrencyCodes) SelectOption(c, '$c (${currencySymbol(c)})')],
+                      value: cur,
+                      onChanged: (v) => setS(() => f['currency'] = v as String),
+                    ),
+                  ),
+                  if (!sameCur) ...[
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Field(
+                          label: 'سعر الصرف → $activeCurrency',
+                          icon: 'refresh',
+                          placeholder: '3.75',
+                          ltr: true,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (v) => setS(() => f['rate'] = v)),
+                    ),
+                  ],
+                ],
+              ),
+              if (!sameCur)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                        color: AppColors.surface2, borderRadius: BorderRadius.circular(12)),
+                    child: Text('المبلغ ${fmtMoney(original, cur)} يعادل '
+                        '${fmtMoney(baseAmount, activeCurrency)} بعملة المبنى.',
+                        style: AppType.base(
+                            size: 13, weight: FontWeight.w600, color: AppColors.ink600, height: 1.5)),
+                  ),
+                ),
+              AppTextArea(
+                  label: 'الوصف',
+                  placeholder: 'تفاصيل المصروف…',
+                  onChanged: (v) => f['desc'] = v),
+            ],
+          );
+        },
       ),
     );
   }

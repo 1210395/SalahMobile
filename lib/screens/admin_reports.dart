@@ -19,6 +19,10 @@ List<ChartDatum> _withValueLabels(List<ChartDatum> data) => data
 
 // ───────────────────────────── Reports ─────────────────────────────
 
+/// Set by another screen (e.g. Expenses) before navigating to 'reports' so the
+/// reports screen opens on a specific tab. Consumed once in initState.
+String? pendingReportTab;
+
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key, required this.ctx});
   final Ctx ctx;
@@ -29,8 +33,21 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   String tab = 'monthly';
+
+  @override
+  void initState() {
+    super.initState();
+    if (pendingReportTab != null) {
+      tab = pendingReportTab!;
+      pendingReportTab = null;
+    }
+  }
+
   late int selYear = kYears.isNotEmpty ? kYears.last : DateTime.now().year;
   int selMonth = DateTime.now().month - 1;
+  // Expense-report filters (category + month; -1 month = whole year).
+  String expCat = 'all';
+  int expMonth = -1;
   String? selUnitNo;
 
   /// Building-wide amount collected in the selected month/year.
@@ -192,16 +209,49 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final defaultSheet = book.getDefaultSheet();
       for (final y in years) {
         final sheet = book['$y'];
+        // Header: month column + one column per apartment/shop + a row-total.
         sheet.appendRow([
           xlsx.TextCellValue('الشهر'),
-          for (final u in residents) xlsx.TextCellValue(u.resident),
+          for (final u in residents) xlsx.TextCellValue('${u.no} — ${u.resident}'),
+          xlsx.TextCellValue('الإجمالي'),
         ]);
+        final colTotals = List<int>.filled(residents.length, 0);
         for (var m = 0; m < 12; m++) {
-          sheet.appendRow([
-            xlsx.TextCellValue(monthLabelNum(m)),
-            for (final u in residents) xlsx.IntCellValue(_paymentFor(u.no, m, y)),
-          ]);
+          var rowTotal = 0;
+          final cells = <xlsx.CellValue>[xlsx.TextCellValue(monthLabelNum(m))];
+          for (var i = 0; i < residents.length; i++) {
+            final v = _paymentFor(residents[i].no, m, y);
+            colTotals[i] += v;
+            rowTotal += v;
+            cells.add(xlsx.IntCellValue(v));
+          }
+          cells.add(xlsx.IntCellValue(rowTotal));
+          sheet.appendRow(cells);
         }
+        // Column totals (paid per unit across the year) + grand total.
+        sheet.appendRow([
+          xlsx.TextCellValue('الإجمالي'),
+          for (final t in colTotals) xlsx.IntCellValue(t),
+          xlsx.IntCellValue(colTotals.fold<int>(0, (s, t) => s + t)),
+        ]);
+        // Required for the year (subscription × 12) per unit.
+        sheet.appendRow([
+          xlsx.TextCellValue('المطلوب سنوياً'),
+          for (final u in residents) xlsx.IntCellValue(u.sub * 12),
+          xlsx.IntCellValue(residents.fold<int>(0, (s, u) => s + u.sub * 12)),
+        ]);
+        // Remaining balance (− = مدين/owes, + = دائن/credit).
+        sheet.appendRow([
+          xlsx.TextCellValue('المتبقي (الرصيد)'),
+          for (final u in residents) xlsx.IntCellValue(u.balance),
+          xlsx.IntCellValue(residents.fold<int>(0, (s, u) => s + u.balance)),
+        ]);
+        // Paid-in-full? (✓ when balance ≥ 0).
+        sheet.appendRow([
+          xlsx.TextCellValue('مسدّد بالكامل؟'),
+          for (final u in residents) xlsx.TextCellValue(u.balance >= 0 ? 'نعم' : 'لا'),
+          xlsx.TextCellValue(''),
+        ]);
       }
       // Drop the auto-created default sheet (we only want the per-year ones).
       if (defaultSheet != null && !years.map((y) => '$y').contains(defaultSheet)) {
@@ -280,6 +330,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     for (final e in kExpenses) {
       final d = DateTime.tryParse(e.date);
       if (d != null && d.year != selYear) continue;
+      if (expMonth >= 0 && (d == null || d.month - 1 != expMonth)) continue;
+      if (expCat != 'all' && e.cat != expCat) continue;
       byCat[e.cat] = (byCat[e.cat] ?? 0) + e.amount;
     }
     const palette = [
@@ -575,8 +627,40 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   List<Widget> _expense(List<ChartDatum> expData, int expTotal) => [
         _yearSelect(),
+        // Filters: category + month (more granular expense reporting).
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SelectField(
+                label: 'التصنيف',
+                icon: 'grid',
+                options: [
+                  const SelectOption('all', 'كل التصنيفات'),
+                  for (final c in kExpCats) SelectOption(c, c),
+                ],
+                value: expCat,
+                onChanged: (v) => setState(() => expCat = v as String),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: SelectField(
+                label: 'الشهر',
+                icon: 'calendar',
+                options: [
+                  const SelectOption(-1, 'كل الأشهر'),
+                  for (var i = 0; i < 12; i++) SelectOption(i, monthLabelNum(i)),
+                ],
+                value: expMonth,
+                onChanged: (v) => setState(() => expMonth = v as int),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         if (expData.isEmpty)
-          const EmptyState(icon: 'expense', title: 'لا توجد مصروفات في هذه السنة'),
+          const EmptyState(icon: 'expense', title: 'لا توجد مصروفات مطابقة للفلاتر'),
         if (expData.isNotEmpty)
         AppCard(
           child: Row(
@@ -945,7 +1029,7 @@ class _YearsScreenState extends State<YearsScreen> {
 
     return ScreenScaffold(
       header: AppHeader(
-        title: 'السنوات والأشهر',
+        title: 'الترحيل السنوي',
         subtitle: 'متابعة الدفع شهرياً',
         onBack: () => ctx.go('home'),
         right: RoundBtn(icon: 'plus', onTap: () => ctx.toast('تمت إضافة سنة جديدة')),

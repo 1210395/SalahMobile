@@ -480,8 +480,8 @@ class MoreHub extends StatelessWidget {
         ('building', 'إدارة المبنى', 'building2'),
         ('units', res ? 'الشقق السكنية' : 'المحلات التجارية', res ? 'building' : 'store'),
         ('approvals', 'طلبات الانضمام', 'users'),
-        ('subscribe', 'الاشتراك والإعداد', 'shield'),
-        ('years', 'السنوات والأشهر', 'calendar'),
+        ('subscribe', 'الاشتراك بالتطبيق', 'shield'),
+        ('years', 'الترحيل السنوي', 'calendar'),
       ]),
       ('المالية', [
         ('payments', 'الإيرادات', 'wallet'),

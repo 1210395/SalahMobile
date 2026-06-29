@@ -279,58 +279,31 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  String method = 'phone';
-  AppRole role = AppRole.admin;
+  // Two ways in: managers/owners via email-or-phone + password; residents via a
+  // QR / login code their manager issues (no public resident sign-in).
+  String method = 'password';
   late BType btype = widget.ctx.btype;
   String val = '';
-  String code = '';
-  String name = '';
+  String pass = '';
   // Resident QR / login code (typed or scanned).
   String loginCode = '';
   // Bumped after a scan so the code Field rebuilds with the new value.
   int _codeKey = 0;
-  // Phone sign-in requires the OTP to have been sent before "دخول" is enabled.
-  bool otpSent = false;
 
   Future<void> _submit() async {
     final ctx = widget.ctx;
-    String? err;
-    if (method == 'phone') {
-      err = await ctx.signIn(
-          phone: val, code: code, name: name.trim().isEmpty ? null : name.trim(), role: role, btype: btype);
-    } else if (method == 'code') {
-      err = await _redeemCode();
-    } else {
-      // Email/password mode now accepts an email OR a mobile number.
-      err = await _signInIdentifier();
-    }
+    final err = method == 'code' ? await _redeemCode() : await _signInIdentifier();
     if (err != null) ctx.toast(err, tone: 'late');
   }
 
-  Future<void> _sendOtp() async {
+  // Email-or-mobile + password. signIn() routes an '@' address through
+  // loginEmail and anything else through loginIdentifier; the server returns the
+  // user's real role + building, so no role/type picker is needed here.
+  Future<String?> _signInIdentifier() {
     final ctx = widget.ctx;
-    if (val.isEmpty) {
-      ctx.toast('أدخل رقم الجوال أولاً', tone: 'late');
-      return;
-    }
-    try {
-      final dev = await ctx.requestOtp(val);
-      setState(() => otpSent = true);
-      ctx.toast(dev != null ? 'رمز التحقق التجريبي: $dev' : 'تم إرسال رمز التحقق إلى جوالك');
-    } catch (_) {
-      ctx.toast('تعذّر إرسال الرمز', tone: 'late');
-    }
-  }
-
-  // Email-or-mobile + password. Logs in via AuthStore then mirrors signIn's
-  // post-login transition by re-running it with the resolved identifier.
-  Future<String?> _signInIdentifier() async {
-    final ctx = widget.ctx;
-    // signIn() routes email through loginEmail; pass the identifier as email so
-    // an '@' address works unchanged, and as phone otherwise. The store decides.
     return val.contains('@')
-        ? ctx.signIn(email: val, password: code, role: role, btype: btype)
-        : ctx.signIn(phone: val, password: code, role: role, btype: btype);
+        ? ctx.signIn(email: val.trim(), password: pass, role: AppRole.admin, btype: btype)
+        : ctx.signIn(phone: val.trim(), password: pass, role: AppRole.admin, btype: btype);
   }
 
   // Redeem a resident QR/login code, then land the resident on their home via
@@ -349,16 +322,13 @@ class _LoginScreenState extends State<LoginScreen> {
     ctx.toast('تم مسح الرمز');
   }
 
-  bool get _canSubmit => switch (method) {
-        'phone' => val.isNotEmpty && otpSent && code.length >= 4,
-        'code' => loginCode.trim().isNotEmpty,
-        _ => val.isNotEmpty && code.isNotEmpty,
-      };
+  bool get _canSubmit => method == 'code'
+      ? loginCode.trim().isNotEmpty
+      : val.trim().isNotEmpty && pass.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
-    final phone = method == 'phone';
     final codeMode = method == 'code';
     return ScreenScaffold(
       header: AppHeader(
@@ -369,14 +339,9 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         Segmented(
           value: method,
-          onChanged: (v) => setState(() {
-            method = v as String;
-            otpSent = false;
-            code = '';
-          }),
+          onChanged: (v) => setState(() => method = v as String),
           options: const [
-            SegOption('phone', 'رقم الجوال', icon: 'phone'),
-            SegOption('email', 'البريد', icon: 'mail'),
+            SegOption('password', 'بريد / جوال', icon: 'mail'),
             SegOption('code', 'كود الدخول / QR', icon: 'qr'),
           ],
         ),
@@ -401,30 +366,13 @@ class _LoginScreenState extends State<LoginScreen> {
             onTap: _scanCode,
           ),
           const SizedBox(height: 14),
-        ]
-        // Full (four-part) name — only needed for first-time phone/OTP sign-up,
-        // not for email login.
-        else if (phone) ...[
-          Field(
-            label: 'الاسم الرباعي',
-            icon: 'user',
-            placeholder: 'الاسم الأول والأب والجد والعائلة',
-            onChanged: (v) => setState(() => name = v),
-          ),
-          Field(
-            label: 'رقم الجوال',
-            icon: 'phone',
-            placeholder: '5X XXX XXXX',
-            keyboardType: TextInputType.phone,
-            ltr: true,
-            onChanged: (v) => setState(() {
-              val = v;
-              otpSent = false; // re-send required if the number changes
-            }),
-          ),
+          Text('كود الدخول خاص بالسكان — يزوّده مسؤول العمارة عبر رمز QR أو رسالة واتساب. '
+              'لا يوجد تسجيل عام للسكان.',
+              style: AppType.base(
+                  size: 12.5, weight: FontWeight.w600, color: AppColors.ink500, height: 1.6)),
         ] else ...[
           Field(
-            label: 'البريد الإلكتروني أو رقم الموبايل',
+            label: 'البريد الإلكتروني أو رقم الجوال',
             icon: 'mail',
             placeholder: 'name@email.com أو 5X XXX XXXX',
             keyboardType: TextInputType.emailAddress,
@@ -437,67 +385,11 @@ class _LoginScreenState extends State<LoginScreen> {
             placeholder: 'كلمة المرور',
             obscure: true,
             ltr: true,
-            onChanged: (v) => setState(() => code = v),
-          ),
-        ],
-        // Code/QR login always lands as a resident, so the role & building-type
-        // pickers are not shown for it (the code itself identifies the resident).
-        if (codeMode)
-          Text('كود الدخول خاص بالسكان — يزوّده مسؤول العمارة عبر رمز QR أو رسالة واتساب.',
-              style: AppType.base(
-                  size: 12.5, weight: FontWeight.w600, color: AppColors.ink500, height: 1.6))
-        else ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
-            child: Text('نوع الحساب',
-                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-          ),
-          Row(
-            children: [
-              Expanded(child: _roleCard(AppRole.admin, 'مسؤول لجنة المبنى', 'shield')),
-              const SizedBox(width: 10),
-              Expanded(child: _roleCard(AppRole.resident, 'ساكن', 'user')),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text('نوع المبنى',
-                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-          ),
-          Segmented(
-            value: btype,
-            onChanged: (v) => setState(() => btype = v as BType),
-            options: const [
-              SegOption(BType.residential, 'سكنية (شقق)', icon: 'building'),
-              SegOption(BType.commercial, 'تجارية (محلات)', icon: 'store'),
-            ],
+            marginBottom: 0,
+            onChanged: (v) => setState(() => pass = v),
           ),
         ],
         const SizedBox(height: 22),
-        // For phone sign-in the OTP field sits right next to the "send code"
-        // button (per client feedback), and "دخول" stays disabled until a valid
-        // code is entered.
-        if (phone) ...[
-          AppButton(
-            label: otpSent ? 'إعادة إرسال الرمز' : 'إرسال رمز التحقق',
-            variant: BtnVariant.outline,
-            size: BtnSize.lg,
-            full: true,
-            icon: 'send',
-            onTap: _sendOtp,
-          ),
-          const SizedBox(height: 12),
-          Field(
-            label: 'رمز التحقق (OTP)',
-            icon: 'lock',
-            placeholder: 'أدخل الرمز',
-            keyboardType: TextInputType.number,
-            ltr: true,
-            hint: otpSent ? 'أدخل الرمز المُرسَل إلى جوالك' : 'اضغط «إرسال رمز التحقق» أولاً',
-            onChanged: (v) => setState(() => code = v),
-          ),
-        ],
         AppButton(
           label: 'دخول',
           size: BtnSize.lg,
@@ -534,45 +426,6 @@ class _LoginScreenState extends State<LoginScreen> {
       ],
     );
   }
-
-  Widget _roleCard(AppRole r, String label, String icon) {
-    final on = role == r;
-    return GestureDetector(
-      onTap: () => setState(() => role = r),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-        decoration: BoxDecoration(
-          color: on ? AppColors.navy50 : AppColors.surface,
-          border: Border.all(color: on ? AppColors.navy600 : AppColors.line2, width: 1.5),
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: on
-              ? [const BoxShadow(color: AppColors.navy100, spreadRadius: 3, blurRadius: 0)]
-              : null,
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                  color: on ? AppColors.navy700 : AppColors.navy50,
-                  borderRadius: BorderRadius.circular(12)),
-              alignment: Alignment.center,
-              child: AppIcon(icon, size: 21, color: on ? Colors.white : AppColors.navy600),
-            ),
-            const SizedBox(height: 8),
-            Text(label,
-                textAlign: TextAlign.center,
-                style: AppType.base(
-                    size: 13,
-                    weight: FontWeight.w700,
-                    color: on ? AppColors.navy700 : AppColors.ink700)),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ───────────────────────────── Create account (sign-up) ─────────────────────────────
@@ -594,6 +447,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     'password': '',
     'confirm': '',
     'code': '',
+    'pref': 'email', // preferred sign-in method (email | phone)
   };
   // The email must be confirmed (mirrors the OTP flow) before "إنشاء الحساب".
   bool _codeSent = false;
@@ -678,8 +532,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
             const IconChip(icon: 'user', tone: 'navy', size: 42),
             const SizedBox(width: 12),
             Expanded(
-              child: Text('الحسابات الجديدة تُنشأ كساكن. للانضمام إلى عمارة، أرسل طلب '
-                  'انضمام بعد الدخول ووافق عليه مسؤول العمارة.',
+              child: Text('أنشئ حساب مدير العمارة. بعد الدخول تُكمل تفعيل الاشتراك ثم '
+                  'إعداد بيانات المبنى. السكان يدخلون عبر كود/رمز QR من المدير فقط.',
                   style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.ink700, height: 1.6)),
             ),
           ]),
@@ -730,6 +584,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   obscure: true,
                   marginBottom: 0,
                   onChanged: (v) => setState(() => f['confirm'] = v)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Preferred sign-in method (Note: "option to what is the main login way").
+        // Both identifiers are stored; this only sets which one is recommended.
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text('طريقة الدخول الأساسية',
+                    style: AppType.base(size: 14, weight: FontWeight.w800)),
+              ),
+              Segmented(
+                value: f['pref']!,
+                onChanged: (v) => setState(() => f['pref'] = v as String),
+                options: const [
+                  SegOption('email', 'البريد الإلكتروني', icon: 'mail'),
+                  SegOption('phone', 'رقم الجوال', icon: 'phone'),
+                ],
+              ),
             ],
           ),
         ),
