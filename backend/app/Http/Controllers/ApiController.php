@@ -69,31 +69,40 @@ class ApiController extends Controller
         $bk = $this->bk($r);
         Building::where('key', $bk)->firstOrFail();
         $now = now();
-        $curYear = (int) $now->year;
-        $curMonth0 = (int) $now->month - 1; // app months are 0-indexed
+
+        // The dashboard period: a year (default current) and an optional month
+        // (0-11). When a month is given the headline figures cover that month;
+        // otherwise they cover the whole selected year.
+        $year = (int) ($r->query('year') ?: $now->year);
+        $month = $r->filled('month') ? (int) $r->query('month') : null;
 
         $payments = Payment::where('building_key', $bk)->get(['amount', 'month', 'year']);
         $expenses = Expense::where('building_key', $bk)->get(['amount', 'cat', 'date']);
         $units = Unit::where('building_key', $bk)->where('status', '!=', 'vacant')->get(['balance']);
 
-        $revenueTotal = (int) $payments->sum('amount');
-        $expenseTotal = (int) $expenses->sum('amount');
-        $revenueM = (int) $payments->where('year', $curYear)->where('month', $curMonth0)->sum('amount');
+        $expYM = fn ($e) => Carbon::parse($e->date)->year === $year
+            && ($month === null || (int) Carbon::parse($e->date)->month === $month + 1);
 
-        $inCurMonth = fn ($e) => Carbon::parse($e->date)->year === $curYear
-            && (int) Carbon::parse($e->date)->month === $curMonth0 + 1;
-        $expenseM = (int) $expenses->filter($inCurMonth)->sum('amount');
-        $maintM = (int) $expenses->filter(fn ($e) => $e->cat === 'صيانة' && $inCurMonth($e))->sum('amount');
+        // Revenue/expense for the selected period (month or whole year).
+        $revenueM = (int) $payments->where('year', $year)
+            ->when($month !== null, fn ($c) => $c->where('month', $month))->sum('amount');
+        $expenseM = (int) $expenses->filter($expYM)->sum('amount');
+        $maintM = (int) $expenses->filter(fn ($e) => $e->cat === 'صيانة' && $expYM($e))->sum('amount');
 
+        // Cash balance = opening + the whole selected YEAR's revenue − expenses.
+        $yearRevenue = (int) $payments->where('year', $year)->sum('amount');
+        $yearExpense = (int) $expenses->filter(fn ($e) => Carbon::parse($e->date)->year === $year)->sum('amount');
+        $opening = (int) (YearSummary::where('building_key', $bk)->where('year', $year)->value('opening_balance') ?? 0);
+        $balance = $opening + $yearRevenue - $yearExpense;
+
+        // Residents' net dues (live, period-independent): owed by residents.
         $due = (int) $units->filter(fn ($u) => $u->balance < 0)->sum(fn ($u) => abs((int) $u->balance));
-        $opening = (int) (YearSummary::where('building_key', $bk)->where('year', $curYear)->value('opening_balance') ?? 0);
-        $balance = $opening + $revenueTotal - $expenseTotal;
 
         $arShort = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
         $trend = [];
-        // Full 12-month trend for the current year (Jan…Dec).
+        // Full 12-month trend for the selected year (Jan…Dec).
         for ($m0 = 0; $m0 < 12; $m0++) {
-            $rev = (int) $payments->where('year', $curYear)->where('month', $m0)->sum('amount');
+            $rev = (int) $payments->where('year', $year)->where('month', $m0)->sum('amount');
             $trend[] = ['label' => $arShort[$m0], 'value' => $rev, 'color' => 'navy600'];
         }
 
@@ -123,6 +132,13 @@ class ApiController extends Controller
             'units_count' => 'nullable|integer|min:0|max:2000',
             'subscription' => 'nullable|integer|min:0',
             'elevator_fee' => 'nullable|integer|min:0',
+            'elevator_phone' => 'nullable|string|max:60',
+            'elevator_company' => 'nullable|string|max:160',
+            'elevator_contract_start' => 'nullable|date',
+            'elevator_contract_end' => 'nullable|date',
+            'elevator_last_check' => 'nullable|date',
+            'elevator_check_notify' => 'nullable|boolean',
+            'elevator_check_interval' => 'nullable|integer|min:1|max:60',
             'exchange_rate' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|max:8',   // building base currency
         ]);
@@ -243,11 +259,27 @@ class ApiController extends Controller
             'cat' => 'nullable|string',
             'supplier' => 'nullable|string',
             'amount' => 'nullable|integer',
+            'original_amount' => 'nullable|integer',
+            'currency' => 'nullable|string|max:8',
+            'exchange_rate' => 'nullable|numeric|min:0',
             'date' => 'nullable|date',
             'description' => 'nullable|string',
             'icon' => 'nullable|string',
             'tone' => 'nullable|string',
         ]);
+
+        // Re-convert if currency/original/rate were supplied (keep `amount` base).
+        if (array_key_exists('currency', $data) || array_key_exists('original_amount', $data)) {
+            $base = Building::where('key', $expense->building_key)->value('currency') ?: 'USD';
+            $currency = $data['currency'] ?? $expense->currency ?? $base;
+            $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? $expense->exchange_rate ?? 1);
+            $original = (int) ($data['original_amount'] ?? $expense->original_amount ?? $data['amount'] ?? $expense->amount);
+            $data['currency'] = $currency;
+            $data['exchange_rate'] = $rate;
+            $data['original_amount'] = $original;
+            $data['amount'] = (int) round($original * $rate);
+        }
+
         $expense->update(array_filter($data, fn ($v) => $v !== null));
 
         return response()->json($expense->fresh());
@@ -473,10 +505,26 @@ class ApiController extends Controller
             'tone' => 'nullable|string',
             'supplier' => 'required|string',
             'amount' => 'required|integer',
+            'original_amount' => 'nullable|integer',   // amount as entered
+            'currency' => 'nullable|string|max:8',     // entered currency
+            'exchange_rate' => 'nullable|numeric|min:0', // entered-currency → base
             'date' => 'required|date',
             'description' => 'nullable|string',
         ]);
-        $data['building_key'] = $this->bk($r);
+        $bk = $this->bk($r);
+
+        // Convert the entered amount to the building's base currency so reports
+        // sum cleanly — mirrors payments. `amount` is always base currency.
+        $base = Building::where('key', $bk)->value('currency') ?: 'USD';
+        $currency = $data['currency'] ?? $base;
+        $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
+        $original = (int) ($data['original_amount'] ?? $data['amount']);
+
+        $data['building_key'] = $bk;
+        $data['amount'] = (int) round($original * $rate);
+        $data['original_amount'] = $original;
+        $data['currency'] = $currency;
+        $data['exchange_rate'] = $rate;
         $data['icon'] ??= 'receipt';
         $data['tone'] ??= 'gold';
         $data['description'] ??= '';
@@ -509,6 +557,47 @@ class ApiController extends Controller
         $data['next_due'] ??= now()->addMonth()->toDateString();
 
         return response()->json(Worker::create($data), 201);
+    }
+
+    /// Update a service worker — toggle attendance (came) + record payment
+    /// status (full / partial / none) for the current cycle.
+    public function updateWorker(Request $r, Worker $worker)
+    {
+        $this->requireAdmin($r);
+        abort_unless($worker->building_key === $this->bk($r), 403);
+        $data = $r->validate([
+            'name' => 'nullable|string',
+            'type' => 'nullable|string',
+            'phone' => 'nullable|string',
+            'address' => 'nullable|string',
+            'cycle' => 'nullable|string',
+            'amount' => 'nullable|integer',
+            'came' => 'nullable|boolean',
+            'last_visit' => 'nullable|date',
+            'pay_status' => ['nullable', \Illuminate\Validation\Rule::in(['full', 'partial', 'none'])],
+            'paid_amount' => 'nullable|integer|min:0',
+            'last_payment' => 'nullable|date',
+            'next_due' => 'nullable|date',
+        ]);
+
+        // A full payment records today + advances the due date by one cycle.
+        if (($data['pay_status'] ?? null) === 'full') {
+            $data['paid_amount'] = $data['amount'] ?? $worker->amount;
+            $data['last_payment'] ??= now()->toDateString();
+        }
+
+        $worker->update(array_filter($data, fn ($v) => $v !== null));
+
+        return response()->json($worker->fresh());
+    }
+
+    public function destroyWorker(Request $r, Worker $worker)
+    {
+        $this->requireAdmin($r);
+        abort_unless($worker->building_key === $this->bk($r), 403);
+        $worker->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     public function parking(Request $r)
@@ -557,7 +646,43 @@ class ApiController extends Controller
 
     public function alerts(Request $r)
     {
-        return Alert::where('building_key', $this->bk($r))->orderBy('id')->get();
+        $q = Alert::where('building_key', $this->bk($r));
+
+        // Residents only see building-wide notices + ones addressed to their unit.
+        $u = $r->user();
+        if ($u && $u->role === 'resident' && $u->unit_no) {
+            $q->whereIn('target', ['all', $u->unit_no]);
+        }
+
+        return $q->orderByDesc('id')->get();
+    }
+
+    /// Manager composes a notification to all residents or a chosen unit, from a
+    /// preset choice or free text. Stored as an internal alert the residents read.
+    public function storeNotification(Request $r)
+    {
+        $this->requireAdmin($r);
+        $data = $r->validate([
+            'title' => 'required|string|max:120',
+            'body' => 'required|string|max:500',
+            'target' => 'nullable|string|max:60',     // 'all' | unit_no
+            'tone' => 'nullable|string|max:20',
+            'icon' => 'nullable|string|max:40',
+        ]);
+
+        $alert = Alert::create([
+            'building_key' => $this->bk($r),
+            'type' => 'notice',
+            'icon' => $data['icon'] ?? 'bell',
+            'tone' => $data['tone'] ?? 'navy',
+            'title' => $data['title'],
+            'body' => $data['body'],
+            'time_label' => 'الآن',
+            'channel' => 'internal',
+            'target' => $data['target'] ?: 'all',
+        ]);
+
+        return response()->json($alert, 201);
     }
 
     public function waTemplates()

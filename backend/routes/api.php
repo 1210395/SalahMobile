@@ -58,6 +58,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/workers', [ApiController::class, 'workers']);
     Route::post('/workers', [ApiController::class, 'storeWorker']);
+    Route::put('/workers/{worker}', [ApiController::class, 'updateWorker']);
+    Route::delete('/workers/{worker}', [ApiController::class, 'destroyWorker']);
 
     Route::get('/parking', [ApiController::class, 'parking']);
     Route::post('/parking', [ApiController::class, 'storeParking']);
@@ -73,6 +75,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/alerts', [ApiController::class, 'alerts']);
     Route::post('/alerts/regenerate', [ApiController::class, 'regenerateAlerts']);
+    Route::post('/notifications', [ApiController::class, 'storeNotification']);
     Route::get('/year-summary', [ApiController::class, 'yearSummary']);
 
     // Resident → admin notes

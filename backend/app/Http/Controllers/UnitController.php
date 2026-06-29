@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Unit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 
 // عمارتي — unit CRUD (admin only). Adding/editing/removing apartments or shops,
@@ -13,12 +14,18 @@ class UnitController extends Controller
     private function bk(Request $r): string
     {
         $u = $r->user();
-        if ($u && $u->role !== 'admin') {
+        if ($u && ! in_array($u->role, ['admin', 'superadmin'])) {
             return $u->building_key === 'commercial' ? 'commercial' : 'residential';
         }
 
         return $r->query('btype') === 'commercial' || $r->input('btype') === 'commercial'
             ? 'commercial' : 'residential';
+    }
+
+    private function requireAdmin(Request $r): void
+    {
+        abort_unless(in_array(optional($r->user())->role, ['admin', 'superadmin']),
+            403, 'يتطلب صلاحية المسؤول');
     }
 
     private function rules(): array
@@ -36,12 +43,15 @@ class UnitController extends Controller
             'contract_start' => 'nullable|date',
             'contract_end' => 'nullable|date',
             'notes' => 'nullable|string|max:300',
+            // When true, seed the opening debt as (sub × whole months since the
+            // contract start) — "احتساب الإيجار من بداية العقد".
+            'back_debt' => 'nullable|boolean',
         ];
     }
 
     public function store(Request $r)
     {
-        abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
+        $this->requireAdmin($r);
         $bk = $this->bk($r);
         $data = $r->validate($this->rules());
 
@@ -51,6 +61,17 @@ class UnitController extends Controller
         );
 
         $vacant = ($data['kind'] ?? null) === 'شاغر' || ($data['status'] ?? null) === 'vacant';
+        $sub = (int) ($data['sub'] ?? 0);
+        $contractStart = $vacant ? null : ($data['contract_start'] ?? now()->startOfYear()->toDateString());
+        $balance = $vacant ? 0 : (int) ($data['balance'] ?? 0);
+
+        // Auto opening debt from the contract start (− = owes). Unchecked → start
+        // from the current month (no back-debt, keep any provided balance).
+        if (! $vacant && ($data['back_debt'] ?? false) && $contractStart) {
+            $months = (int) Carbon::parse($contractStart)->diffInMonths(now());
+            $balance = -1 * $sub * $months;
+        }
+
         $unit = Unit::create([
             'building_key' => $bk,
             'ext_id' => strtoupper(substr($bk, 0, 1)).'-'.$data['no'],
@@ -59,11 +80,11 @@ class UnitController extends Controller
             'resident' => $vacant ? 'وحدة شاغرة' : ($data['resident'] ?? ''),
             'kind' => $vacant ? 'شاغر' : ($data['kind'] ?? 'مالك'),
             'phone' => $data['phone'] ?? '—',
-            'sub' => $data['sub'] ?? 0,
+            'sub' => $sub,
             'status' => $vacant ? 'vacant' : ($data['status'] ?? 'ok'),
-            'balance' => $vacant ? 0 : ($data['balance'] ?? 0),
+            'balance' => $balance,
             'payer' => $vacant ? '—' : ($data['payer'] ?? 'الساكن'),
-            'contract_start' => $vacant ? null : ($data['contract_start'] ?? now()->startOfYear()->toDateString()),
+            'contract_start' => $contractStart,
             'contract_end' => $vacant ? null : ($data['contract_end'] ?? now()->endOfYear()->toDateString()),
             'notes' => $data['notes'] ?? null,
         ]);
@@ -73,7 +94,7 @@ class UnitController extends Controller
 
     public function update(Request $r, Unit $unit)
     {
-        abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
+        $this->requireAdmin($r);
         abort_unless($unit->building_key === $this->bk($r), 403);
         $data = $r->validate($this->rules());
 

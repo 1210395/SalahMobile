@@ -61,12 +61,22 @@ class DatabaseSeeder extends Seeder
             'address' => 'حي النرجس، شارع 12، الرياض', 'type' => 'سكني',
             'subscription' => 40, 'currency' => 'USD', 'floors' => 6, 'units_count' => 12,
             'exchange_rate' => 3.75, 'elevator_fee' => 15, 'summary' => $summary,
+            'elevator_phone' => '+966 92 000 1234',
+            'elevator_company' => 'شركة أوتيس للمصاعد',
+            'elevator_contract_start' => '2026-01-01', 'elevator_contract_end' => '2026-12-31',
+            'elevator_last_check' => '2026-05-04',
+            'elevator_check_notify' => true, 'elevator_check_interval' => 6,
         ]);
         Building::create([
             'key' => 'commercial', 'name' => 'مجمع التجارة الذهبي',
             'address' => 'طريق الملك فهد، الرياض', 'type' => 'تجاري',
             'subscription' => 120, 'currency' => 'USD', 'floors' => 3, 'units_count' => 10,
             'exchange_rate' => 3.75, 'elevator_fee' => 15, 'summary' => $summary,
+            'elevator_phone' => '+966 92 000 1234',
+            'elevator_company' => 'شركة أوتيس للمصاعد',
+            'elevator_contract_start' => '2026-01-01', 'elevator_contract_end' => '2026-12-31',
+            'elevator_last_check' => '2026-05-04',
+            'elevator_check_notify' => true, 'elevator_check_interval' => 6,
         ]);
         $this->seedSubscriptions();
 
