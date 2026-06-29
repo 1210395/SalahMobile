@@ -23,7 +23,9 @@ class AuthController extends Controller
     private function loginCode(): string
     {
         do {
-            $code = strtoupper(bin2hex(random_bytes(4)));
+            // 128-bit CSPRNG code (the resident's standing login credential; it
+            // must stay readable to render the admin-side QR, so it isn't hashed).
+            $code = strtoupper(bin2hex(random_bytes(16)));
         } while (User::where('login_code', $code)->exists());
 
         return $code;

@@ -50,7 +50,9 @@ class ApiController extends Controller
     private function loginCode(): string
     {
         do {
-            $code = strtoupper(bin2hex(random_bytes(4)));
+            // 128-bit CSPRNG code (resident's standing login credential; kept
+            // readable so the admin can render the QR / share link — see units()).
+            $code = strtoupper(bin2hex(random_bytes(16)));
         } while (User::where('login_code', $code)->exists());
 
         return $code;
