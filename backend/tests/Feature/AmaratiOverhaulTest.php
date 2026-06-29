@@ -228,4 +228,73 @@ class AmaratiOverhaulTest extends TestCase
         $res->assertOk();
         $this->assertCount(12, $res->json('trend'));
     }
+
+    // ─────────────── New overhaul endpoints ───────────────
+
+    public function test_unit_back_debt_seeds_opening_balance_from_contract(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        // 100/month, contract started 5 full months ago → balance −500.
+        $start = now()->subMonthsNoOverflow(5)->toDateString();
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
+            'no' => '202', 'floor' => 2, 'resident' => 'بلال', 'kind' => 'مستأجر',
+            'sub' => 100, 'contract_start' => $start, 'back_debt' => true,
+        ]);
+        $res->assertCreated();
+        $this->assertSame(-500, (int) $res->json('balance'));
+    }
+
+    public function test_expense_converts_entered_currency_to_base(): void
+    {
+        $this->seedBuilding('USD');
+        $admin = $this->admin();
+        // 100 ILS at 0.27 → 27 USD stored as the base amount.
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/expenses', [
+            'cat' => 'صيانة', 'supplier' => 'مورّد', 'amount' => 100,
+            'original_amount' => 100, 'currency' => 'ILS', 'exchange_rate' => 0.27,
+            'date' => '2026-06-30',
+        ]);
+        $res->assertCreated();
+        $this->assertSame(27, (int) $res->json('amount'));
+        $this->assertSame('ILS', $res->json('currency'));
+    }
+
+    public function test_notification_targets_a_single_unit(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $resident = User::create([
+            'name' => 'ساكن', 'phone' => '0599', 'password' => Hash::make('password'),
+            'role' => 'resident', 'building_key' => 'residential', 'unit_no' => '101',
+        ]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/notifications', [
+            'title' => 'تذكير', 'body' => 'يرجى الدفع', 'target' => '101',
+        ])->assertCreated();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/notifications', [
+            'title' => 'إعلان', 'body' => 'للجميع', 'target' => 'all',
+        ])->assertCreated();
+
+        // The resident on unit 101 sees both; a 999 resident would see only 'all'.
+        $seen = $this->actingAs($resident, 'sanctum')->getJson('/api/alerts')->json();
+        $this->assertCount(2, $seen);
+    }
+
+    public function test_worker_update_records_attendance_and_full_payment(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $worker = $this->actingAs($admin, 'sanctum')->postJson('/api/workers', [
+            'name' => 'عامل النظافة', 'phone' => '0599', 'cycle' => 'شهري', 'amount' => 200,
+        ])->json();
+
+        $res = $this->actingAs($admin, 'sanctum')->putJson("/api/workers/{$worker['id']}", [
+            'came' => true, 'pay_status' => 'full',
+        ]);
+        $res->assertOk();
+        $this->assertTrue((bool) $res->json('came'));
+        $this->assertSame('full', $res->json('pay_status'));
+        $this->assertSame(200, (int) $res->json('paid_amount'));
+    }
 }

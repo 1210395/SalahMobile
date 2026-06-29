@@ -248,16 +248,44 @@ class BuildingSetupScreen extends StatefulWidget {
   State<BuildingSetupScreen> createState() => _BuildingSetupScreenState();
 }
 
+// First-time manager onboarding: one essential question per step (no elevator),
+// then save + land on the dashboard.
 class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
   final f = {'name': '', 'address': '', 'floors': '', 'units': '', 'sub': ''};
   BType type = BType.residential;
+  String currency = 'USD';
+  int step = 0;
   bool _saving = false;
 
-  bool get _valid =>
-      f['name']!.trim().isNotEmpty &&
-      f['address']!.trim().isNotEmpty &&
-      _i(f['floors']!) != null &&
-      _i(f['units']!) != null;
+  static const _steps = ['name', 'address', 'type', 'floors', 'units', 'currency', 'sub'];
+
+  bool get _res => type == BType.residential;
+
+  // Whether the current step's answer is acceptable to advance.
+  bool get _stepValid {
+    switch (_steps[step]) {
+      case 'name':
+        return f['name']!.trim().isNotEmpty;
+      case 'address':
+        return f['address']!.trim().isNotEmpty;
+      case 'floors':
+        return _i(f['floors']!) != null;
+      case 'units':
+        return _i(f['units']!) != null;
+      case 'sub':
+        return _i(f['sub']!) != null; // last step → save
+      default:
+        return true; // type + currency always have a value
+    }
+  }
+
+  void _next() {
+    if (step < _steps.length - 1) {
+      setState(() => step++);
+    } else {
+      _save();
+    }
+  }
 
   Future<void> _save() async {
     final ctx = widget.ctx;
@@ -275,12 +303,13 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
         'floors': _i(f['floors']!),
         'units_count': _i(f['units']!),
       });
-      if (_i(f['sub']!) != null) {
-        await Api.I.updateBuilding(type, {'subscription': _i(f['sub']!)});
-      }
-      ctx.toast('تم تفعيل الاشتراك وحفظ بيانات المبنى');
+      await Api.I.updateBuilding(type, {
+        'currency': currency,
+        if (_i(f['sub']!) != null) 'subscription': _i(f['sub']!),
+      });
+      ctx.toast('تم حفظ بيانات المبنى');
       await ctx.becomeAdmin(type); // refreshes role → admin, lands on home
-      if (mounted) ctx.go('units');
+      if (mounted) ctx.go('home');
     } catch (e) {
       if (mounted) ctx.toast(apiErrorText(e), tone: 'late');
     } finally {
@@ -288,105 +317,169 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
     }
   }
 
+  // The question (title + hint + input) for the active step.
+  ({String title, String hint, Widget input}) _stepContent() {
+    switch (_steps[step]) {
+      case 'name':
+        return (
+          title: 'ما اسم المبنى؟',
+          hint: 'الاسم الذي يظهر في لوحة التحكم والتقارير.',
+          input: Field(
+              key: const ValueKey('s-name'),
+              icon: 'building2',
+              value: f['name']!,
+              placeholder: 'مثال: عمارة الياسمين',
+              marginBottom: 0,
+              onChanged: (v) => setState(() => f['name'] = v)),
+        );
+      case 'address':
+        return (
+          title: 'ما عنوان المبنى؟',
+          hint: 'الحي، الشارع، المدينة.',
+          input: Field(
+              key: const ValueKey('s-address'),
+              icon: 'pin',
+              value: f['address']!,
+              placeholder: 'الحي، الشارع، المدينة',
+              marginBottom: 0,
+              onChanged: (v) => setState(() => f['address'] = v)),
+        );
+      case 'type':
+        return (
+          title: 'نوع المبنى؟',
+          hint: 'يحدّد ما إذا كانت الوحدات شققاً أو محلات.',
+          input: Segmented(
+            value: type,
+            onChanged: (v) => setState(() => type = v as BType),
+            options: const [
+              SegOption(BType.residential, 'سكني (شقق)', icon: 'building'),
+              SegOption(BType.commercial, 'تجاري (محلات)', icon: 'store'),
+            ],
+          ),
+        );
+      case 'floors':
+        return (
+          title: 'كم عدد الطوابق؟',
+          hint: 'العدد الإجمالي لطوابق المبنى.',
+          input: Field(
+              key: const ValueKey('s-floors'),
+              icon: 'layers',
+              value: f['floors']!,
+              placeholder: '6',
+              ltr: true,
+              keyboardType: TextInputType.number,
+              marginBottom: 0,
+              onChanged: (v) => setState(() => f['floors'] = v)),
+        );
+      case 'units':
+        return (
+          title: _res ? 'كم عدد الشقق؟' : 'كم عدد المحلات؟',
+          hint: 'يمكنك إضافة الوحدات تفصيلياً لاحقاً.',
+          input: Field(
+              key: const ValueKey('s-units'),
+              icon: 'grid',
+              value: f['units']!,
+              placeholder: '12',
+              ltr: true,
+              keyboardType: TextInputType.number,
+              marginBottom: 0,
+              onChanged: (v) => setState(() => f['units'] = v)),
+        );
+      case 'currency':
+        return (
+          title: 'عملة المبنى؟',
+          hint: 'تُستخدم لعرض جميع المبالغ والتقارير.',
+          input: SelectField(
+            icon: 'dollar',
+            options: [for (final c in kCurrencyCodes) SelectOption(c, '$c (${currencySymbol(c)})')],
+            value: currency,
+            onChanged: (v) => setState(() => currency = v as String),
+          ),
+        );
+      default: // sub
+        return (
+          title: 'الاشتراك الشهري الافتراضي؟',
+          hint: 'القيمة الافتراضية لاشتراك كل وحدة (يمكن تعديلها لكل وحدة).',
+          input: Field(
+              key: const ValueKey('s-sub'),
+              icon: 'wallet',
+              value: f['sub']!,
+              placeholder: '40',
+              ltr: true,
+              suffix: currencySymbol(currency),
+              keyboardType: TextInputType.number,
+              marginBottom: 0,
+              onChanged: (v) => setState(() => f['sub'] = v)),
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
-    final res = type == BType.residential;
+    final q = _stepContent();
+    final isLast = step == _steps.length - 1;
     return ScreenScaffold(
       header: AppHeader(
         title: 'إعداد المبنى',
-        subtitle: 'الخطوة الأخيرة قبل البدء',
-        onBack: () => ctx.go('subscribe'),
+        subtitle: 'سؤال ${step + 1} من ${_steps.length}',
+        onBack: () => step == 0 ? ctx.go('subscribe') : setState(() => step--),
       ),
       children: [
-        const SectionTitle(text: 'بيانات المبنى'),
+        // Progress dots.
+        Row(
+          children: [
+            for (var i = 0; i < _steps.length; i++)
+              Expanded(
+                child: Container(
+                  height: 5,
+                  margin: EdgeInsets.only(left: i == _steps.length - 1 ? 0 : 5),
+                  decoration: BoxDecoration(
+                    color: i <= step ? AppColors.navy700 : AppColors.line2,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 20),
         AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Field(
-                  label: 'اسم المبنى',
-                  icon: 'building2',
-                  placeholder: 'مثال: عمارة الياسمين',
-                  onChanged: (v) => setState(() => f['name'] = v)),
-              Field(
-                  label: 'العنوان',
-                  icon: 'pin',
-                  placeholder: 'الحي، الشارع، المدينة',
-                  onChanged: (v) => setState(() => f['address'] = v)),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text('نوع المبنى',
-                    style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-              ),
-              Segmented(
-                value: type,
-                onChanged: (v) => setState(() => type = v as BType),
-                options: const [
-                  SegOption(BType.residential, 'سكني (شقق)', icon: 'building'),
-                  SegOption(BType.commercial, 'تجاري (محلات)', icon: 'store'),
-                ],
-              ),
+              Text(q.title, style: AppType.base(size: 18, weight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Text(q.hint,
+                  style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.ink500, height: 1.6)),
+              const SizedBox(height: 16),
+              q.input,
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        const SectionTitle(text: 'التفاصيل'),
-        AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Field(
-                        label: 'عدد الطوابق',
-                        icon: 'layers',
-                        placeholder: '6',
-                        ltr: true,
-                        keyboardType: TextInputType.number,
-                        onChanged: (v) => setState(() => f['floors'] = v)),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Field(
-                        label: res ? 'عدد الشقق' : 'عدد المحلات',
-                        icon: 'grid',
-                        placeholder: '12',
-                        ltr: true,
-                        keyboardType: TextInputType.number,
-                        onChanged: (v) => setState(() => f['units'] = v)),
-                  ),
-                ],
-              ),
-              Field(
-                  label: 'الاشتراك الشهري الافتراضي',
-                  icon: 'wallet',
-                  placeholder: '40',
-                  ltr: true,
-                  suffix: '\$',
-                  keyboardType: TextInputType.number,
-                  marginBottom: 0,
-                  onChanged: (v) => setState(() => f['sub'] = v)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         AppButton(
-          label: _saving ? 'جارٍ الحفظ…' : 'حفظ والبدء',
+          label: _saving
+              ? 'جارٍ الحفظ…'
+              : isLast
+                  ? 'حفظ والبدء'
+                  : 'التالي',
           size: BtnSize.lg,
           full: true,
-          iconRight: 'arrowL',
-          disabled: !_valid || _saving,
-          onTap: _save,
+          iconRight: isLast ? 'check' : 'arrowL',
+          disabled: !_stepValid || _saving,
+          onTap: _next,
         ),
-        const SizedBox(height: 8),
-        Center(
-          child: Text('بعد الحفظ: أضف الوحدات يدوياً أو بالدعوة عبر واتساب / QR',
-              textAlign: TextAlign.center,
-              style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400)),
-        ),
+        if (step > 0) ...[
+          const SizedBox(height: 8),
+          AppButton(
+            label: 'السابق',
+            variant: BtnVariant.ghost,
+            size: BtnSize.lg,
+            full: true,
+            disabled: _saving,
+            onTap: () => setState(() => step--),
+          ),
+        ],
       ],
     );
   }

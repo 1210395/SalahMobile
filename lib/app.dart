@@ -235,11 +235,14 @@ class _AmaratiAppState extends State<AmaratiApp> {
       final b = btypeFromKey(u.buildingKey);
       await Api.I.loadBundle(b);
       if (!mounted) return null;
+      // First-time manager (building not set up yet) → run the setup wizard
+      // before anything else; configured admins land on their dashboard.
+      final needsSetup = r == AppRole.admin && (DataStore.I.building?.name.trim().isEmpty ?? true);
       setState(() {
         _busy = false;
         this.role = r;
         this.btype = b;
-        screen = _homeFor(r);
+        screen = needsSetup ? 'buildingSetup' : _homeFor(r);
       });
       return null;
     } catch (e) {
