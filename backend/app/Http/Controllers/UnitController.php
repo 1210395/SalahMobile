@@ -85,7 +85,9 @@ class UnitController extends Controller
             'balance' => $balance,
             'payer' => $vacant ? '—' : ($data['payer'] ?? 'الساكن'),
             'contract_start' => $contractStart,
-            'contract_end' => $vacant ? null : ($data['contract_end'] ?? now()->endOfYear()->toDateString()),
+            // Empty/absent end date = open-ended ("مستمر") — do NOT force a
+            // default end, or the مستمر toggle would be silently overridden.
+            'contract_end' => $vacant ? null : ($data['contract_end'] ?? null),
             'notes' => $data['notes'] ?? null,
         ]);
 
@@ -111,7 +113,11 @@ class UnitController extends Controller
             'balance' => $vacant ? 0 : ($data['balance'] ?? $unit->balance),
             'payer' => $vacant ? '—' : ($data['payer'] ?? $unit->payer),
             'contract_start' => $vacant ? null : ($data['contract_start'] ?? $unit->contract_start),
-            'contract_end' => $vacant ? null : ($data['contract_end'] ?? $unit->contract_end),
+            // Sent null (empty "مستمر") clears the end date; only an ABSENT key
+            // keeps the current value — so toggling مستمر on edit works.
+            'contract_end' => $vacant
+                ? null
+                : (array_key_exists('contract_end', $data) ? $data['contract_end'] : $unit->contract_end),
             'notes' => $data['notes'] ?? $unit->notes,
         ]);
 

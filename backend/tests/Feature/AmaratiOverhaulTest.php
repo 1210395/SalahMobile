@@ -245,6 +245,35 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(-500, (int) $res->json('balance'));
     }
 
+    public function test_open_ended_contract_stays_null_not_forced_end_date(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        // The Flutter "مستمر" toggle sends contract_end '' (→ null). It must NOT
+        // be overridden with a default end date.
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
+            'no' => '301', 'floor' => 3, 'resident' => 'ساكن', 'kind' => 'مالك',
+            'contract_start' => '2026-07-01', 'contract_end' => null,
+        ]);
+        $res->assertCreated();
+        $this->assertNull($res->json('contract_end'));
+
+        // A real end date is preserved.
+        $fixed = $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
+            'no' => '302', 'floor' => 3, 'resident' => 'مستأجر', 'kind' => 'مستأجر',
+            'contract_start' => '2026-01-01', 'contract_end' => '2026-12-31',
+        ]);
+        $this->assertSame('2026-12-31', $fixed->json('contract_end'));
+
+        // Editing a fixed contract to open-ended clears the end date.
+        $id = $fixed->json('id');
+        $edit = $this->actingAs($admin, 'sanctum')->putJson("/api/units/{$id}", [
+            'no' => '302', 'floor' => 3, 'kind' => 'مستأجر', 'contract_end' => null,
+        ]);
+        $edit->assertOk();
+        $this->assertNull($edit->json('contract_end'));
+    }
+
     public function test_expense_converts_entered_currency_to_base(): void
     {
         $this->seedBuilding('USD');
