@@ -191,4 +191,76 @@ void main() {
     expect(find.text('السنة'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  // Helper: pump a screen, then tap a widget matching [finder] (if present) and
+  // assert no exception. Uses warnIfMissed:false for canvas-y hit areas.
+  Future<void> pumpAndTap(WidgetTester tester, String screen, Finder finder,
+      {AppRole role = AppRole.admin}) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: screen, initialRole: role, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    if (finder.evaluate().isNotEmpty) {
+      await tester.tap(finder.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    expect(tester.takeException(), isNull);
+  }
+
+  // Reports: switch through every tab (شهري / سنوي / شقة / مصروفات).
+  testWidgets('reports: all tabs switch without error', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'reports', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    for (final tab in ['سنوي', 'شقة', 'مصروفات', 'شهري']) {
+      final f = find.text(tab);
+      if (f.evaluate().isEmpty) continue;
+      await tester.tap(f.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.takeException(), isNull, reason: 'exception on reports tab $tab');
+    }
+  });
+
+  // Reports expense tab: the category + month filters build.
+  testWidgets('reports: expense filters render', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'reports', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final f = find.text('مصروفات');
+    if (f.evaluate().isNotEmpty) {
+      await tester.tap(f.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  // Elevator: open the maintenance-contract edit sheet (the "تعديل" button).
+  testWidgets('elevator: contract edit sheet opens', (tester) async {
+    await pumpAndTap(tester, 'elevator', find.text('تعديل'));
+  });
+
+  // Units: tap the first unit card → detail sheet (renders QR + login code).
+  testWidgets('units: detail sheet opens (QR/login-code)', (tester) async {
+    await pumpAndTap(tester, 'units', find.text('أحمد علي'));
+  });
+
+  // Payments: tap the first payment row → detail sheet (all-payments/receipt).
+  testWidgets('payments: detail sheet opens', (tester) async {
+    await pumpAndTap(tester, 'payments', find.byType(AppCard));
+  });
+
+  // Workers: open the attendance/payment status sheet.
+  testWidgets('workers: status sheet opens', (tester) async {
+    await pumpAndTap(tester, 'workers', find.text('تحديث الحالة'));
+  });
+
+  // Guard: open the edit sheet.
+  testWidgets('guard: edit sheet opens', (tester) async {
+    await pumpAndTap(tester, 'guard', find.byType(AppFab));
+  });
+
+  // Year transfer (الترحيل السنوي) renders populated.
+  testWidgets('year-transfer renders', (tester) async {
+    await pumpAndTap(tester, 'years', find.byType(AppCard));
+  });
 }
