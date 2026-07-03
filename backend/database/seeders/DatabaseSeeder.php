@@ -241,7 +241,8 @@ class DatabaseSeeder extends Seeder
     private function loginCode(): string
     {
         do {
-            $code = strtoupper(bin2hex(random_bytes(4)));
+            // 128-bit, matching the runtime generators (Auth/Api controllers).
+            $code = strtoupper(bin2hex(random_bytes(16)));
         } while (User::where('login_code', $code)->exists());
 
         return $code;
