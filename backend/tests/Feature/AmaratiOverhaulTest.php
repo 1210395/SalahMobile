@@ -274,6 +274,28 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertNull($edit->json('contract_end'));
     }
 
+    public function test_oversized_amount_is_rejected_not_a_500(): void
+    {
+        $this->seedBuilding('USD');
+        $unit = $this->makeUnit(['no' => '101']);
+        $admin = $this->admin();
+
+        // Beyond the signed-INT column: must be a clean 422, not a MySQL 500.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 9999999999, 'currency' => 'USD',
+            'kind' => 'x', 'month' => 4, 'year' => 2026, 'date' => '2026-05-01', 'method' => 'نقداً',
+        ])->assertStatus(422);
+
+        // Conversion overflow (1B entered × rate 5) is also caught.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'original_amount' => 1000000000, 'currency' => 'SAR',
+            'exchange_rate' => 5, 'kind' => 'x', 'month' => 4, 'year' => 2026,
+            'date' => '2026-05-01', 'method' => 'نقداً',
+        ])->assertStatus(422);
+
+        $this->assertSame(0, (int) $unit->fresh()->balance); // nothing was written
+    }
+
     public function test_expense_converts_entered_currency_to_base(): void
     {
         $this->seedBuilding('USD');

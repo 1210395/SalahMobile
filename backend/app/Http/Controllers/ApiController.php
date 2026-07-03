@@ -24,6 +24,17 @@ use Illuminate\Support\Facades\Hash;
 // by ?btype=residential|commercial (defaults to residential).
 class ApiController extends Controller
 {
+    /// Max accepted money input (well under the signed-INT column limit so a
+    /// converted total can't overflow). Rejects fat-finger/garbage amounts with
+    /// a clean 422 instead of a raw MySQL out-of-range 500.
+    private const MONEY_MAX = 2000000000;
+
+    /// Abort with 422 if a computed integer would overflow the DB INT column.
+    private function guardIntRange(int $v): void
+    {
+        abort_if($v > 2147483647 || $v < -2147483648, 422, 'المبلغ خارج النطاق المسموح');
+    }
+
     /// Building scope for the request.
     /// - Non-admins are locked to their own building (prevents cross-tenant IDOR).
     /// - Admins (and public/guest endpoints with no user) may select via ?btype=.
@@ -214,7 +225,7 @@ class ApiController extends Controller
         $this->requireAdmin($r);
         abort_unless($payment->building_key === $this->bk($r), 403);
         $data = $r->validate([
-            'amount' => 'nullable|integer',
+            'amount' => 'nullable|integer|max:'.self::MONEY_MAX,
             'name' => 'nullable|string',
             'kind' => 'nullable|string',
             'month' => 'nullable|integer|min:0|max:11',
@@ -260,10 +271,10 @@ class ApiController extends Controller
         $data = $r->validate([
             'cat' => 'nullable|string',
             'supplier' => 'nullable|string',
-            'amount' => 'nullable|integer',
-            'original_amount' => 'nullable|integer',
+            'amount' => 'nullable|integer|max:'.self::MONEY_MAX,
+            'original_amount' => 'nullable|integer|max:'.self::MONEY_MAX,
             'currency' => 'nullable|string|max:8',
-            'exchange_rate' => 'nullable|numeric|min:0',
+            'exchange_rate' => 'nullable|numeric|min:0|max:100000',
             'date' => 'nullable|date',
             'description' => 'nullable|string',
             'icon' => 'nullable|string',
@@ -425,10 +436,10 @@ class ApiController extends Controller
         $data = $r->validate([
             'unit_no' => 'required|string',
             'name' => 'nullable|string',
-            'amount' => 'nullable|integer',            // base amount (legacy/optional)
-            'original_amount' => 'nullable|integer',   // amount as entered
+            'amount' => 'nullable|integer|max:'.self::MONEY_MAX,   // base amount (legacy/optional)
+            'original_amount' => 'nullable|integer|max:'.self::MONEY_MAX, // amount as entered
             'currency' => 'nullable|string|max:8',     // entered currency
-            'exchange_rate' => 'nullable|numeric|min:0', // entered-currency → base
+            'exchange_rate' => 'nullable|numeric|min:0|max:100000', // entered-currency → base
             'kind' => 'required|string',
             'month' => 'required|integer|min:0|max:11',
             'year' => 'required|integer',
@@ -446,12 +457,16 @@ class ApiController extends Controller
         $currency = $data['currency'] ?? $base;
         $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
         $original = (int) ($data['original_amount'] ?? $data['amount'] ?? 0);
+        // The converted total must fit the INT column — else MySQL 500s with a raw
+        // overflow error. Reject cleanly instead (e.g. 1B entered × a big rate).
+        $baseAmount = (int) round($original * $rate);
+        $this->guardIntRange($baseAmount);
 
         $payment = Payment::create([
             'building_key' => $bk,
             'unit_no' => $data['unit_no'],
             'name' => $data['name'] ?? $unit->resident,
-            'amount' => (int) round($original * $rate),  // base currency
+            'amount' => $baseAmount,  // base currency
             'currency' => $currency,
             'original_amount' => $original,
             'exchange_rate' => $rate,
@@ -506,10 +521,10 @@ class ApiController extends Controller
             'icon' => 'nullable|string',
             'tone' => 'nullable|string',
             'supplier' => 'required|string',
-            'amount' => 'required|integer',
-            'original_amount' => 'nullable|integer',   // amount as entered
+            'amount' => 'required|integer|max:'.self::MONEY_MAX,
+            'original_amount' => 'nullable|integer|max:'.self::MONEY_MAX, // amount as entered
             'currency' => 'nullable|string|max:8',     // entered currency
-            'exchange_rate' => 'nullable|numeric|min:0', // entered-currency → base
+            'exchange_rate' => 'nullable|numeric|min:0|max:100000', // entered-currency → base
             'date' => 'required|date',
             'description' => 'nullable|string',
         ]);
@@ -524,6 +539,7 @@ class ApiController extends Controller
 
         $data['building_key'] = $bk;
         $data['amount'] = (int) round($original * $rate);
+        $this->guardIntRange($data['amount']);
         $data['original_amount'] = $original;
         $data['currency'] = $currency;
         $data['exchange_rate'] = $rate;

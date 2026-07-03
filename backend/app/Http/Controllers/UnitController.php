@@ -36,9 +36,9 @@ class UnitController extends Controller
             'resident' => 'nullable|string|max:120',
             'kind' => 'nullable|string|max:20',
             'phone' => 'nullable|string|max:32',
-            'sub' => 'nullable|integer|min:0',
+            'sub' => 'nullable|integer|min:0|max:100000000',
             'status' => ['nullable', Rule::in(['ok', 'late', 'credit', 'vacant'])],
-            'balance' => 'nullable|integer',           // frontend pre-negates ذمم سابقة
+            'balance' => 'nullable|integer|min:-2000000000|max:2000000000', // frontend pre-negates ذمم سابقة
             'payer' => 'nullable|string|max:60',
             'contract_start' => 'nullable|date',
             'contract_end' => 'nullable|date',
@@ -70,6 +70,10 @@ class UnitController extends Controller
         if (! $vacant && ($data['back_debt'] ?? false) && $contractStart) {
             $months = (int) Carbon::parse($contractStart)->diffInMonths(now());
             $balance = -1 * $sub * $months;
+            // A very old contract × a large fee can exceed the INT column — reject
+            // cleanly instead of a raw MySQL overflow 500.
+            abort_if(abs($balance) > 2147483647, 422,
+                'الرصيد المحتسب كبير جداً — تحقّق من الدفعة الشهرية وتاريخ بداية العقد');
         }
 
         $unit = Unit::create([
