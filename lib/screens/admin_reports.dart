@@ -557,7 +557,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final s = kStatusMap[u.status]!;
     final pays = kPayments.where((p) => p.unit == u.no).toList();
     final required = u.sub * 12;
-    final paid = (required + u.balance).clamp(0, required).toInt();
+    // "المسدّد" = the unit's ACTUAL payments for the selected year, not
+    // required+balance (which over-counted a credited unit — the 909 bug).
+    final paid = kPayments
+        .where((p) => p.unit == u.no && p.year == selYear)
+        .fold<int>(0, (sum, p) => sum + p.amount);
 
     return [
       SelectField(

@@ -263,4 +263,32 @@ void main() {
   testWidgets('year-transfer renders', (tester) async {
     await pumpAndTap(tester, 'years', find.byType(AppCard));
   });
+
+  // REGRESSION (the "bilal paid 600, shows 909" bug): a credited resident's
+  // "المسدّد" must reflect ACTUAL payments, not sub×12 + balance.
+  testWidgets('resident report shows actual paid, not required+balance', (tester) async {
+    final s = DataStore.I;
+    final yr = DateTime.now().year;
+    s.loadedBtype = BType.residential;
+    s.building = Building.fromJson({'name': 'ع', 'currency': 'USD', 'type': 'سكني'});
+    s.summary = SummaryData.fromJson({});
+    s.payTypes = [];
+    // sub 50 → required 50×12 = 600; balance +309 (credit). Actual payments = 600.
+    s.units = [
+      Unit.fromJson({'no': '101', 'floor': 1, 'resident': 'بلال', 'kind': 'مالك',
+        'sub': 50, 'status': 'ok', 'balance': 309}),
+    ];
+    s.payments = [
+      Payment.fromJson({'id': 1, 'unit_no': '101', 'amount': 300, 'month': 1, 'year': yr, 'date': '$yr-02-01'}),
+      Payment.fromJson({'id': 2, 'unit_no': '101', 'amount': 300, 'month': 2, 'year': yr, 'date': '$yr-03-01'}),
+    ];
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'resReport', initialRole: AppRole.resident, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    // The old buggy value (600 + 309) must NOT appear anywhere.
+    expect(find.textContaining('909'), findsNothing, reason: 'المسدّد must not be required+balance');
+    // The real paid total (600) is shown.
+    expect(find.textContaining('600'), findsWidgets);
+  });
 }
