@@ -264,6 +264,22 @@ void main() {
     await pumpAndTap(tester, 'years', find.byType(AppCard));
   });
 
+  // REGRESSION: a month with total==0 must not divide-by-zero (NaN.round() would
+  // throw and crash the whole الترحيل السنوي screen).
+  testWidgets('year-transfer survives a zero-total month', (tester) async {
+    DataStore.I.year = YearData.fromJson({
+      'year': DateTime.now().year, 'opening_balance': 0,
+      'months': [
+        {'m': 0, 'paid': 0, 'total': 0},
+        {'m': 1, 'paid': 3, 'total': 8},
+      ],
+    });
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'years', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+  });
+
   // REGRESSION (the "bilal paid 600, shows 909" bug): a credited resident's
   // "المسدّد" must reflect ACTUAL payments, not sub×12 + balance.
   testWidgets('resident report shows actual paid, not required+balance', (tester) async {

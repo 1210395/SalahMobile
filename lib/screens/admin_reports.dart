@@ -1216,7 +1216,9 @@ class _YearsScreenState extends State<YearsScreen> {
           child: Column(
             children: List.generate(kMonthsGrid.length, (i) {
               final m = kMonthsGrid[i];
-              final pct = ((m.paid / m.total) * 100).round();
+              // Guard against total == 0 (fresh building): int / 0 → Infinity/NaN
+              // and .round() would throw, crashing the whole screen.
+              final pct = m.total > 0 ? ((m.paid / m.total) * 100).round().clamp(0, 100) : 0;
               final tone = pct == 100 ? 'ok' : pct == 0 ? 'late' : 'warn';
               final col = {'ok': AppColors.ok, 'late': AppColors.late, 'warn': AppColors.warn}[tone]!;
               return Container(
@@ -1237,7 +1239,7 @@ class _YearsScreenState extends State<YearsScreen> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(99),
                         child: LinearProgressIndicator(
-                          value: m.paid / m.total,
+                          value: pct / 100, // guarded above (no divide-by-zero)
                           minHeight: 8,
                           backgroundColor: AppColors.navy50,
                           valueColor: AlwaysStoppedAnimation(col),
