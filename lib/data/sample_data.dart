@@ -9,12 +9,19 @@ import '../theme/tokens.dart';
 
 /// Supported currencies (code → symbol). The active building's currency drives
 /// how money is displayed app-wide.
+// Symbols for every code we might store/display (incl. aliases like ILS≡NIS,
+// JD≡JOD) so old data always renders.
 const Map<String, String> kCurrencySymbols = {
   'NIS': '₪', 'JOD': 'د.أ', 'USD': '\$', 'SAR': 'ر.س', 'AED': 'د.إ',
   'EGP': 'ج.م', 'KWD': 'د.ك', 'QAR': 'ر.ق', 'BHD': 'د.ب', 'OMR': 'ر.ع',
   'TRY': '₺', 'EUR': '€', 'GBP': '£', 'JD': 'د.أ', 'ILS': '₪',
 };
-List<String> get kCurrencyCodes => kCurrencySymbols.keys.toList();
+// The picker list — ONE canonical code per currency (no NIS/ILS or JOD/JD
+// duplicates, which would confuse users and make the same currency compare as
+// "different" in the conversion path).
+const List<String> kCurrencyCodes = [
+  'USD', 'NIS', 'JOD', 'SAR', 'AED', 'EGP', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'EUR', 'GBP',
+];
 
 String currencySymbol(String code) => kCurrencySymbols[code] ?? code;
 
