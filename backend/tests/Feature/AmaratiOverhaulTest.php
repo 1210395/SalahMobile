@@ -173,6 +173,31 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(200, (int) $sum['due']);
     }
 
+    public function test_global_report_balance_includes_the_opening(): void
+    {
+        // The platform-owner balance must be cash on hand (opening + collected −
+        // expenses), consistent with the dashboard — not just collected−expenses.
+        $this->seedBuilding();
+        \App\Models\YearSummary::create([
+            'building_key' => 'residential', 'year' => 2026, 'opening_balance' => 1000, 'months' => [],
+        ]);
+        $admin = $this->admin();
+        $this->makeUnit(['no' => '101']);
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 500, 'kind' => 'k', 'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'x',
+        ])->assertCreated();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/expenses', [
+            'cat' => 'x', 'supplier' => 'y', 'amount' => 300, 'date' => '2026-02-01',
+        ])->assertCreated();
+
+        $super = User::create([
+            'name' => 'مالك', 'email' => 'sa@test.app', 'password' => Hash::make('password'), 'role' => 'superadmin',
+        ]);
+        $report = $this->actingAs($super, 'sanctum')->getJson('/api/reports/global')->json();
+        $res = collect($report['buildings'])->firstWhere('key', 'residential');
+        $this->assertSame(1200, (int) $res['balance']); // 1000 + 500 - 300
+    }
+
     public function test_year_summary_months_are_computed_live_with_all_twelve(): void
     {
         // The year-transfer grid must reflect real payments across all 12 months,
