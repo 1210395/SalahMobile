@@ -17,6 +17,10 @@ module.exports = defineConfig({
   testDir: '.',
   timeout: 30000,
   retries: 0,
+  // Serial: these tests share one stateful backend — parallel workers would race
+  // on data and share the auth rate-limit bucket.
+  workers: 1,
+  fullyParallel: false,
   use: {
     baseURL: process.env.WEB_BASE || 'http://127.0.0.1:8099',
     headless: true,

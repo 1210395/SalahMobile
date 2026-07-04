@@ -10,8 +10,9 @@ use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
 
 // ───────────────────────────── Auth ─────────────────────────────
-// Rate-limited to blunt credential stuffing / OTP brute force.
-Route::middleware('throttle:6,1')->group(function () {
+// Rate-limited to blunt credential stuffing / OTP brute force (6/min in prod;
+// configurable via AMARATI_AUTH_RATE so automated e2e runs aren't throttled).
+Route::middleware('throttle:'.config('amarati.auth_rate', 6).',1')->group(function () {
     Route::post('/auth/register', [AuthController::class, 'register']);
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/request-otp', [AuthController::class, 'requestOtp']);
