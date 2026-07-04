@@ -38,6 +38,12 @@ return new class extends Migration
         Schema::table('alerts', function (Blueprint $t) {
             if (! Schema::hasColumn('alerts', 'target')) $t->string('target')->default('all');
         });
+
+        Schema::table('notes', function (Blueprint $t) {
+            // Which unit the resident who sent the note belongs to (so the manager
+            // sees the apartment, not just the name).
+            if (! Schema::hasColumn('notes', 'unit_no')) $t->string('unit_no')->nullable();
+        });
     }
 
     public function down(): void
@@ -47,6 +53,9 @@ return new class extends Migration
         });
         Schema::table('workers', function (Blueprint $t) {
             $t->dropColumn(['came', 'last_visit', 'pay_status', 'paid_amount']);
+        });
+        Schema::table('notes', function (Blueprint $t) {
+            $t->dropColumn('unit_no');
         });
         Schema::table('buildings', function (Blueprint $t) {
             $t->dropColumn([

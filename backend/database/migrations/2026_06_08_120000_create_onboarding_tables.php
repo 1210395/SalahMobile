@@ -50,6 +50,7 @@ return new class extends Migration
             $table->string('building_key')->index();
             $table->foreignId('user_id')->nullable()->index();
             $table->string('name');
+            $table->string('unit_no')->nullable();              // sender's unit
             $table->string('phone')->nullable();
             $table->string('body', 280);
             $table->string('status')->default('new');          // new | read

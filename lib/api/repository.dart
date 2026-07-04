@@ -160,6 +160,8 @@ class Api {
   Future<List<Map<String, dynamic>>> listNotes(BType b) =>
       _dio.get('/notes', queryParameters: {'btype': btypeKey(b)}).then((r) => _list(r.data));
 
+  Future<void> markNoteRead(int id) => _dio.post('/notes/$id/read');
+
   // ───────────── Alerts engine (#9) ─────────────
   Future<int> regenerateAlerts(BType b) async {
     final res = await _dio.post('/alerts/regenerate', queryParameters: {'btype': btypeKey(b)});

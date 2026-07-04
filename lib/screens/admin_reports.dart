@@ -726,6 +726,100 @@ class _AlertsScreenState extends State<AlertsScreen> {
   String tab = 'alerts';
   String _note = '';
   int _noteSeq = 0; // bump to reset the composer field after sending
+  // The manager's inbox of resident notes (loaded on open for admins).
+  List<Map<String, dynamic>>? _notes;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.ctx.role == AppRole.admin) _loadNotes();
+  }
+
+  Future<void> _loadNotes() async {
+    try {
+      final list = await Api.I.listNotes(widget.ctx.btype);
+      if (mounted) setState(() => _notes = list);
+    } catch (_) {
+      if (mounted) setState(() => _notes = const []);
+    }
+  }
+
+  Future<void> _markNoteRead(int id) async {
+    try {
+      await Api.I.markNoteRead(id);
+      await _loadNotes();
+    } catch (e) {
+      if (mounted) widget.ctx.toast(apiErrorText(e), tone: 'late');
+    }
+  }
+
+  /// The manager's inbox of resident notes (name + unit + body), tap = mark read.
+  List<Widget> _residentNotes(Ctx ctx) {
+    final notes = _notes;
+    if (notes == null) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
+        ),
+      ];
+    }
+    final unread = notes.where((n) => n['status'] == 'new').length;
+    return [
+      const SizedBox(height: 4),
+      SectionTitle(text: 'رسائل السكان${unread > 0 ? ' ($unread جديدة)' : ''}'),
+      if (notes.isEmpty)
+        const EmptyState(icon: 'bell', title: 'لا توجد رسائل من السكان', sub: 'ستظهر هنا ملاحظات السكان')
+      else
+        ...notes.map((n) {
+          final isNew = n['status'] == 'new';
+          final unit = '${n['unit_no'] ?? ''}'.trim();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: AppCard(
+              pad: 13,
+              onTap: isNew ? () => _markNoteRead((n['id'] as num).toInt()) : null,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IconChip(icon: 'user', tone: isNew ? 'gold' : 'navy', size: 42),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(children: [
+                          Expanded(
+                            child: Text(
+                              '${n['name'] ?? 'ساكن'}'
+                              '${unit.isEmpty ? '' : ' · ${ctx.res ? 'شقة' : 'محل'} $unit'}',
+                              style: AppType.base(size: 14, weight: FontWeight.w800),
+                            ),
+                          ),
+                          if (isNew) const AppBadge(label: 'جديد', tone: 'gold', small: true),
+                        ]),
+                        const SizedBox(height: 4),
+                        Text('${n['body'] ?? ''}',
+                            style: AppType.base(
+                                size: 12.5, weight: FontWeight.w500, color: AppColors.ink600, height: 1.55)),
+                        if (isNew)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text('اضغط لتعليمها كمقروءة',
+                                style: AppType.base(size: 11, weight: FontWeight.w600, color: AppColors.navy500)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+      const SizedBox(height: 8),
+    ];
+  }
 
   /// Residents see only their own unit's alerts + general (non unit-specific)
   /// announcements broadcast by the building admin.
@@ -963,6 +1057,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   ),
                 ),
               )),
+        // Manager inbox: notes residents sent (name + unit + body), tap to mark read.
+        if (tab == 'alerts' && isAdmin) ..._residentNotes(ctx),
         // Residents can send a short note (≤ 50 chars) to the building admin.
         if (tab == 'alerts' && !isAdmin) ...[
           const SizedBox(height: 4),
