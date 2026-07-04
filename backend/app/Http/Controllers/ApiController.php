@@ -53,8 +53,14 @@ class ApiController extends Controller
     /// Only an admin (or super-admin) may perform writes.
     private function requireAdmin(Request $r): void
     {
-        abort_unless(in_array(optional($r->user())->role, ['admin', 'superadmin']),
-            403, 'يتطلب صلاحية المسؤول');
+        abort_unless($this->isAdmin($r), 403, 'يتطلب صلاحية المسؤول');
+    }
+
+    /// Whether the request actor is an admin (or super-admin). Used to scope
+    /// list reads so residents can't see building-wide data (or login codes).
+    private function isAdmin(Request $r): bool
+    {
+        return in_array(optional($r->user())->role, ['admin', 'superadmin']);
     }
 
     /// A short, unique, uppercase login code (QR / shareable) for a resident.
@@ -452,6 +458,16 @@ class ApiController extends Controller
     public function units(Request $r)
     {
         $bk = $this->bk($r);
+
+        // A resident sees ONLY their own unit, and never any login code (which is
+        // a login credential — exposing all of them would let any resident take
+        // over any other resident's account).
+        if (! $this->isAdmin($r)) {
+            return Unit::where('building_key', $bk)
+                ->where('no', optional($r->user())->unit_no ?? '__none__')
+                ->orderBy('no')->get();
+        }
+
         $units = Unit::where('building_key', $bk)
             ->orderBy('floor')->orderBy('no')->get();
 
@@ -470,6 +486,10 @@ class ApiController extends Controller
     public function payments(Request $r)
     {
         $q = Payment::where('building_key', $this->bk($r));
+        // A resident only sees their OWN unit's payments — not the whole building.
+        if (! $this->isAdmin($r)) {
+            $q->where('unit_no', optional($r->user())->unit_no ?? '__none__');
+        }
         if ($r->filled('month')) {
             $q->where('month', (int) $r->query('month'));
         }
@@ -553,6 +573,10 @@ class ApiController extends Controller
 
     public function expenses(Request $r)
     {
+        // Building expenses are admin-only financial data — not for residents.
+        if (! $this->isAdmin($r)) {
+            return response()->json([]);
+        }
         $q = Expense::where('building_key', $this->bk($r));
         if ($r->filled('cat') && $r->query('cat') !== 'all') {
             $q->where('cat', $r->query('cat'));
@@ -602,6 +626,11 @@ class ApiController extends Controller
 
     public function workers(Request $r)
     {
+        // Worker roster + pay is admin-only — not for residents.
+        if (! $this->isAdmin($r)) {
+            return response()->json([]);
+        }
+
         return Worker::where('building_key', $this->bk($r))->get();
     }
 

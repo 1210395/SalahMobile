@@ -14,6 +14,39 @@ test('guest can read public endpoints but not protected ones', async ({ page }) 
   expect(r.units).toBe(401);
 });
 
+test('resident reads are scoped: own unit only, no login codes, own payments, no expenses/workers', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const T = window.T; const tok = await T.adminToken(); const rand = () => Math.floor(Math.random() * 1e7);
+    const mine = 'M' + rand(); const other = 'O' + rand();
+    await T.req('POST', '/units?btype=residential', tok, { no: mine, floor: 1, sub: 100, status: 'ok' });
+    await T.req('POST', '/units?btype=residential', tok, { no: other, floor: 1, sub: 100, status: 'ok' });
+    await T.req('POST', '/payments?btype=residential', tok, { unit_no: mine, amount: 50, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' });
+    await T.req('POST', '/payments?btype=residential', tok, { unit_no: other, amount: 70, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' });
+    const res = await T.residentSession(mine);
+    const t = res.token;
+    const units = await (await T.req('GET', '/units?btype=residential', t)).body;
+    const pays = await (await T.req('GET', '/payments?btype=residential', t)).body;
+    const exps = await (await T.req('GET', '/expenses?btype=residential', t)).body;
+    const workers = await (await T.req('GET', '/workers?btype=residential', t)).body;
+    return {
+      unitCount: units.length,
+      leaksCode: units.some((u) => u.login_code),
+      seesOtherUnit: units.some((u) => u.no === other),
+      payCount: pays.length,
+      seesOtherPay: pays.some((p) => p.unit_no === other),
+      expCount: exps.length,
+      workerCount: workers.length,
+    };
+  });
+  expect(r.unitCount).toBe(1);
+  expect(r.leaksCode).toBe(false); // no login-code leak (account-takeover vector)
+  expect(r.seesOtherUnit).toBe(false);
+  expect(r.payCount).toBe(1);
+  expect(r.seesOtherPay).toBe(false);
+  expect(r.expCount).toBe(0);
+  expect(r.workerCount).toBe(0);
+});
+
 test('a resident cannot perform admin writes (create payment / unit / expense)', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const res = await window.T.residentSession('101');

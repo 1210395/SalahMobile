@@ -69,6 +69,54 @@ class AmaratiOverhaulTest extends TestCase
 
     // ─────────────── Authorization / cross-tenant (IDOR) ───────────────
 
+    public function test_resident_reads_are_scoped_and_never_leak_login_codes(): void
+    {
+        // A resident must NOT see other units (nor any login code — a credential),
+        // other units' payments, building expenses, or the worker roster.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => '101']);
+        $this->makeUnit(['no' => '202']);
+        $me = User::create([
+            'name' => 'ساكن', 'phone' => '0590', 'role' => 'resident',
+            'building_key' => 'residential', 'unit_no' => '101', 'login_code' => 'MYCODE1234',
+        ]);
+        // a neighbour on 202 with their own code
+        User::create([
+            'name' => 'جار', 'phone' => '0591', 'role' => 'resident',
+            'building_key' => 'residential', 'unit_no' => '202', 'login_code' => 'NEIGHBOUR99',
+        ]);
+        foreach (['101', '202'] as $no) {
+            Payment::create([
+                'building_key' => 'residential', 'unit_no' => $no, 'name' => 'x', 'amount' => 50,
+                'currency' => 'USD', 'original_amount' => 50, 'exchange_rate' => 1, 'kind' => 'k',
+                'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+            ]);
+        }
+        $this->actingAs($admin, 'sanctum')->postJson('/api/expenses', ['cat' => 'x', 'supplier' => 'y', 'amount' => 10, 'date' => '2026-01-01']);
+        $this->actingAs($admin, 'sanctum')->postJson('/api/workers', ['name' => 'w', 'phone' => '0', 'cycle' => 'شهري', 'amount' => 100]);
+
+        // Resident reads:
+        $units = $this->actingAs($me, 'sanctum')->getJson('/api/units')->json();
+        $this->assertCount(1, $units); // only their own unit
+        $this->assertSame('101', $units[0]['no']);
+        $unitsJson = json_encode($units);
+        $this->assertStringNotContainsString('NEIGHBOUR99', $unitsJson); // no other code
+        $this->assertStringNotContainsString('MYCODE1234', $unitsJson);  // not even their own
+
+        $pays = $this->actingAs($me, 'sanctum')->getJson('/api/payments')->json();
+        $this->assertCount(1, $pays); // only their unit's payment
+        $this->assertSame('101', $pays[0]['unit_no']);
+
+        $this->assertCount(0, $this->actingAs($me, 'sanctum')->getJson('/api/expenses')->json());
+        $this->assertCount(0, $this->actingAs($me, 'sanctum')->getJson('/api/workers')->json());
+
+        // Admin still sees everything + login codes.
+        $adminUnits = $this->actingAs($admin, 'sanctum')->getJson('/api/units')->json();
+        $this->assertCount(2, $adminUnits);
+        $this->assertStringContainsString('MYCODE1234', json_encode($adminUnits));
+    }
+
     public function test_resident_cannot_create_a_payment(): void
     {
         $this->seedBuilding();
