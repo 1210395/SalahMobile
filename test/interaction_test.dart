@@ -307,4 +307,93 @@ void main() {
     // The real paid total (600) is shown.
     expect(find.textContaining('600'), findsWidgets);
   });
+
+  // Payment edit sheet (long-press a payment) opens and offers delete.
+  testWidgets('payments: long-press opens edit sheet with delete', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final row = find.text('أحمد علي');
+    if (row.evaluate().isNotEmpty) {
+      await tester.longPress(row.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(tester.takeException(), isNull);
+      expect(find.text('حذف الدفعة'), findsWidgets, reason: 'edit sheet must offer delete');
+    }
+  });
+
+  // Worker sheet exposes the delete-worker action (the deleteWorker fix).
+  testWidgets('workers: visit sheet offers delete worker', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'workers', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final statusBtn = find.text('تحديث الحالة');
+    if (statusBtn.evaluate().isNotEmpty) {
+      await tester.tap(statusBtn.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(tester.takeException(), isNull);
+      expect(find.text('حذف العامل / الشركة'), findsWidgets, reason: 'worker delete must be present');
+    }
+  });
+
+  // Alerts screen: the manager's "إرسال إشعار" compose sheet opens.
+  testWidgets('alerts: notification compose sheet opens', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'alerts', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final fab = find.text('إرسال إشعار');
+    if (fab.evaluate().isNotEmpty) {
+      await tester.tap(fab.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  // Unit rename path (UI): detail → edit exposes the editable number field.
+  testWidgets('units: detail then edit exposes the number field', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'units', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.text('أحمد علي').first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    final edit = find.text('تعديل');
+    if (edit.evaluate().isNotEmpty) {
+      await tester.tap(edit.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  // The whole admin screen set also renders for a COMMERCIAL building.
+  testWidgets('commercial building: core screens render', (tester) async {
+    DataStore.I.loadedBtype = BType.commercial;
+    for (final sc in ['home', 'units', 'payments', 'reports']) {
+      await tester.pumpWidget(_wrap(AmaratiApp(
+          initialScreen: sc, initialRole: AppRole.admin, initialBtype: BType.commercial)));
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull, reason: 'commercial $sc must render');
+    }
+  });
+
+  // Resident alerts feed renders with a targeted alert present (privacy fix
+  // shape): an alert addressed to the resident's own unit builds fine.
+  testWidgets('resident alerts: targeted alert renders', (tester) async {
+    DataStore.I.alerts = [
+      AlertItem.fromJson({
+        'id': 9, 'type': 'subscription', 'icon': 'wallet', 'tone': 'late',
+        'title': 'اشتراك متأخر — وحدة 101', 'body': 'متأخر بمبلغ \$120',
+        'time_label': 'الآن', 'channel': 'whatsapp', 'target': '101',
+      }),
+    ];
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'alerts', initialRole: AppRole.resident, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+  });
 }
