@@ -279,9 +279,9 @@ class AppHeader extends StatelessWidget {
               gradient: appGradient(
                   [AppColors.navy700, AppColors.navy800, AppColors.navy900]),
             ),
-            // The building/dots motif is dropped behind the logo (per client
-            // feedback) — kept only on titled accent headers.
-            child: Stack(children: [if (!logo) const BranchMotif(), bar]),
+            // The building/dots motif is removed from the navy background per
+            // client feedback — plain gradient only.
+            child: bar,
           )
         : Container(
             decoration: const BoxDecoration(

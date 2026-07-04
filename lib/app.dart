@@ -235,11 +235,25 @@ class _AmaratiAppState extends State<AmaratiApp> {
       final b = btypeFromKey(u.buildingKey);
       await Api.I.loadBundle(b);
       if (!mounted) return null;
+      // First-time manager (building not set up yet) → run the setup wizard
+      // before anything else; configured admins land on their dashboard.
+      final needsSetup = r == AppRole.admin && (DataStore.I.building?.name.trim().isEmpty ?? true);
+      // A publicly-registered account is a MANAGER-in-onboarding (never a renter):
+      // it has role 'resident' but no unit. Send it back into the subscription →
+      // building-setup flow on every login until it's promoted to admin — instead
+      // of dropping it into the renter home. (Real renters always have a unit_no,
+      // assigned by their manager via QR/join, so they still land on resHome.)
+      final pendingManager =
+          r == AppRole.resident && (u.unitNo == null || u.unitNo!.trim().isEmpty);
       setState(() {
         _busy = false;
         this.role = r;
         this.btype = b;
-        screen = _homeFor(r);
+        screen = needsSetup
+            ? 'buildingSetup'
+            : pendingManager
+                ? 'subscribe'
+                : _homeFor(r);
       });
       return null;
     } catch (e) {
@@ -251,10 +265,11 @@ class _AmaratiAppState extends State<AmaratiApp> {
   /// Create a new account (always a resident), then route to the bank
   /// subscription screen (Note 4: pay the subscription right after signup).
   Future<String?> _register(String name, String email, String password,
-      {String? phone, String? whatsapp}) async {
+      {String? phone, String? whatsapp, String? emailCode}) async {
     setState(() => _busy = true);
     try {
-      await AuthStore.I.register(name, email, password, phone: phone, whatsapp: whatsapp);
+      await AuthStore.I.register(name, email, password,
+          phone: phone, whatsapp: whatsapp, emailCode: emailCode);
       final u = AuthStore.I.user!;
       final b = btypeFromKey(u.buildingKey);
       await Api.I.loadBundle(b);

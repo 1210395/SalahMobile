@@ -120,7 +120,9 @@ class ResidentHome extends StatelessWidget {
               if (!paid)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: NumText('المتأخر: ${fmtUSD(me.balance)}',
+                  // balance is negative when owing; show the overdue amount as a
+                  // positive figure ("المتأخر: $80", not "-$80").
+                  child: NumText('المتأخر: ${fmtUSD(me.balance.abs())}',
                       style: AppType.num(size: 14, weight: FontWeight.w700, color: Colors.white)),
                 ),
               const SizedBox(height: 14),
@@ -199,11 +201,18 @@ class _ResidentReportState extends State<ResidentReport> {
         .toList();
     final s = kStatusMap[me.status]!;
 
-    // Payment ratio for the donut: paid vs the annual requirement.
+    // "المسدّد" = the resident's ACTUAL payments for the year — NOT sub×12+balance
+    // (that conflated the annual requirement with the carry-over ledger and, for
+    // a credited resident, showed more than they really paid — e.g. paid 600 but
+    // shown 909). The month filter only narrows the history list below; the
+    // ratio/donut always reflect the whole selected year.
+    final paidYear = kPayments
+        .where((p) => p.unit == me.no && p.year == selYear)
+        .fold<int>(0, (sum, p) => sum + p.amount);
     final required = me.sub * 12;
-    final paidAmt = (required + me.balance).clamp(0, required).toInt();
-    final remaining = (required - paidAmt).clamp(0, required).toInt();
-    final pct = required > 0 ? ((paidAmt / required) * 100).round() : 0;
+    final paidAmt = paidYear.clamp(0, required).toInt(); // clamped for the donut
+    final remaining = (required - paidYear).clamp(0, required).toInt();
+    final pct = required > 0 ? ((paidYear / required) * 100).round().clamp(0, 100) : 0;
 
     final years = kYears.map((y) => SelectOption(y, '$y')).toList();
     final months = <SelectOption>[
@@ -314,7 +323,7 @@ class _ResidentReportState extends State<ResidentReport> {
               const SizedBox(height: 14),
               DetailGrid(rows: [
                 DetailRow('wallet', 'المطلوب ($selYear)', fmtUSD(me.sub * 12)),
-                DetailRow('checkCircle', 'المسدّد', fmtUSD(me.sub * 12 + me.balance), tone: 'ok'),
+                DetailRow('checkCircle', 'المسدّد', fmtUSD(paidYear), tone: 'ok'),
                 DetailRow('dollar', 'الرصيد', fmtUSD(me.balance), tone: me.balance < 0 ? 'late' : 'ok'),
                 DetailRow('calendar', 'آخر دفعة', myPays.isNotEmpty ? myPays.first.date : '—', ltr: true),
               ]),
@@ -480,8 +489,8 @@ class MoreHub extends StatelessWidget {
         ('building', 'إدارة المبنى', 'building2'),
         ('units', res ? 'الشقق السكنية' : 'المحلات التجارية', res ? 'building' : 'store'),
         ('approvals', 'طلبات الانضمام', 'users'),
-        ('subscribe', 'الاشتراك والإعداد', 'shield'),
-        ('years', 'السنوات والأشهر', 'calendar'),
+        ('subscribe', 'الاشتراك بالتطبيق', 'shield'),
+        ('years', 'الترحيل السنوي', 'calendar'),
       ]),
       ('المالية', [
         ('payments', 'الإيرادات', 'wallet'),

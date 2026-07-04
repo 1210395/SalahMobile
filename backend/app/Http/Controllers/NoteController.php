@@ -30,6 +30,7 @@ class NoteController extends Controller
             'building_key' => $u->building_key ?: 'residential',
             'user_id' => $u->id,
             'name' => $u->name,
+            'unit_no' => $u->unit_no,
             'phone' => $data['phone'] ?? $u->phone,
             'body' => $data['body'],
             'status' => 'new',

@@ -60,7 +60,7 @@ class Ctx {
   /// Create a new account (name/email/password, with optional phone/whatsapp).
   /// Returns an error or null; on success routes to the bank subscription screen.
   final Future<String?> Function(String name, String email, String password,
-      {String? phone, String? whatsapp}) register;
+      {String? phone, String? whatsapp, String? emailCode}) register;
 
   /// Sign in, then load the building bundle. Supported modes:
   /// - email+password (email may be an address)

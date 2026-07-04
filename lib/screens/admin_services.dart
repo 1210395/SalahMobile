@@ -116,7 +116,31 @@ class GuardScreen extends StatelessWidget {
           label: 'تسجيل دفعة جديدة',
           full: true,
           icon: 'wallet',
-          onTap: () => ctx.toast('تم تسجيل دفعة الحارس'),
+          // Records the guard's wage as a real expense (shows up in expenses +
+          // reports) — previously this only showed a toast without saving.
+          onTap: () async {
+            if (g.fee <= 0) {
+              ctx.toast('حدّد أجرة الحارس الشهرية أولاً', tone: 'late');
+              return;
+            }
+            try {
+              await Api.I.createExpense(ctx.btype, {
+                'cat': 'أخرى',
+                'icon': 'user',
+                'tone': 'gold',
+                'supplier': 'أجرة الحارس — ${g.name}',
+                'amount': g.fee,
+                'original_amount': g.fee,
+                'currency': activeCurrency,
+                'date': todayIso(),
+                'description': 'دفعة أجرة الحارس الشهرية',
+              });
+              await ctx.reload();
+              ctx.toast('تم تسجيل دفعة الحارس (${fmtUSD(g.fee)})');
+            } catch (e) {
+              ctx.toast(apiErrorText(e), tone: 'late');
+            }
+          },
         ),
       ],
     );
@@ -193,17 +217,76 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
+    final b = ctx.building;
     final allowed = access.values.where((v) => v).length;
 
     return ScreenScaffold(
       header: AppHeader(
-        title: 'إدارة الوصول للمصعد',
+        title: 'إدارة المصعد',
         subtitle: '$allowed من ${base.length} مصرّح لهم',
         onBack: () => ctx.go('home'),
-        right: RoundBtn(icon: 'download', onTap: () => ctx.toast('تم تصدير قائمة المصرّح لهم')),
+        right: RoundBtn(icon: 'edit', onTap: () => _editContract(ctx, b)),
       ),
       nav: ctx.adminNav,
       children: [
+        // Maintenance contract + periodic-inspection reminder.
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                const IconChip(icon: 'elevator', tone: 'navy', size: 42),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('عقد صيانة المصعد', style: AppType.base(size: 14.5, weight: FontWeight.w800)),
+                      Text(b.elevatorCompany.isEmpty ? 'لم تُضف شركة الصيانة' : b.elevatorCompany,
+                          style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.ink500)),
+                    ],
+                  ),
+                ),
+                AppButton(
+                  label: 'تعديل',
+                  variant: BtnVariant.ghost,
+                  size: BtnSize.sm,
+                  icon: 'edit',
+                  onTap: () => _editContract(ctx, b),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                MiniStat(
+                    label: 'بداية العقد',
+                    value: b.elevatorContractStart.isEmpty ? '—' : b.elevatorContractStart,
+                    tone: 'ok',
+                    num: true),
+                const SizedBox(width: 8),
+                MiniStat(
+                    label: 'نهاية العقد',
+                    value: b.elevatorContractEnd.isEmpty ? '—' : b.elevatorContractEnd,
+                    tone: 'late',
+                    num: true),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                MiniStat(
+                    label: 'تاريخ آخر فحص دوري',
+                    value: b.elevatorLastCheck.isEmpty ? '—' : b.elevatorLastCheck,
+                    tone: 'navy',
+                    num: true),
+                const SizedBox(width: 8),
+                MiniStat(
+                    label: 'تذكير الفحص',
+                    value: b.elevatorCheckNotify ? 'كل ${b.elevatorCheckInterval} شهر' : 'متوقّف',
+                    tone: b.elevatorCheckNotify ? 'ok' : 'navy'),
+              ]),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -229,7 +312,8 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
                     Text('رقم هاتف المصعد (للمصرّح لهم)',
                         style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.navy300)),
                     const SizedBox(height: 3),
-                    NumText(kElevPhone, style: AppType.num(size: 17, weight: FontWeight.w800, color: Colors.white)),
+                    NumText(b.elevatorPhone.isEmpty ? kElevPhone : b.elevatorPhone,
+                        style: AppType.num(size: 17, weight: FontWeight.w800, color: Colors.white)),
                   ],
                 ),
               ),
@@ -310,6 +394,117 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
           onTap: () => ctx.toast('تم تصدير القائمة'),
         ),
       ],
+    );
+  }
+
+  /// Edit the elevator maintenance contract + the periodic-inspection reminder.
+  void _editContract(Ctx ctx, Building b) {
+    final f = {
+      'company': b.elevatorCompany,
+      'phone': b.elevatorPhone,
+      'start': b.elevatorContractStart,
+      'end': b.elevatorContractEnd,
+      'check': b.elevatorLastCheck,
+    };
+    bool notify = b.elevatorCheckNotify;
+    int interval = b.elevatorCheckInterval;
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'عقد المصعد والصيانة',
+          footer: AppButton(
+            label: 'حفظ',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.updateBuilding(ctx.btype, {
+                  'elevator_company': f['company'],
+                  'elevator_phone': f['phone'],
+                  'elevator_contract_start': f['start']!.isEmpty ? null : f['start'],
+                  'elevator_contract_end': f['end']!.isEmpty ? null : f['end'],
+                  'elevator_last_check': f['check']!.isEmpty ? null : f['check'],
+                  'elevator_check_notify': notify,
+                  'elevator_check_interval': interval,
+                });
+                await ctx.reload();
+                ctx.toast('تم حفظ بيانات المصعد');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          children: [
+            Field(
+                label: 'شركة الصيانة',
+                icon: 'building',
+                value: f['company']!,
+                placeholder: 'اسم الشركة',
+                onChanged: (v) => f['company'] = v),
+            Field(
+                label: 'هاتف الشركة',
+                icon: 'phone',
+                value: f['phone']!,
+                ltr: true,
+                placeholder: '+966 ...',
+                onChanged: (v) => f['phone'] = v),
+            Row(children: [
+              Expanded(
+                child: DateField(
+                    label: 'بداية العقد',
+                    value: f['start']!,
+                    onChanged: (v) => setS(() => f['start'] = v)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DateField(
+                    label: 'نهاية العقد',
+                    value: f['end']!,
+                    onChanged: (v) => setS(() => f['end'] = v)),
+              ),
+            ]),
+            DateField(
+                label: 'تاريخ آخر فحص دوري للمصعد',
+                value: f['check']!,
+                onChanged: (v) => setS(() => f['check'] = v)),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+              decoration: BoxDecoration(
+                color: notify ? AppColors.navy50 : AppColors.surface,
+                border: Border.all(color: notify ? AppColors.navy100 : AppColors.line, width: 1.5),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Row(children: [
+                const AppIcon('bell', size: 20, color: AppColors.navy700),
+                const SizedBox(width: 11),
+                Expanded(
+                    child: Text('تذكير بالفحص الدوري القادم',
+                        style: AppType.base(size: 14, weight: FontWeight.w700))),
+                AppSwitch(checked: notify, onChanged: (v) => setS(() => notify = v)),
+              ]),
+            ),
+            if (notify) ...[
+              const SizedBox(height: 12),
+              SelectField(
+                label: 'الفترة بين الفحوصات',
+                icon: 'calendar',
+                options: const [
+                  SelectOption(1, 'كل شهر'),
+                  SelectOption(3, 'كل 3 أشهر'),
+                  SelectOption(6, 'كل 6 أشهر'),
+                  SelectOption(12, 'كل سنة'),
+                ],
+                value: interval,
+                onChanged: (v) => setS(() => interval = v as int),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

@@ -10,13 +10,12 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
+#[Fillable(['name', 'email', 'phone', 'whatsapp', 'login_code', 'password', 'role', 'building_key', 'unit_no', 'email_verified_at'])]
+#[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
-
-    protected $fillable = ['name', 'email', 'phone', 'whatsapp', 'login_code', 'password', 'role', 'building_id', 'building_key', 'unit_no'];
-    protected $hidden = ['password', 'remember_token'];
 
     protected function casts(): array
     {
@@ -24,10 +23,5 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
-    }
-
-    public function building()
-    {
-        return $this->belongsTo(Building::class);
     }
 }

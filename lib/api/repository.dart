@@ -72,6 +72,18 @@ class Api {
     s.payTypes = _list(payTypes).map(PayType.fromJson).toList();
   }
 
+  /// Re-fetch only the live summary for a period (year + optional 0-based month)
+  /// so the dashboard totals reflect the selected time window.
+  Future<void> fetchSummary(BType b, {required int year, int? month}) async {
+    final q = {
+      'btype': btypeKey(b),
+      'year': '$year',
+      if (month != null) 'month': '$month', // backend month param is 0-based
+    };
+    final summary = (await _dio.get('/summary', queryParameters: q)).data;
+    DataStore.I.summary = SummaryData.fromJson(_obj(summary));
+  }
+
   // ───────────────────────────── Writes ─────────────────────────────
   // building_key is derived server-side from ?btype for admins, so every write
   // carries the active building type as a query param.
@@ -84,6 +96,16 @@ class Api {
 
   Future<void> createWorker(BType b, Map<String, dynamic> body) =>
       _dio.post('/workers', queryParameters: {'btype': btypeKey(b)}, data: body);
+
+  Future<void> updateWorker(BType b, int id, Map<String, dynamic> body) =>
+      _dio.put('/workers/$id', queryParameters: {'btype': btypeKey(b)}, data: body);
+
+  Future<void> deleteWorker(BType b, int id) =>
+      _dio.delete('/workers/$id', queryParameters: {'btype': btypeKey(b)});
+
+  /// Manager composes a push/internal notification to all residents or one unit.
+  Future<void> sendNotification(BType b, Map<String, dynamic> body) =>
+      _dio.post('/notifications', queryParameters: {'btype': btypeKey(b)}, data: body);
 
   Future<void> createCraftsman(Map<String, dynamic> body) =>
       _dio.post('/craftsmen', data: body);
@@ -137,6 +159,8 @@ class Api {
 
   Future<List<Map<String, dynamic>>> listNotes(BType b) =>
       _dio.get('/notes', queryParameters: {'btype': btypeKey(b)}).then((r) => _list(r.data));
+
+  Future<void> markNoteRead(int id) => _dio.post('/notes/$id/read');
 
   // ───────────── Alerts engine (#9) ─────────────
   Future<int> regenerateAlerts(BType b) async {
@@ -221,12 +245,13 @@ class Api {
 
   /// Guest mode — only the public building summary is available (no token).
   Future<void> loadGuest(BType b) async {
+    // Guests get only the public building shell (name/theme) — financials are
+    // login-only, so the summary stays zeroed (a guest never sees real money).
     final q = {'btype': btypeKey(b)};
     final building = (await _dio.get('/building', queryParameters: q)).data;
-    final summary = (await _dio.get('/summary', queryParameters: q)).data;
     final s = DataStore.I;
     s.loadedBtype = b;
     s.building = Building.fromJson(_obj(building));
-    s.summary = SummaryData.fromJson(_obj(summary));
+    s.summary = SummaryData.fromJson(const {});
   }
 }

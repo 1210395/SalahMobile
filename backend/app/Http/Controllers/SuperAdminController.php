@@ -67,7 +67,7 @@ class SuperAdminController extends Controller
             : ['residential', 'commercial'];
 
         $buildings = [];
-        $totCollected = $totExpenses = $totUnits = $totLate = 0;
+        $totCollected = $totExpenses = $totUnits = $totLate = $totOpening = 0;
 
         foreach ($keys as $bk) {
             $b = Building::where('key', $bk)->first();
@@ -81,6 +81,10 @@ class SuperAdminController extends Controller
             $collected = (int) $payQ->sum('amount');
             $payCount = $payQ->count();
             $expenses = (int) Expense::where('building_key', $bk)->sum('amount');
+            // Genesis opening so the per-building balance reflects true cash on
+            // hand (consistent with the dashboard's opening + revenue − expenses).
+            $opening = (int) (\App\Models\YearSummary::where('building_key', $bk)
+                ->orderBy('year')->value('opening_balance') ?? 0);
             $units = Unit::where('building_key', $bk)->where('status', '!=', 'vacant')->count();
             $late = Unit::where('building_key', $bk)->where('status', 'late')->count();
             $admins = User::where('building_key', $bk)->where('role', 'admin')->count();
@@ -93,13 +97,14 @@ class SuperAdminController extends Controller
                 'collected' => $collected,
                 'payments' => $payCount,
                 'expenses' => $expenses,
-                'balance' => $collected - $expenses,
+                'balance' => $opening + $collected - $expenses,
                 'units' => $units,
                 'late' => $late,
                 'admins' => $admins,
             ];
             $totCollected += $collected;
             $totExpenses += $expenses;
+            $totOpening += $opening;
             $totUnits += $units;
             $totLate += $late;
         }
@@ -110,7 +115,7 @@ class SuperAdminController extends Controller
             'totals' => [
                 'collected' => $totCollected,
                 'expenses' => $totExpenses,
-                'balance' => $totCollected - $totExpenses,
+                'balance' => $totOpening + $totCollected - $totExpenses,
                 'units' => $totUnits,
                 'late' => $totLate,
             ],

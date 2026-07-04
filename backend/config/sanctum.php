@@ -50,7 +50,12 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Minutes until a token expires. Defaults to null (never) to preserve
+    // existing sessions; production should set SANCTUM_EXPIRATION_MINUTES (e.g.
+    // 129600 = 90 days) so a lost-device/leaked token can't live forever.
+    'expiration' => env('SANCTUM_EXPIRATION_MINUTES') !== null
+        ? (int) env('SANCTUM_EXPIRATION_MINUTES')
+        : null,
 
     /*
     |--------------------------------------------------------------------------

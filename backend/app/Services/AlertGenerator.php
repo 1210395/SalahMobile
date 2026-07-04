@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Models\Alert;
+use App\Models\Building;
 use App\Models\Payment;
 use App\Models\Unit;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 // عمارتي — automated alerts engine. Recomputes a building's alerts from live
@@ -17,7 +19,10 @@ class AlertGenerator
     /// Regenerate the full alert set for [bk]. Returns the number created.
     public function regenerate(string $bk): int
     {
-        Alert::where('building_key', $bk)->delete();
+        // Refresh ONLY the auto-derived alerts. Manager-composed notifications
+        // (type = 'notice', sent to residents) are real messages — regenerating
+        // must not wipe them.
+        Alert::where('building_key', $bk)->where('type', '!=', 'notice')->delete();
 
         $created = [];
 
@@ -30,6 +35,9 @@ class AlertGenerator
                 'title' => 'اشتراك متأخر — وحدة '.$u->no,
                 'body' => $u->resident.' متأخر عن السداد بمبلغ $'.number_format(abs($u->balance)).'.',
                 'time_label' => 'الآن', 'channel' => 'whatsapp',
+                // Addressed to that unit only — a resident must never see a
+                // neighbour's name + debt in their own notifications.
+                'target' => $u->no,
             ]);
         }
 
@@ -45,6 +53,23 @@ class AlertGenerator
             ]);
         }
 
+        // 2b) Elevator periodic-check reminder — only when the manager enabled
+        // it AND the next check (last check + interval months) is due or within
+        // two weeks. Makes the "تذكير الفحص" toggle actually do something.
+        $b = Building::where('key', $bk)->first();
+        if ($b && $b->elevator_check_notify && $b->elevator_last_check) {
+            $due = Carbon::parse($b->elevator_last_check)
+                ->addMonths((int) ($b->elevator_check_interval ?: 6));
+            if ($due->isPast() || now()->diffInDays($due, false) <= 14) {
+                $created[] = $this->make($bk, [
+                    'type' => 'elevator_check', 'icon' => 'elevator', 'tone' => 'warn',
+                    'title' => 'موعد الفحص الدوري للمصعد',
+                    'body' => 'استحقّ الفحص الدوري للمصعد بتاريخ '.$due->toDateString().' — يُرجى ترتيبه.',
+                    'time_label' => 'اليوم', 'channel' => 'internal',
+                ]);
+            }
+        }
+
         // 3) Latest received payment (positive confirmation).
         $pay = Payment::where('building_key', $bk)->orderByDesc('date')->first();
         if ($pay) {
@@ -53,6 +78,9 @@ class AlertGenerator
                 'title' => 'تم استلام دفعة',
                 'body' => $pay->name.' — وحدة '.$pay->unit_no.' سدّد $'.number_format($pay->amount).'.',
                 'time_label' => 'مؤخراً', 'channel' => 'internal',
+                // Payment confirmation is for that unit (+ the admin), not a
+                // building-wide broadcast of who paid what.
+                'target' => $pay->unit_no,
             ]);
         }
 

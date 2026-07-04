@@ -23,7 +23,9 @@ class AuthController extends Controller
     private function loginCode(): string
     {
         do {
-            $code = strtoupper(bin2hex(random_bytes(4)));
+            // 128-bit CSPRNG code (the resident's standing login credential; it
+            // must stay readable to render the admin-side QR, so it isn't hashed).
+            $code = strtoupper(bin2hex(random_bytes(16)));
         } while (User::where('login_code', $code)->exists());
 
         return $code;
@@ -37,8 +39,20 @@ class AuthController extends Controller
             'phone' => 'nullable|string|max:32|unique:users,phone',
             'whatsapp' => 'nullable|string|max:32',
             'password' => 'required|string|min:6',
+            'email_code' => 'nullable|string',
             'building_key' => 'in:residential,commercial',
         ]);
+        // Validation above (unique email/phone) has already passed, so a
+        // duplicate never reaches — and thus never consumes — the email code.
+        // Verify the code as part of account creation: a wrong code fails here
+        // WITHOUT creating the user, and (crucially) a later failure can't strand
+        // an already-consumed code so the correct code reads as "wrong" on retry.
+        $emailVerified = false;
+        if (! empty($data['email_code'])) {
+            $this->consumeEmailCodeOrFail($data['email'], $data['email_code']);
+            $emailVerified = true;
+        }
+
         // SECURITY: role is never accepted from a public endpoint. New accounts
         // are always unprivileged residents; promotion to admin must be done by
         // an existing admin through a separate, authorized flow.
@@ -50,6 +64,7 @@ class AuthController extends Controller
             'password' => Hash::make($data['password']),
             'role' => 'resident',
             'building_key' => $data['building_key'] ?? 'residential',
+            'email_verified_at' => $emailVerified ? now() : null,
         ]);
 
         return response()->json($this->payload($user), 201);
@@ -61,7 +76,7 @@ class AuthController extends Controller
         $data = $r->validate([
             'email' => 'required_without:phone|email',
             'phone' => 'required_without:email|string|max:32',
-            'password' => 'required|string',
+            'password' => 'required|string|max:200',
         ]);
         $user = isset($data['email'])
             ? User::where('email', $data['email'])->first()
@@ -102,10 +117,25 @@ class AuthController extends Controller
     {
         $data = $r->validate([
             'email' => 'required|email',
-            'code' => 'required|string',
+            'code' => 'required|string|max:64',
         ]);
 
-        $ec = EmailCode::where('email', $data['email'])
+        $this->consumeEmailCodeOrFail($data['email'], $data['code']);
+
+        // If an account already uses this email, mark it verified.
+        User::where('email', $data['email'])->whereNull('email_verified_at')
+            ->update(['email_verified_at' => now()]);
+
+        return response()->json(['verified' => true]);
+    }
+
+    /// Verify + consume the latest email code for [email]. Throws a 422 on a
+    /// wrong/expired code (incrementing attempts, locking after 5) and only marks
+    /// the code used on success — shared by verify-email-code and register so the
+    /// two never double-consume a code.
+    private function consumeEmailCodeOrFail(string $email, string $code): void
+    {
+        $ec = EmailCode::where('email', $email)
             ->where('used', false)
             ->where('expires_at', '>', now())
             ->latest()
@@ -122,23 +152,17 @@ class AuthController extends Controller
             $ec->update(['used' => true]);
             $invalid();
         }
-        if (! Hash::check($data['code'], $ec->code)) {
+        if (! Hash::check($code, $ec->code)) {
             $ec->increment('attempts');
             $invalid();
         }
         $ec->update(['used' => true]);
-
-        // If an account already uses this email, mark it verified.
-        User::where('email', $data['email'])->whereNull('email_verified_at')
-            ->update(['email_verified_at' => now()]);
-
-        return response()->json(['verified' => true]);
     }
 
     /// QR / short-code resident login: the code is matched case-insensitively.
     public function redeemCode(Request $r)
     {
-        $data = $r->validate(['code' => 'required|string']);
+        $data = $r->validate(['code' => 'required|string|max:64']);
         $user = User::where('login_code', strtoupper(trim($data['code'])))->first();
         if (! $user) {
             throw ValidationException::withMessages(['code' => ['رمز الدخول غير صحيح']]);
@@ -176,7 +200,7 @@ class AuthController extends Controller
     {
         $data = $r->validate([
             'phone' => 'required|string|max:32',
-            'code' => 'required|string',
+            'code' => 'required|string|max:64',
             'building_key' => 'in:residential,commercial',
             // Optional full name captured on first sign-up (used only when the
             // phone-only account is created; never overwrites an existing one).
@@ -204,27 +228,30 @@ class AuthController extends Controller
             $otp->increment('attempts');
             $invalid();
         }
-        $otp->update(['used' => true]);
 
         $user = User::where('phone', $data['phone'])->first();
 
+        // Renters never self-register: an account only exists if a manager issued
+        // a QR/invite or approved a join request. An OTP for an unknown phone is
+        // rejected (it must NOT silently create a resident account).
+        if (! $user) {
+            throw ValidationException::withMessages(
+                ['phone' => ['لا يوجد حساب لهذا الرقم — انضم عبر رمز/رابط من مسؤول العمارة']]
+            );
+        }
+
         // SECURITY: never let an OTP take over a password-protected account
-        // (e.g. an admin). Those must authenticate with their password.
-        if ($user && $user->password) {
+        // (e.g. an admin). Those must authenticate with their password. Check
+        // this BEFORE consuming the code, so a valid OTP isn't wasted on a login
+        // that can't succeed anyway (mirrors the register fix).
+        if ($user->password) {
             throw ValidationException::withMessages(
                 ['phone' => ['هذا الرقم مرتبط بحساب بكلمة مرور — سجّل الدخول بكلمة المرور']]
             );
         }
 
-        // SECURITY: phone-only accounts are always unprivileged residents; role
-        // is server-decided, never client-supplied. building_key only scopes
-        // which dataset they see and defaults to residential.
-        $user ??= User::create([
-            'phone' => $data['phone'],
-            'name' => $data['name'] ?? 'مستخدم عمارتي',
-            'role' => 'resident',
-            'building_key' => $data['building_key'] ?? 'residential',
-        ]);
+        // All checks passed — now consume the code.
+        $otp->update(['used' => true]);
 
         return response()->json($this->payload($user));
     }

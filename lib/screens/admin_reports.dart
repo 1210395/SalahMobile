@@ -19,6 +19,10 @@ List<ChartDatum> _withValueLabels(List<ChartDatum> data) => data
 
 // ───────────────────────────── Reports ─────────────────────────────
 
+/// Set by another screen (e.g. Expenses) before navigating to 'reports' so the
+/// reports screen opens on a specific tab. Consumed once in initState.
+String? pendingReportTab;
+
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key, required this.ctx});
   final Ctx ctx;
@@ -29,8 +33,21 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   String tab = 'monthly';
+
+  @override
+  void initState() {
+    super.initState();
+    if (pendingReportTab != null) {
+      tab = pendingReportTab!;
+      pendingReportTab = null;
+    }
+  }
+
   late int selYear = kYears.isNotEmpty ? kYears.last : DateTime.now().year;
   int selMonth = DateTime.now().month - 1;
+  // Expense-report filters (category + month; -1 month = whole year).
+  String expCat = 'all';
+  int expMonth = -1;
   String? selUnitNo;
 
   /// Building-wide amount collected in the selected month/year.
@@ -192,16 +209,49 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final defaultSheet = book.getDefaultSheet();
       for (final y in years) {
         final sheet = book['$y'];
+        // Header: month column + one column per apartment/shop + a row-total.
         sheet.appendRow([
           xlsx.TextCellValue('الشهر'),
-          for (final u in residents) xlsx.TextCellValue(u.resident),
+          for (final u in residents) xlsx.TextCellValue('${u.no} — ${u.resident}'),
+          xlsx.TextCellValue('الإجمالي'),
         ]);
+        final colTotals = List<int>.filled(residents.length, 0);
         for (var m = 0; m < 12; m++) {
-          sheet.appendRow([
-            xlsx.TextCellValue(monthLabelNum(m)),
-            for (final u in residents) xlsx.IntCellValue(_paymentFor(u.no, m, y)),
-          ]);
+          var rowTotal = 0;
+          final cells = <xlsx.CellValue>[xlsx.TextCellValue(monthLabelNum(m))];
+          for (var i = 0; i < residents.length; i++) {
+            final v = _paymentFor(residents[i].no, m, y);
+            colTotals[i] += v;
+            rowTotal += v;
+            cells.add(xlsx.IntCellValue(v));
+          }
+          cells.add(xlsx.IntCellValue(rowTotal));
+          sheet.appendRow(cells);
         }
+        // Column totals (paid per unit across the year) + grand total.
+        sheet.appendRow([
+          xlsx.TextCellValue('الإجمالي'),
+          for (final t in colTotals) xlsx.IntCellValue(t),
+          xlsx.IntCellValue(colTotals.fold<int>(0, (s, t) => s + t)),
+        ]);
+        // Required for the year (subscription × 12) per unit.
+        sheet.appendRow([
+          xlsx.TextCellValue('المطلوب سنوياً'),
+          for (final u in residents) xlsx.IntCellValue(u.sub * 12),
+          xlsx.IntCellValue(residents.fold<int>(0, (s, u) => s + u.sub * 12)),
+        ]);
+        // Remaining balance (− = مدين/owes, + = دائن/credit).
+        sheet.appendRow([
+          xlsx.TextCellValue('المتبقي (الرصيد)'),
+          for (final u in residents) xlsx.IntCellValue(u.balance),
+          xlsx.IntCellValue(residents.fold<int>(0, (s, u) => s + u.balance)),
+        ]);
+        // Paid-in-full? (✓ when balance ≥ 0).
+        sheet.appendRow([
+          xlsx.TextCellValue('مسدّد بالكامل؟'),
+          for (final u in residents) xlsx.TextCellValue(u.balance >= 0 ? 'نعم' : 'لا'),
+          xlsx.TextCellValue(''),
+        ]);
       }
       // Drop the auto-created default sheet (we only want the per-year ones).
       if (defaultSheet != null && !years.map((y) => '$y').contains(defaultSheet)) {
@@ -280,6 +330,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     for (final e in kExpenses) {
       final d = DateTime.tryParse(e.date);
       if (d != null && d.year != selYear) continue;
+      if (expMonth >= 0 && (d == null || d.month - 1 != expMonth)) continue;
+      if (expCat != 'all' && e.cat != expCat) continue;
       byCat[e.cat] = (byCat[e.cat] ?? 0) + e.amount;
     }
     const palette = [
@@ -505,7 +557,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final s = kStatusMap[u.status]!;
     final pays = kPayments.where((p) => p.unit == u.no).toList();
     final required = u.sub * 12;
-    final paid = (required + u.balance).clamp(0, required).toInt();
+    // "المسدّد" = the unit's ACTUAL payments for the selected year, not
+    // required+balance (which over-counted a credited unit — the 909 bug).
+    final paid = kPayments
+        .where((p) => p.unit == u.no && p.year == selYear)
+        .fold<int>(0, (sum, p) => sum + p.amount);
 
     return [
       SelectField(
@@ -575,8 +631,40 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   List<Widget> _expense(List<ChartDatum> expData, int expTotal) => [
         _yearSelect(),
+        // Filters: category + month (more granular expense reporting).
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SelectField(
+                label: 'التصنيف',
+                icon: 'grid',
+                options: [
+                  const SelectOption('all', 'كل التصنيفات'),
+                  for (final c in kExpCats) SelectOption(c, c),
+                ],
+                value: expCat,
+                onChanged: (v) => setState(() => expCat = v as String),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: SelectField(
+                label: 'الشهر',
+                icon: 'calendar',
+                options: [
+                  const SelectOption(-1, 'كل الأشهر'),
+                  for (var i = 0; i < 12; i++) SelectOption(i, monthLabelNum(i)),
+                ],
+                value: expMonth,
+                onChanged: (v) => setState(() => expMonth = v as int),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         if (expData.isEmpty)
-          const EmptyState(icon: 'expense', title: 'لا توجد مصروفات في هذه السنة'),
+          const EmptyState(icon: 'expense', title: 'لا توجد مصروفات مطابقة للفلاتر'),
         if (expData.isNotEmpty)
         AppCard(
           child: Row(
@@ -638,6 +726,100 @@ class _AlertsScreenState extends State<AlertsScreen> {
   String tab = 'alerts';
   String _note = '';
   int _noteSeq = 0; // bump to reset the composer field after sending
+  // The manager's inbox of resident notes (loaded on open for admins).
+  List<Map<String, dynamic>>? _notes;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.ctx.role == AppRole.admin) _loadNotes();
+  }
+
+  Future<void> _loadNotes() async {
+    try {
+      final list = await Api.I.listNotes(widget.ctx.btype);
+      if (mounted) setState(() => _notes = list);
+    } catch (_) {
+      if (mounted) setState(() => _notes = const []);
+    }
+  }
+
+  Future<void> _markNoteRead(int id) async {
+    try {
+      await Api.I.markNoteRead(id);
+      await _loadNotes();
+    } catch (e) {
+      if (mounted) widget.ctx.toast(apiErrorText(e), tone: 'late');
+    }
+  }
+
+  /// The manager's inbox of resident notes (name + unit + body), tap = mark read.
+  List<Widget> _residentNotes(Ctx ctx) {
+    final notes = _notes;
+    if (notes == null) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
+        ),
+      ];
+    }
+    final unread = notes.where((n) => n['status'] == 'new').length;
+    return [
+      const SizedBox(height: 4),
+      SectionTitle(text: 'رسائل السكان${unread > 0 ? ' ($unread جديدة)' : ''}'),
+      if (notes.isEmpty)
+        const EmptyState(icon: 'bell', title: 'لا توجد رسائل من السكان', sub: 'ستظهر هنا ملاحظات السكان')
+      else
+        ...notes.map((n) {
+          final isNew = n['status'] == 'new';
+          final unit = '${n['unit_no'] ?? ''}'.trim();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: AppCard(
+              pad: 13,
+              onTap: isNew ? () => _markNoteRead((n['id'] as num).toInt()) : null,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IconChip(icon: 'user', tone: isNew ? 'gold' : 'navy', size: 42),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(children: [
+                          Expanded(
+                            child: Text(
+                              '${n['name'] ?? 'ساكن'}'
+                              '${unit.isEmpty ? '' : ' · ${ctx.res ? 'شقة' : 'محل'} $unit'}',
+                              style: AppType.base(size: 14, weight: FontWeight.w800),
+                            ),
+                          ),
+                          if (isNew) const AppBadge(label: 'جديد', tone: 'gold', small: true),
+                        ]),
+                        const SizedBox(height: 4),
+                        Text('${n['body'] ?? ''}',
+                            style: AppType.base(
+                                size: 12.5, weight: FontWeight.w500, color: AppColors.ink600, height: 1.55)),
+                        if (isNew)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text('اضغط لتعليمها كمقروءة',
+                                style: AppType.base(size: 11, weight: FontWeight.w600, color: AppColors.navy500)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+      const SizedBox(height: 8),
+    ];
+  }
 
   /// Residents see only their own unit's alerts + general (non unit-specific)
   /// announcements broadcast by the building admin.
@@ -677,6 +859,122 @@ class _AlertsScreenState extends State<AlertsScreen> {
     }
   }
 
+  // Ready-made notification choices (title + body) the manager can pick, plus a
+  // free-text option.
+  static const _templates = [
+    ['تذكير بدفع الاشتراك', 'نرجو سداد الاشتراك الشهري المستحق في أقرب وقت ممكن. شكراً لتعاونكم.'],
+    ['صيانة المصعد', 'سيتم إجراء صيانة دورية للمصعد. نعتذر عن أي إزعاج.'],
+    ['انقطاع الكهرباء', 'يوجد انقطاع مجدول للكهرباء عن المبنى. يرجى أخذ الاحتياط.'],
+    ['اجتماع لجنة المبنى', 'يُعقد اجتماع لسكان المبنى لمناقشة شؤون العمارة. حضوركم مهم.'],
+  ];
+
+  /// Manager composes a notification: pick all residents or one unit, choose a
+  /// ready template or write custom text, then send.
+  void _openCompose(Ctx ctx) {
+    final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
+    String target = 'all';
+    String unitNo = units.isNotEmpty ? units.first.no : '';
+    String title = '';
+    String body = '';
+    int seq = 0; // bump to re-seed title/body fields when a template is chosen
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'إرسال إشعار',
+          footer: AppButton(
+            label: 'إرسال',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'send',
+            disabled: title.trim().isEmpty || body.trim().isEmpty || (target == 'unit' && unitNo.isEmpty),
+            onTap: () async {
+              Navigator.of(sheetCtx).pop();
+              try {
+                await Api.I.sendNotification(ctx.btype, {
+                  'title': title.trim(),
+                  'body': body.trim(),
+                  'target': target == 'unit' ? unitNo : 'all',
+                });
+                await ctx.reload();
+                ctx.toast('تم إرسال الإشعار');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          children: [
+            Segmented(
+              small: true,
+              value: target,
+              onChanged: (v) => setS(() => target = v as String),
+              options: [
+                const SegOption('all', 'كل السكان'),
+                SegOption('unit', ctx.res ? 'شقة محددة' : 'محل محدد'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (target == 'unit')
+              SelectField(
+                label: ctx.res ? 'الشقة' : 'المحل',
+                icon: 'building',
+                options: [for (final u in units) SelectOption(u.no, '${u.no} — ${u.resident}')],
+                value: unitNo.isEmpty ? null : unitNo,
+                onChanged: (v) => setS(() => unitNo = v as String),
+              ),
+            Text('اختيارات جاهزة',
+                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in _templates)
+                  GestureDetector(
+                    onTap: () => setS(() {
+                      title = t[0];
+                      body = t[1];
+                      seq++;
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: title == t[0] ? AppColors.navy700 : AppColors.surface,
+                        border: Border.all(
+                            color: title == t[0] ? AppColors.navy700 : AppColors.line2, width: 1.5),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(t[0],
+                          style: AppType.base(
+                              size: 12.5,
+                              weight: FontWeight.w700,
+                              color: title == t[0] ? Colors.white : AppColors.ink600)),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Field(
+              key: ValueKey('notif-title-$seq'),
+              label: 'العنوان',
+              icon: 'bell',
+              value: title,
+              placeholder: 'عنوان الإشعار',
+              onChanged: (v) => setS(() => title = v),
+            ),
+            AppTextArea(
+              key: ValueKey('notif-body-$seq'),
+              label: 'النص',
+              value: body,
+              placeholder: 'اكتب نص الإشعار…',
+              onChanged: (v) => setS(() => body = v),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
@@ -696,6 +994,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
         ]),
       ),
       nav: isAdmin ? ctx.adminNav : ctx.resNav,
+      fab: isAdmin && tab == 'alerts'
+          ? AppFab(icon: 'send', label: 'إرسال إشعار', onTap: () => _openCompose(ctx))
+          : null,
       children: [
         Segmented(
           value: tab,
@@ -756,6 +1057,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   ),
                 ),
               )),
+        // Manager inbox: notes residents sent (name + unit + body), tap to mark read.
+        if (tab == 'alerts' && isAdmin) ..._residentNotes(ctx),
         // Residents can send a short note (≤ 50 chars) to the building admin.
         if (tab == 'alerts' && !isAdmin) ...[
           const SizedBox(height: 4),
@@ -945,10 +1248,14 @@ class _YearsScreenState extends State<YearsScreen> {
 
     return ScreenScaffold(
       header: AppHeader(
-        title: 'السنوات والأشهر',
+        title: 'الترحيل السنوي',
         subtitle: 'متابعة الدفع شهرياً',
         onBack: () => ctx.go('home'),
-        right: RoundBtn(icon: 'plus', onTap: () => ctx.toast('تمت إضافة سنة جديدة')),
+        right: RoundBtn(
+            icon: 'refresh',
+            // Years are derived automatically from recorded payments — don't
+            // claim a fake "year added".
+            onTap: () => ctx.toast('تُضاف السنوات تلقائياً عند تسجيل دفعات في سنة جديدة', tone: 'info')),
       ),
       nav: ctx.adminNav,
       children: [
@@ -1009,7 +1316,9 @@ class _YearsScreenState extends State<YearsScreen> {
           child: Column(
             children: List.generate(kMonthsGrid.length, (i) {
               final m = kMonthsGrid[i];
-              final pct = ((m.paid / m.total) * 100).round();
+              // Guard against total == 0 (fresh building): int / 0 → Infinity/NaN
+              // and .round() would throw, crashing the whole screen.
+              final pct = m.total > 0 ? ((m.paid / m.total) * 100).round().clamp(0, 100) : 0;
               final tone = pct == 100 ? 'ok' : pct == 0 ? 'late' : 'warn';
               final col = {'ok': AppColors.ok, 'late': AppColors.late, 'warn': AppColors.warn}[tone]!;
               return Container(
@@ -1030,7 +1339,7 @@ class _YearsScreenState extends State<YearsScreen> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(99),
                         child: LinearProgressIndicator(
-                          value: m.paid / m.total,
+                          value: pct / 100, // guarded above (no divide-by-zero)
                           minHeight: 8,
                           backgroundColor: AppColors.navy50,
                           valueColor: AlwaysStoppedAnimation(col),

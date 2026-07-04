@@ -39,6 +39,18 @@ class DatabaseSeeder extends Seeder
             return;
         }
 
+        // PRODUCTION: set SEED_DEMO=false in .env so a real deployment starts
+        // with EMPTY building shells (no demo apartments, no demo admin) — a
+        // manager then registers, onboards, and adds their own units without
+        // colliding with seeded numbers or a pre-claimed building. Defaults to
+        // true so local dev, the guest demo, and the test suite are unchanged.
+        if (! filter_var(env('SEED_DEMO', true), FILTER_VALIDATE_BOOLEAN)) {
+            $this->seedEssentials();
+            $this->seedSubscriptions();
+
+            return;
+        }
+
         $summary = [
             'balance' => 25840, 'due' => 12650, 'revenueM' => 3200, 'expenseM' => 1860,
             'bars' => [
@@ -118,15 +130,7 @@ class DatabaseSeeder extends Seeder
         $this->seedPayments('residential', $payments);
         $this->seedPayments('commercial', $shopPayments);
 
-        foreach ([
-            ['sub', 'الاشتراك الشهري', 40, true, false],
-            ['elev', 'رسوم المصعد', 15, true, false],
-            ['guard', 'أجرة الحارس', 10, true, true],
-            ['park', 'أجرة الباركينج', 20, false, true],
-        ] as $i => $p) {
-            PayType::create(['key' => $p[0], 'label' => $p[1], 'amount' => $p[2],
-                'enabled' => $p[3], 'optional' => $p[4], 'sort' => $i]);
-        }
+        $this->seedPayTypes();
 
         $expenses = [
             ['مصعد', 'elevator', 'navy', 'شركة أوتيس للمصاعد', 350, '2026-05-04', 'عقد صيانة دورية'],
@@ -238,19 +242,64 @@ class DatabaseSeeder extends Seeder
     private function loginCode(): string
     {
         do {
-            $code = strtoupper(bin2hex(random_bytes(4)));
+            // 128-bit, matching the runtime generators (Auth/Api controllers).
+            $code = strtoupper(bin2hex(random_bytes(16)));
         } while (User::where('login_code', $code)->exists());
 
         return $code;
     }
 
+    /// The default fee items every building starts with (needed by the payment
+    /// sheet). Shared by the demo seed and the clean production seed.
+    private function seedPayTypes(): void
+    {
+        foreach ([
+            ['sub', 'الاشتراك الشهري', 40, true, false],
+            ['elev', 'رسوم المصعد', 0, true, false],
+            ['guard', 'أجرة الحارس', 0, true, true],
+            ['park', 'أجرة الباركينج', 0, false, true],
+        ] as $i => $p) {
+            PayType::create(['key' => $p[0], 'label' => $p[1], 'amount' => $p[2],
+                'enabled' => $p[3], 'optional' => $p[4], 'sort' => $i]);
+        }
+    }
+
+    /// Clean production seed: two EMPTY building shells + fee items. A manager
+    /// fills in the name/details by onboarding; no demo units or demo admin, so
+    /// nothing collides with their first real apartment.
+    private function seedEssentials(): void
+    {
+        foreach ([['residential', 'سكني'], ['commercial', 'تجاري']] as [$key, $type]) {
+            Building::create([
+                'key' => $key, 'name' => '', 'address' => '', 'type' => $type,
+                'subscription' => 0, 'currency' => 'USD', 'floors' => 0, 'units_count' => 0,
+                'exchange_rate' => 3.75, 'elevator_fee' => 0, 'elevator_phone' => '',
+                'summary' => [],
+            ]);
+        }
+        $this->seedPayTypes();
+    }
+
     private function seedSuperAdmin(): void
     {
+        // SECURITY: never create a platform-owner account with a known password
+        // in production. Use AMARATI_SUPERADMIN_PASSWORD (+ optional _EMAIL); if
+        // it's not provided, only fall back to the dev default OUTSIDE production
+        // (local/demo/tests). A real deployment must set the env var so no weak
+        // super-admin ever exists.
+        $password = env('AMARATI_SUPERADMIN_PASSWORD');
+        if (! $password) {
+            if (app()->environment('production')) {
+                return;
+            }
+            $password = 'password'; // local / demo / test convenience only
+        }
+
         User::firstOrCreate(
-            ['email' => 'superadmin@amarati.app'],
+            ['email' => env('AMARATI_SUPERADMIN_EMAIL', 'superadmin@amarati.app')],
             [
                 'name' => 'المدير العام', 'phone' => '+966500000000',
-                'password' => Hash::make('password'),
+                'password' => Hash::make($password),
                 'role' => 'superadmin', 'building_key' => 'residential',
             ],
         );

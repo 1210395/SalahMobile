@@ -10,8 +10,9 @@ use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
 
 // ───────────────────────────── Auth ─────────────────────────────
-// Rate-limited to blunt credential stuffing / OTP brute force.
-Route::middleware('throttle:6,1')->group(function () {
+// Rate-limited to blunt credential stuffing / OTP brute force (6/min in prod;
+// configurable via AMARATI_AUTH_RATE so automated e2e runs aren't throttled).
+Route::middleware('throttle:'.config('amarati.auth_rate', 6).',1')->group(function () {
     Route::post('/auth/register', [AuthController::class, 'register']);
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/request-otp', [AuthController::class, 'requestOtp']);
@@ -21,11 +22,11 @@ Route::middleware('throttle:6,1')->group(function () {
     Route::post('/auth/redeem-code', [AuthController::class, 'redeemCode']);
 });
 
-// ───────────── Public (guest mode + brand theming) ─────────────
+// ───────────── Public (brand theming + onboarding only) ─────────────
+// Only non-sensitive branding/onboarding data is public — the building shell
+// (name/theme) and the fee catalogue. Financials (/summary) are NOT public.
 Route::get('/building', [ApiController::class, 'building']);
-Route::get('/summary', [ApiController::class, 'summary']);
 Route::get('/pay-types', [ApiController::class, 'payTypes']);
-Route::get('/wa-templates', [ApiController::class, 'waTemplates']);
 Route::get('/settings', [SettingsController::class, 'index']);
 
 // Subscription query only (doesn't need auth)
@@ -36,6 +37,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::get('/me/payments', [ApiController::class, 'myPayments']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+    // Financials + messaging templates require login (no public exposure).
+    Route::get('/summary', [ApiController::class, 'summary']);
+    Route::get('/wa-templates', [ApiController::class, 'waTemplates']);
 
     // Building data (reads scoped to the user's building; admin may pass ?btype)
     Route::get('/units', [ApiController::class, 'units']);
@@ -61,6 +65,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/workers', [ApiController::class, 'workers']);
     Route::post('/workers', [ApiController::class, 'storeWorker']);
+    Route::put('/workers/{worker}', [ApiController::class, 'updateWorker']);
+    Route::delete('/workers/{worker}', [ApiController::class, 'destroyWorker']);
 
     Route::get('/parking', [ApiController::class, 'parking']);
     Route::post('/parking', [ApiController::class, 'storeParking']);
@@ -76,6 +82,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/alerts', [ApiController::class, 'alerts']);
     Route::post('/alerts/regenerate', [ApiController::class, 'regenerateAlerts']);
+    Route::post('/notifications', [ApiController::class, 'storeNotification']);
     Route::get('/year-summary', [ApiController::class, 'yearSummary']);
 
     // Resident → admin notes

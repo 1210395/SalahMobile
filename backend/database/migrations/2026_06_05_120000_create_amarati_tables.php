@@ -30,8 +30,15 @@ return new class extends Migration
             $table->unsignedInteger('floors');
             $table->unsignedInteger('units_count');
             $table->decimal('exchange_rate', 8, 2)->default(3.75);
-            $table->unsignedInteger('elevator_fee')->default(15);
-            $table->string('elevator_phone')->default('+966 92 000 1234');
+            $table->unsignedInteger('elevator_fee')->default(0);
+            $table->string('elevator_phone')->default('');
+            // Elevator maintenance contract + periodic-inspection reminder.
+            $table->string('elevator_company')->nullable();
+            $table->date('elevator_contract_start')->nullable();
+            $table->date('elevator_contract_end')->nullable();
+            $table->date('elevator_last_check')->nullable();   // آخر فحص دوري
+            $table->boolean('elevator_check_notify')->default(false);
+            $table->unsignedInteger('elevator_check_interval')->default(6); // months
             $table->json('summary');                  // balance/due/revenueM/expenseM/bars/trend
             $table->timestamps();
         });
@@ -88,7 +95,10 @@ return new class extends Migration
             $table->string('icon');
             $table->string('tone');
             $table->string('supplier');
-            $table->integer('amount');
+            $table->integer('amount');                 // base currency (for totals)
+            $table->integer('original_amount')->nullable(); // amount as entered
+            $table->string('currency', 8)->nullable();      // entered currency
+            $table->decimal('exchange_rate', 12, 4)->nullable(); // entered → base
             $table->date('date');
             $table->string('description');
             $table->timestamps();
@@ -105,6 +115,10 @@ return new class extends Migration
             $table->integer('amount');
             $table->date('last_payment');
             $table->date('next_due');
+            $table->boolean('came')->default(false);     // حضر هذه الدورة؟
+            $table->date('last_visit')->nullable();      // تاريخ آخر حضور
+            $table->string('pay_status')->default('none'); // full | partial | none
+            $table->integer('paid_amount')->default(0);    // إن كان جزئياً
             $table->timestamps();
         });
 
@@ -150,6 +164,7 @@ return new class extends Migration
             $table->string('body');
             $table->string('time_label');
             $table->string('channel');                // whatsapp | internal
+            $table->string('target')->default('all'); // 'all' | unit_no (recipient)
             $table->timestamps();
         });
 

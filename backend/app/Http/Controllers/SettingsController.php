@@ -35,8 +35,10 @@ class SettingsController extends Controller
             'slogan' => 'nullable|string|max:120',
             'description' => 'nullable|string|max:400',
             'tagline' => 'nullable|string|max:120',
-            'primary' => 'nullable|string|max:9',
-            'accent' => 'nullable|string|max:9',
+            // Brand colours must be valid hex (#RGB / #RRGGBB / #RRGGBBAA) so a
+            // garbage value can't reach the theming layer.
+            'primary' => ['nullable', 'string', 'regex:/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/'],
+            'accent' => ['nullable', 'string', 'regex:/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/'],
         ]);
         foreach ($data as $k => $v) {
             if ($v !== null) {

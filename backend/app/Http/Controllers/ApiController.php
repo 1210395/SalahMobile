@@ -24,6 +24,17 @@ use Illuminate\Support\Facades\Hash;
 // by ?btype=residential|commercial (defaults to residential).
 class ApiController extends Controller
 {
+    /// Max accepted money input (well under the signed-INT column limit so a
+    /// converted total can't overflow). Rejects fat-finger/garbage amounts with
+    /// a clean 422 instead of a raw MySQL out-of-range 500.
+    private const MONEY_MAX = 2000000000;
+
+    /// Abort with 422 if a computed integer would overflow the DB INT column.
+    private function guardIntRange(int $v): void
+    {
+        abort_if($v > 2147483647 || $v < -2147483648, 422, 'المبلغ خارج النطاق المسموح');
+    }
+
     /// Building scope for the request.
     /// - Non-admins are locked to their own building (prevents cross-tenant IDOR).
     /// - Admins (and public/guest endpoints with no user) may select via ?btype=.
@@ -42,15 +53,23 @@ class ApiController extends Controller
     /// Only an admin (or super-admin) may perform writes.
     private function requireAdmin(Request $r): void
     {
-        abort_unless(in_array(optional($r->user())->role, ['admin', 'superadmin']),
-            403, 'يتطلب صلاحية المسؤول');
+        abort_unless($this->isAdmin($r), 403, 'يتطلب صلاحية المسؤول');
+    }
+
+    /// Whether the request actor is an admin (or super-admin). Used to scope
+    /// list reads so residents can't see building-wide data (or login codes).
+    private function isAdmin(Request $r): bool
+    {
+        return in_array(optional($r->user())->role, ['admin', 'superadmin']);
     }
 
     /// A short, unique, uppercase login code (QR / shareable) for a resident.
     private function loginCode(): string
     {
         do {
-            $code = strtoupper(bin2hex(random_bytes(4)));
+            // 128-bit CSPRNG code (resident's standing login credential; kept
+            // readable so the admin can render the QR / share link — see units()).
+            $code = strtoupper(bin2hex(random_bytes(16)));
         } while (User::where('login_code', $code)->exists());
 
         return $code;
@@ -69,31 +88,41 @@ class ApiController extends Controller
         $bk = $this->bk($r);
         Building::where('key', $bk)->firstOrFail();
         $now = now();
-        $curYear = (int) $now->year;
-        $curMonth0 = (int) $now->month - 1; // app months are 0-indexed
+
+        // The dashboard period: a year (default current) and an optional month
+        // (0-11). When a month is given the headline figures cover that month;
+        // otherwise they cover the whole selected year.
+        $year = (int) ($r->query('year') ?: $now->year);
+        $month = $r->filled('month') ? (int) $r->query('month') : null;
 
         $payments = Payment::where('building_key', $bk)->get(['amount', 'month', 'year']);
         $expenses = Expense::where('building_key', $bk)->get(['amount', 'cat', 'date']);
         $units = Unit::where('building_key', $bk)->where('status', '!=', 'vacant')->get(['balance']);
 
-        $revenueTotal = (int) $payments->sum('amount');
-        $expenseTotal = (int) $expenses->sum('amount');
-        $revenueM = (int) $payments->where('year', $curYear)->where('month', $curMonth0)->sum('amount');
+        $expYM = fn ($e) => Carbon::parse($e->date)->year === $year
+            && ($month === null || (int) Carbon::parse($e->date)->month === $month + 1);
 
-        $inCurMonth = fn ($e) => Carbon::parse($e->date)->year === $curYear
-            && (int) Carbon::parse($e->date)->month === $curMonth0 + 1;
-        $expenseM = (int) $expenses->filter($inCurMonth)->sum('amount');
-        $maintM = (int) $expenses->filter(fn ($e) => $e->cat === 'صيانة' && $inCurMonth($e))->sum('amount');
+        // Revenue/expense for the selected period (month or whole year).
+        $revenueM = (int) $payments->where('year', $year)
+            ->when($month !== null, fn ($c) => $c->where('month', $month))->sum('amount');
+        $expenseM = (int) $expenses->filter($expYM)->sum('amount');
+        $maintM = (int) $expenses->filter(fn ($e) => $e->cat === 'صيانة' && $expYM($e))->sum('amount');
 
+        // Cash balance = opening + the whole selected YEAR's revenue − expenses.
+        $yearRevenue = (int) $payments->where('year', $year)->sum('amount');
+        $yearExpense = (int) $expenses->filter(fn ($e) => Carbon::parse($e->date)->year === $year)->sum('amount');
+
+        $opening = $this->openingBalance($bk, $year, $payments, $expenses);
+        $balance = $opening + $yearRevenue - $yearExpense;
+
+        // Residents' net dues (live, period-independent): owed by residents.
         $due = (int) $units->filter(fn ($u) => $u->balance < 0)->sum(fn ($u) => abs((int) $u->balance));
-        $opening = (int) (YearSummary::where('building_key', $bk)->where('year', $curYear)->value('opening_balance') ?? 0);
-        $balance = $opening + $revenueTotal - $expenseTotal;
 
         $arShort = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
         $trend = [];
-        // Full 12-month trend for the current year (Jan…Dec).
+        // Full 12-month trend for the selected year (Jan…Dec).
         for ($m0 = 0; $m0 < 12; $m0++) {
-            $rev = (int) $payments->where('year', $curYear)->where('month', $m0)->sum('amount');
+            $rev = (int) $payments->where('year', $year)->where('month', $m0)->sum('amount');
             $trend[] = ['label' => $arShort[$m0], 'value' => $rev, 'color' => 'navy600'];
         }
 
@@ -121,8 +150,15 @@ class ApiController extends Controller
             'address' => 'nullable|string|max:200',
             'floors' => 'nullable|integer|min:-50|max:300',
             'units_count' => 'nullable|integer|min:0|max:2000',
-            'subscription' => 'nullable|integer|min:0',
-            'elevator_fee' => 'nullable|integer|min:0',
+            'subscription' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
+            'elevator_fee' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
+            'elevator_phone' => 'nullable|string|max:60',
+            'elevator_company' => 'nullable|string|max:160',
+            'elevator_contract_start' => 'nullable|date',
+            'elevator_contract_end' => 'nullable|date|after_or_equal:elevator_contract_start',
+            'elevator_last_check' => 'nullable|date',
+            'elevator_check_notify' => 'nullable|boolean',
+            'elevator_check_interval' => 'nullable|integer|min:1|max:60',
             'exchange_rate' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|max:8',   // building base currency
         ]);
@@ -146,6 +182,14 @@ class ApiController extends Controller
             'password' => 'nullable|string|min:6',
             'unit_no' => 'nullable|string|max:20',
         ]);
+
+        // A unit has at most one resident account. Unlink anyone currently on it
+        // (e.g. the previous tenant) so they can't keep seeing the new tenant's
+        // payments via /me/payments.
+        if (! empty($data['unit_no'])) {
+            User::where('building_key', $bk)->where('unit_no', $data['unit_no'])
+                ->update(['unit_no' => null]);
+        }
 
         $user = User::create([
             'name' => $data['name'],
@@ -196,21 +240,36 @@ class ApiController extends Controller
         $this->requireAdmin($r);
         abort_unless($payment->building_key === $this->bk($r), 403);
         $data = $r->validate([
-            'amount' => 'nullable|integer',
-            'name' => 'nullable|string',
-            'kind' => 'nullable|string',
+            // Bounded both ways so a huge (or hugely negative) value can't
+            // overflow the INT column with a raw MySQL 500 — mirrors storePayment.
+            'amount' => 'nullable|integer|max:'.self::MONEY_MAX.'|min:-'.self::MONEY_MAX,
+            'name' => 'nullable|string|max:120',
+            'kind' => 'nullable|string|max:80',
             'month' => 'nullable|integer|min:0|max:11',
-            'year' => 'nullable|integer',
+            'year' => 'nullable|integer|min:2000|max:2100',
             'date' => 'nullable|date',
-            'method' => 'nullable|string',
+            'method' => 'nullable|string|max:40',
         ]);
         $before = (int) $payment->amount;
-        $payment->update(array_filter($data, fn ($v) => $v !== null));
+        $clean = array_filter($data, fn ($v) => $v !== null);
+
+        // The edit form enters a BASE-currency amount. If the amount changed,
+        // resync the original-currency fields so a receipt can't show a stale
+        // "350 ILS" next to a freshly-edited base total.
+        if (array_key_exists('amount', $clean) && (int) $clean['amount'] !== $before) {
+            $base = Building::where('key', $payment->building_key)->value('currency') ?: 'USD';
+            $clean['original_amount'] = (int) $clean['amount'];
+            $clean['currency'] = $base;
+            $clean['exchange_rate'] = 1;
+        }
+        $payment->update($clean);
 
         // Carry-over: shift the unit's balance by the change in (base) amount.
         $delta = (int) $payment->amount - $before;
         if ($delta !== 0) {
-            $this->unitFor($payment)?->increment('balance', $delta);
+            $unit = $this->unitFor($payment);
+            $unit?->increment('balance', $delta);
+            $this->syncUnitStatus($unit);
         }
 
         return response()->json($payment->fresh());
@@ -221,7 +280,9 @@ class ApiController extends Controller
         $this->requireAdmin($r);
         abort_unless($payment->building_key === $this->bk($r), 403);
         // Carry-over: removing a payment reverts its credit to the unit balance.
-        $this->unitFor($payment)?->decrement('balance', (int) $payment->amount);
+        $unit = $this->unitFor($payment);
+        $unit?->decrement('balance', (int) $payment->amount);
+        $this->syncUnitStatus($unit);
         $payment->delete();
 
         return response()->json(['ok' => true]);
@@ -234,20 +295,51 @@ class ApiController extends Controller
             ->where('no', $payment->unit_no)->first();
     }
 
+    /// Keep a unit's status label in sync with its (computed) balance so the
+    /// badge, late-count, and overdue alerts never contradict what the resident
+    /// actually owes. Vacant is a manual choice (excluded from dues) and is kept.
+    private function syncUnitStatus(?Unit $unit): void
+    {
+        if (! $unit || $unit->status === 'vacant') {
+            return;
+        }
+        $bal = (int) $unit->fresh()->balance;
+        $status = $bal < 0 ? 'late' : ($bal > 0 ? 'credit' : 'ok');
+        if ($unit->status !== $status) {
+            $unit->update(['status' => $status]);
+        }
+    }
+
     // ─────────── Expenses edit / delete ───────────
     public function updateExpense(Request $r, Expense $expense)
     {
         $this->requireAdmin($r);
         abort_unless($expense->building_key === $this->bk($r), 403);
         $data = $r->validate([
-            'cat' => 'nullable|string',
-            'supplier' => 'nullable|string',
-            'amount' => 'nullable|integer',
+            'cat' => 'nullable|string|max:120',
+            'supplier' => 'nullable|string|max:160',
+            'amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
+            'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
+            'currency' => 'nullable|string|max:8',
+            'exchange_rate' => 'nullable|numeric|gt:0|max:100000',
             'date' => 'nullable|date',
-            'description' => 'nullable|string',
-            'icon' => 'nullable|string',
-            'tone' => 'nullable|string',
+            'description' => 'nullable|string|max:255',
+            'icon' => 'nullable|string|max:40',
+            'tone' => 'nullable|string|max:20',
         ]);
+
+        // Re-convert if currency/original/rate were supplied (keep `amount` base).
+        if (array_key_exists('currency', $data) || array_key_exists('original_amount', $data)) {
+            $base = Building::where('key', $expense->building_key)->value('currency') ?: 'USD';
+            $currency = $data['currency'] ?? $expense->currency ?? $base;
+            $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? $expense->exchange_rate ?? 1);
+            $original = (int) ($data['original_amount'] ?? $expense->original_amount ?? $data['amount'] ?? $expense->amount);
+            $data['currency'] = $currency;
+            $data['exchange_rate'] = $rate;
+            $data['original_amount'] = $original;
+            $data['amount'] = (int) round($original * $rate);
+        }
+
         $expense->update(array_filter($data, fn ($v) => $v !== null));
 
         return response()->json($expense->fresh());
@@ -299,6 +391,12 @@ class ApiController extends Controller
             'note' => 'nullable|string|max:200',
         ]);
         $data['building_key'] = $this->bk($r);
+        // Parking numbers are unique per building — mirrors unit numbers.
+        abort_if(
+            ParkingSpot::where('building_key', $data['building_key'])
+                ->where('no', $data['no'])->exists(),
+            422, 'رقم الموقف مستخدم بالفعل'
+        );
         $data['status'] ??= 'شاغر';
 
         return response()->json(ParkingSpot::create($data), 201);
@@ -335,7 +433,7 @@ class ApiController extends Controller
         $this->requireAdmin($r);
         $data = $r->validate([
             'label' => 'nullable|string|max:120',
-            'amount' => 'nullable|integer|min:0',
+            'amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
             'enabled' => 'nullable|boolean',
             'optional' => 'nullable|boolean',
         ]);
@@ -360,6 +458,16 @@ class ApiController extends Controller
     public function units(Request $r)
     {
         $bk = $this->bk($r);
+
+        // A resident sees ONLY their own unit, and never any login code (which is
+        // a login credential — exposing all of them would let any resident take
+        // over any other resident's account).
+        if (! $this->isAdmin($r)) {
+            return Unit::where('building_key', $bk)
+                ->where('no', optional($r->user())->unit_no ?? '__none__')
+                ->orderBy('no')->get();
+        }
+
         $units = Unit::where('building_key', $bk)
             ->orderBy('floor')->orderBy('no')->get();
 
@@ -378,6 +486,10 @@ class ApiController extends Controller
     public function payments(Request $r)
     {
         $q = Payment::where('building_key', $this->bk($r));
+        // A resident only sees their OWN unit's payments — not the whole building.
+        if (! $this->isAdmin($r)) {
+            $q->where('unit_no', optional($r->user())->unit_no ?? '__none__');
+        }
         if ($r->filled('month')) {
             $q->where('month', (int) $r->query('month'));
         }
@@ -389,18 +501,18 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'unit_no' => 'required|string',
-            'name' => 'nullable|string',
-            'amount' => 'nullable|integer',            // base amount (legacy/optional)
-            'original_amount' => 'nullable|integer',   // amount as entered
+            'unit_no' => 'required|string|max:20',
+            'name' => 'nullable|string|max:120',
+            'amount' => 'nullable|integer|max:'.self::MONEY_MAX,   // base amount (legacy/optional)
+            'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX, // amount as entered
             'currency' => 'nullable|string|max:8',     // entered currency
-            'exchange_rate' => 'nullable|numeric|min:0', // entered-currency → base
-            'kind' => 'required|string',
+            'exchange_rate' => 'nullable|numeric|gt:0|max:100000', // entered-currency → base
+            'kind' => 'required|string|max:80',
             'month' => 'required|integer|min:0|max:11',
-            'year' => 'required|integer',
+            'year' => 'required|integer|min:2000|max:2100',
             'date' => 'required|date',
-            'method' => 'required|string',
-            'notes' => 'nullable|string',
+            'method' => 'required|string|max:40',
+            'notes' => 'nullable|string|max:1000',
         ]);
         $bk = $this->bk($r);
         $unit = Unit::where('building_key', $bk)->where('no', $data['unit_no'])->first();
@@ -412,12 +524,16 @@ class ApiController extends Controller
         $currency = $data['currency'] ?? $base;
         $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
         $original = (int) ($data['original_amount'] ?? $data['amount'] ?? 0);
+        // The converted total must fit the INT column — else MySQL 500s with a raw
+        // overflow error. Reject cleanly instead (e.g. 1B entered × a big rate).
+        $baseAmount = (int) round($original * $rate);
+        $this->guardIntRange($baseAmount);
 
         $payment = Payment::create([
             'building_key' => $bk,
             'unit_no' => $data['unit_no'],
             'name' => $data['name'] ?? $unit->resident,
-            'amount' => (int) round($original * $rate),  // base currency
+            'amount' => $baseAmount,  // base currency
             'currency' => $currency,
             'original_amount' => $original,
             'exchange_rate' => $rate,
@@ -431,6 +547,7 @@ class ApiController extends Controller
 
         // Carry-over: a payment credits the unit's balance (base currency).
         $unit->increment('balance', $payment->amount);
+        $this->syncUnitStatus($unit);
 
         return response()->json($payment, 201);
     }
@@ -456,6 +573,10 @@ class ApiController extends Controller
 
     public function expenses(Request $r)
     {
+        // Building expenses are admin-only financial data — not for residents.
+        if (! $this->isAdmin($r)) {
+            return response()->json([]);
+        }
         $q = Expense::where('building_key', $this->bk($r));
         if ($r->filled('cat') && $r->query('cat') !== 'all') {
             $q->where('cat', $r->query('cat'));
@@ -468,15 +589,34 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'cat' => 'required|string',
-            'icon' => 'nullable|string',
-            'tone' => 'nullable|string',
-            'supplier' => 'required|string',
-            'amount' => 'required|integer',
+            // String maxes keep input within the varchar(255) columns — an
+            // over-long value would otherwise overflow into a raw MySQL 500.
+            'cat' => 'required|string|max:120',
+            'icon' => 'nullable|string|max:40',
+            'tone' => 'nullable|string|max:20',
+            'supplier' => 'required|string|max:160',
+            'amount' => 'required|integer|min:0|max:'.self::MONEY_MAX,
+            'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX, // amount as entered
+            'currency' => 'nullable|string|max:8',     // entered currency
+            'exchange_rate' => 'nullable|numeric|gt:0|max:100000', // entered-currency → base
             'date' => 'required|date',
-            'description' => 'nullable|string',
+            'description' => 'nullable|string|max:255',
         ]);
-        $data['building_key'] = $this->bk($r);
+        $bk = $this->bk($r);
+
+        // Convert the entered amount to the building's base currency so reports
+        // sum cleanly — mirrors payments. `amount` is always base currency.
+        $base = Building::where('key', $bk)->value('currency') ?: 'USD';
+        $currency = $data['currency'] ?? $base;
+        $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
+        $original = (int) ($data['original_amount'] ?? $data['amount']);
+
+        $data['building_key'] = $bk;
+        $data['amount'] = (int) round($original * $rate);
+        $this->guardIntRange($data['amount']);
+        $data['original_amount'] = $original;
+        $data['currency'] = $currency;
+        $data['exchange_rate'] = $rate;
         $data['icon'] ??= 'receipt';
         $data['tone'] ??= 'gold';
         $data['description'] ??= '';
@@ -486,6 +626,11 @@ class ApiController extends Controller
 
     public function workers(Request $r)
     {
+        // Worker roster + pay is admin-only — not for residents.
+        if (! $this->isAdmin($r)) {
+            return response()->json([]);
+        }
+
         return Worker::where('building_key', $this->bk($r))->get();
     }
 
@@ -493,12 +638,12 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'name' => 'required|string',
-            'type' => 'nullable|string',
-            'phone' => 'required|string',
-            'address' => 'nullable|string',
-            'cycle' => 'required|string',
-            'amount' => 'required|integer',
+            'name' => 'required|string|max:120',
+            'type' => 'nullable|string|max:40',
+            'phone' => 'required|string|max:32',
+            'address' => 'nullable|string|max:200',
+            'cycle' => 'required|string|max:20',
+            'amount' => 'required|integer|min:0|max:'.self::MONEY_MAX,
             'last_payment' => 'nullable|date',
             'next_due' => 'nullable|date',
         ]);
@@ -511,8 +656,71 @@ class ApiController extends Controller
         return response()->json(Worker::create($data), 201);
     }
 
+    /// Update a service worker — toggle attendance (came) + record payment
+    /// status (full / partial / none) for the current cycle.
+    public function updateWorker(Request $r, Worker $worker)
+    {
+        $this->requireAdmin($r);
+        abort_unless($worker->building_key === $this->bk($r), 403);
+        $data = $r->validate([
+            'name' => 'nullable|string|max:120',
+            'type' => 'nullable|string|max:40',
+            'phone' => 'nullable|string|max:32',
+            'address' => 'nullable|string|max:200',
+            'cycle' => 'nullable|string|max:20',
+            'amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
+            'came' => 'nullable|boolean',
+            'last_visit' => 'nullable|date',
+            'pay_status' => ['nullable', \Illuminate\Validation\Rule::in(['full', 'partial', 'none'])],
+            'paid_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
+            'last_payment' => 'nullable|date',
+            'next_due' => 'nullable|date',
+        ]);
+
+        // A full payment records today + advances the due date by one cycle
+        // (daily/weekly/monthly). Without this the "next due" date stays stale
+        // and the worker looks perpetually due on the same past date.
+        if (($data['pay_status'] ?? null) === 'full') {
+            $data['paid_amount'] = $data['amount'] ?? $worker->amount;
+            $data['last_payment'] ??= now()->toDateString();
+            $cycle = $data['cycle'] ?? $worker->cycle;
+            $next = match ($cycle) {
+                'يومي' => now()->addDay(),
+                'أسبوعي' => now()->addWeek(),
+                default => now()->addMonth(),   // شهري / anything else
+            };
+            $data['next_due'] ??= $next->toDateString();
+        }
+
+        // A partial payment can't exceed the fee — clamp so paid_amount stays
+        // within [0, fee] and can't imply the worker was overpaid "partially".
+        if (($data['pay_status'] ?? null) === 'partial' && isset($data['paid_amount'])) {
+            $fee = (int) ($data['amount'] ?? $worker->amount);
+            $data['paid_amount'] = max(0, min((int) $data['paid_amount'], $fee));
+        }
+
+        $worker->update(array_filter($data, fn ($v) => $v !== null));
+
+        return response()->json($worker->fresh());
+    }
+
+    public function destroyWorker(Request $r, Worker $worker)
+    {
+        $this->requireAdmin($r);
+        abort_unless($worker->building_key === $this->bk($r), 403);
+        $worker->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
     public function parking(Request $r)
     {
+        // The parking roster (spot → unit mapping + access codes) is admin-only;
+        // residents have no parking screen and must not receive it.
+        if (! $this->isAdmin($r)) {
+            return response()->json([]);
+        }
+
         return ParkingSpot::where('building_key', $this->bk($r))->orderBy('no')->get();
     }
 
@@ -546,10 +754,10 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'name' => 'required|string',
-            'job' => 'required|string',
-            'phone' => 'required|string',
-            'note' => 'nullable|string',
+            'name' => 'required|string|max:120',
+            'job' => 'required|string|max:80',
+            'phone' => 'required|string|max:32',
+            'note' => 'nullable|string|max:200',
         ]);
 
         return response()->json(Craftsman::create($data), 201);
@@ -557,7 +765,43 @@ class ApiController extends Controller
 
     public function alerts(Request $r)
     {
-        return Alert::where('building_key', $this->bk($r))->orderBy('id')->get();
+        $q = Alert::where('building_key', $this->bk($r));
+
+        // Residents only see building-wide notices + ones addressed to their unit.
+        $u = $r->user();
+        if ($u && $u->role === 'resident' && $u->unit_no) {
+            $q->whereIn('target', ['all', $u->unit_no]);
+        }
+
+        return $q->orderByDesc('id')->get();
+    }
+
+    /// Manager composes a notification to all residents or a chosen unit, from a
+    /// preset choice or free text. Stored as an internal alert the residents read.
+    public function storeNotification(Request $r)
+    {
+        $this->requireAdmin($r);
+        $data = $r->validate([
+            'title' => 'required|string|max:120',
+            'body' => 'required|string|max:500',
+            'target' => 'nullable|string|max:60',     // 'all' | unit_no
+            'tone' => 'nullable|string|max:20',
+            'icon' => 'nullable|string|max:40',
+        ]);
+
+        $alert = Alert::create([
+            'building_key' => $this->bk($r),
+            'type' => 'notice',
+            'icon' => $data['icon'] ?? 'bell',
+            'tone' => $data['tone'] ?? 'navy',
+            'title' => $data['title'],
+            'body' => $data['body'],
+            'time_label' => 'الآن',
+            'channel' => 'internal',
+            'target' => $data['target'] ?: 'all',
+        ]);
+
+        return response()->json($alert, 201);
     }
 
     public function waTemplates()
@@ -565,14 +809,52 @@ class ApiController extends Controller
         return WaTemplate::orderBy('id')->get();
     }
 
+    /// Opening cash balance for [year]. Uses an explicitly-stored opening if one
+    /// exists; otherwise carries forward = genesis opening + net (revenue −
+    /// expenses) of all prior years, so cash isn't reset to zero every January.
+    /// Shared by the dashboard summary and the year-transfer screen.
+    private function openingBalance(string $bk, int $year, $payments, $expenses): int
+    {
+        $stored = YearSummary::where('building_key', $bk)->where('year', $year)->value('opening_balance');
+        if ($stored !== null) {
+            return (int) $stored;
+        }
+        $genesisYear = (int) (YearSummary::where('building_key', $bk)->min('year') ?? $year);
+        $genesisOpening = (int) (YearSummary::where('building_key', $bk)->where('year', $genesisYear)->value('opening_balance') ?? 0);
+        $priorRev = (int) $payments->filter(fn ($p) => $p->year >= $genesisYear && $p->year < $year)->sum('amount');
+        $priorExp = (int) $expenses->filter(function ($e) use ($genesisYear, $year) {
+            $y = Carbon::parse($e->date)->year;
+
+            return $y >= $genesisYear && $y < $year;
+        })->sum('amount');
+
+        return $genesisOpening + $priorRev - $priorExp;
+    }
+
+    /// Year-transfer (الترحيل السنوي) data: opening balance + a LIVE 12-month grid
+    /// of paid-vs-expected. Computed from real payments/units so it never goes
+    /// stale (the stored `months` JSON did, and only held a partial set).
     public function yearSummary(Request $r)
     {
-        $year = (int) ($r->query('year') ?: 2026);
-        $ys = YearSummary::where('building_key', $this->bk($r))
-            ->where('year', $year)->first();
+        $bk = $this->bk($r);
+        $year = (int) ($r->query('year') ?: now()->year);
 
-        return response()->json($ys ?? [
-            'year' => $year, 'opening_balance' => 0, 'months' => [],
+        $payments = Payment::where('building_key', $bk)->get(['amount', 'month', 'year']);
+        $expenses = Expense::where('building_key', $bk)->get(['amount', 'date']);
+        // Expected monthly collection = sum of active (non-vacant) unit dues.
+        $monthlyExpected = (int) Unit::where('building_key', $bk)
+            ->where('status', '!=', 'vacant')->sum('sub');
+
+        $months = [];
+        for ($m = 0; $m < 12; $m++) {
+            $paid = (int) $payments->where('year', $year)->where('month', $m)->sum('amount');
+            $months[] = ['m' => $m, 'paid' => $paid, 'total' => $monthlyExpected];
+        }
+
+        return response()->json([
+            'year' => $year,
+            'opening_balance' => $this->openingBalance($bk, $year, $payments, $expenses),
+            'months' => $months,
         ]);
     }
 }

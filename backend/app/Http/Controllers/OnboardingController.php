@@ -16,9 +16,8 @@ class OnboardingController extends Controller
     private function bk(Request $r): string
     {
         $u = $r->user();
-        if ($u && $u->building_id) {
-            $building = Building::find($u->building_id);
-            return $building ? $building->key : 'residential';
+        if ($u && $u->role !== 'admin') {
+            return $u->building_key === 'commercial' ? 'commercial' : 'residential';
         }
 
         return $r->query('btype') === 'commercial' || $r->input('btype') === 'commercial'
@@ -27,14 +26,14 @@ class OnboardingController extends Controller
 
     private function userPayload(User $u): array
     {
-        return $u->only(['id', 'name', 'email', 'phone', 'role', 'building_id', 'unit_no']);
+        return $u->only(['id', 'name', 'email', 'phone', 'role', 'building_key', 'unit_no']);
     }
 
     /// A short, unique, uppercase login code (QR / shareable) for a resident.
     private function loginCode(): string
     {
         do {
-            $code = strtoupper(bin2hex(random_bytes(4)));
+            $code = strtoupper(bin2hex(random_bytes(16)));
         } while (User::where('login_code', $code)->exists());
 
         return $code;
@@ -85,22 +84,16 @@ class OnboardingController extends Controller
     private function abortIfClaimedByAnother(Request $r, string $bk): void
     {
         $u = $r->user();
-        // Get the building by key
-        $building = Building::where('key', $bk)->firstOrFail();
-
-        // Check if another admin already manages this building
         abort_if(
-            User::where('building_id', $building->id)
+            User::where('building_key', $bk)
                 ->where('role', 'admin')
                 ->where('id', '!=', $u->id)
                 ->exists(),
             403, 'هذا المبنى مُدار بالفعل من قبل مسؤول آخر'
         );
-
-        // An admin of one building can't claim a different one
-        if ($u->role === 'admin' && $u->building_id && $u->building_id !== $building->id) {
-            abort(403, 'أنت مسؤول عن مبنى آخر بالفعل');
-        }
+        // An admin of one building can't claim a different one.
+        abort_if($u->role === 'admin' && $u->building_key !== $bk, 403,
+            'أنت مسؤول عن مبنى آخر بالفعل');
     }
 
     // ───────────── Building setup (promotes actor to admin) ─────────────
@@ -133,15 +126,11 @@ class OnboardingController extends Controller
         // SECURITY (role model): you become an admin by paying for + setting up a
         // building, not by self-declaring the role at sign-up.
         $u = $r->user();
-        $u->update(['role' => 'admin', 'building_id' => $building->id, 'building_key' => $bk]);
-
-        // Reload models from database to get updated state
-        $building = Building::find($building->id);
-        $u = User::find($u->id);
+        $u->update(['role' => 'admin', 'building_key' => $bk]);
 
         return response()->json([
-            'building' => $building->toArray(),
-            'user' => $this->userPayload($u),
+            'building' => $building->fresh(),
+            'user' => $this->userPayload($u->fresh()),
         ]);
     }
 
@@ -151,8 +140,8 @@ class OnboardingController extends Controller
     {
         $data = $r->validate([
             'btype' => 'required|in:residential,commercial',
-            'floor' => 'nullable|integer',
-            'unit_no' => 'nullable|string',
+            'floor' => 'nullable|integer|min:-50|max:300',
+            'unit_no' => 'nullable|string|max:20',
             'name' => 'nullable|string|max:120',
             'phone' => 'nullable|string|max:32',
             'note' => 'nullable|string|max:200',
@@ -187,11 +176,16 @@ class OnboardingController extends Controller
 
         $joinRequest->update(['status' => 'approved']);
         if ($joinRequest->user_id && ($u = User::find($joinRequest->user_id))) {
-            // Find the building by the request's building_key
-            $building = Building::where('key', $joinRequest->building_key)->firstOrFail();
+            // A unit has at most one resident — unlink any previous occupant so
+            // they can't keep seeing the new resident's payments.
+            if ($joinRequest->unit_no) {
+                User::where('building_key', $joinRequest->building_key)
+                    ->where('unit_no', $joinRequest->unit_no)
+                    ->where('id', '!=', $u->id)
+                    ->update(['unit_no' => null]);
+            }
             $u->update([
                 'role' => 'resident',
-                'building_id' => $building->id,
                 'building_key' => $joinRequest->building_key,
                 'unit_no' => $joinRequest->unit_no,
                 // Give the resident a QR / shareable login code if they lack one.
