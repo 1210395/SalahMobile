@@ -346,6 +346,51 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertDatabaseMissing('parking_spots', ['id' => $spot['id']]);
     }
 
+    public function test_assigning_a_unit_unlinks_the_previous_resident(): void
+    {
+        // A unit has one resident account. Adding a new resident to an occupied
+        // unit must unlink the old one so they can't see the new tenant's data.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => '101']);
+
+        $old = $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
+            'name' => 'قديم', 'phone' => '+966500000011', 'unit_no' => '101',
+        ])->json();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
+            'name' => 'جديد', 'phone' => '+966500000022', 'unit_no' => '101',
+        ])->assertCreated();
+
+        // The old resident is unlinked; only one account remains on unit 101.
+        $this->assertNull(User::find($old['id'])->unit_no);
+        $this->assertSame(1, User::where('building_key', 'residential')->where('unit_no', '101')->count());
+    }
+
+    public function test_join_approval_unlinks_the_previous_resident(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => '101']);
+        $old = User::create([
+            'name' => 'قديم', 'phone' => '+966500000033', 'role' => 'resident',
+            'building_key' => 'residential', 'unit_no' => '101',
+        ]);
+        $applicant = User::create([
+            'name' => 'جديد', 'phone' => '+966500000044', 'role' => 'resident',
+            'building_key' => 'residential',
+        ]);
+        $jr = JoinRequest::create([
+            'building_key' => 'residential', 'user_id' => $applicant->id,
+            'name' => 'جديد', 'unit_no' => '101', 'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/join-requests/{$jr->id}/approve")->assertOk();
+
+        $this->assertNull($old->fresh()->unit_no);
+        $this->assertSame('101', $applicant->fresh()->unit_no);
+    }
+
     public function test_store_resident_rejects_duplicate_phone(): void
     {
         $this->seedBuilding();

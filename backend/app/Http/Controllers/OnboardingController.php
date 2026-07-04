@@ -176,6 +176,14 @@ class OnboardingController extends Controller
 
         $joinRequest->update(['status' => 'approved']);
         if ($joinRequest->user_id && ($u = User::find($joinRequest->user_id))) {
+            // A unit has at most one resident — unlink any previous occupant so
+            // they can't keep seeing the new resident's payments.
+            if ($joinRequest->unit_no) {
+                User::where('building_key', $joinRequest->building_key)
+                    ->where('unit_no', $joinRequest->unit_no)
+                    ->where('id', '!=', $u->id)
+                    ->update(['unit_no' => null]);
+            }
             $u->update([
                 'role' => 'resident',
                 'building_key' => $joinRequest->building_key,

@@ -48,6 +48,23 @@ test('a residential admin cannot touch commercial data (cross-tenant IDOR)', asy
   if ('pay' in r) expect(r.pay).toBe(403);
 });
 
+test('a unit has one resident: reassigning unlinks the previous tenant (no payment leak)', async ({ page }) => {
+  const r = await page.evaluate(async ({ no }) => {
+    const T = window.T; const tok = await T.adminToken(); const rand = () => Math.floor(Math.random() * 1e7);
+    await T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'ok' });
+    const a = (await T.req('POST', '/residents?btype=residential', tok, { name: 'A', phone: '+9705' + rand(), unit_no: no })).body;
+    const b = (await T.req('POST', '/residents?btype=residential', tok, { name: 'B', phone: '+9705' + rand(), unit_no: no })).body;
+    await T.req('POST', '/payments?btype=residential', tok, { unit_no: no, amount: 500, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' });
+    const tA = (await T.req('POST', '/auth/redeem-code', null, { code: a.login_code })).body.token;
+    const tB = (await T.req('POST', '/auth/redeem-code', null, { code: b.login_code })).body.token;
+    const payA = await (await T.req('GET', '/me/payments', tA)).body;
+    const payB = await (await T.req('GET', '/me/payments', tB)).body;
+    return { aSees: payA.length, bSees: payB.length };
+  }, { no: 'SH' + Math.floor(Math.random() * 1e7) });
+  expect(r.aSees).toBe(0); // previous tenant unlinked — sees nothing
+  expect(r.bSees).toBe(1); // current tenant sees the unit's payment
+});
+
 test('super-admin endpoints reject a regular admin and accept the super-admin', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const admin = await window.T.adminToken();

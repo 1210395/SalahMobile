@@ -177,6 +177,14 @@ class ApiController extends Controller
             'unit_no' => 'nullable|string|max:20',
         ]);
 
+        // A unit has at most one resident account. Unlink anyone currently on it
+        // (e.g. the previous tenant) so they can't keep seeing the new tenant's
+        // payments via /me/payments.
+        if (! empty($data['unit_no'])) {
+            User::where('building_key', $bk)->where('unit_no', $data['unit_no'])
+                ->update(['unit_no' => null]);
+        }
+
         $user = User::create([
             'name' => $data['name'],
             'phone' => $data['phone'],
