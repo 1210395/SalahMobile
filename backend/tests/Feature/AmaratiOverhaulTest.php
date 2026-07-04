@@ -1015,9 +1015,16 @@ class AmaratiOverhaulTest extends TestCase
     public function test_summary_trend_has_twelve_months(): void
     {
         $this->seedBuilding();
-        $res = $this->getJson('/api/summary');
+        $res = $this->actingAs($this->admin(), 'sanctum')->getJson('/api/summary');
         $res->assertOk();
         $this->assertCount(12, $res->json('trend'));
+    }
+
+    public function test_summary_requires_authentication(): void
+    {
+        // Financials must not be public — an unauthenticated request is rejected.
+        $this->seedBuilding();
+        $this->getJson('/api/summary')->assertStatus(401);
     }
 
     // ─────────────── New overhaul endpoints ───────────────

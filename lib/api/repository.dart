@@ -245,12 +245,13 @@ class Api {
 
   /// Guest mode — only the public building summary is available (no token).
   Future<void> loadGuest(BType b) async {
+    // Guests get only the public building shell (name/theme) — financials are
+    // login-only, so the summary stays zeroed (a guest never sees real money).
     final q = {'btype': btypeKey(b)};
     final building = (await _dio.get('/building', queryParameters: q)).data;
-    final summary = (await _dio.get('/summary', queryParameters: q)).data;
     final s = DataStore.I;
     s.loadedBtype = b;
     s.building = Building.fromJson(_obj(building));
-    s.summary = SummaryData.fromJson(_obj(summary));
+    s.summary = SummaryData.fromJson(const {});
   }
 }

@@ -22,11 +22,11 @@ Route::middleware('throttle:'.config('amarati.auth_rate', 6).',1')->group(functi
     Route::post('/auth/redeem-code', [AuthController::class, 'redeemCode']);
 });
 
-// ───────────── Public (guest mode + brand theming) ─────────────
+// ───────────── Public (brand theming + onboarding only) ─────────────
+// Only non-sensitive branding/onboarding data is public — the building shell
+// (name/theme) and the fee catalogue. Financials (/summary) are NOT public.
 Route::get('/building', [ApiController::class, 'building']);
-Route::get('/summary', [ApiController::class, 'summary']);
 Route::get('/pay-types', [ApiController::class, 'payTypes']);
-Route::get('/wa-templates', [ApiController::class, 'waTemplates']);
 Route::get('/settings', [SettingsController::class, 'index']);
 
 // ───────────────────── Protected (signed-in users) ─────────────────────
@@ -34,6 +34,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::get('/me/payments', [ApiController::class, 'myPayments']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+    // Financials + messaging templates require login (no public exposure).
+    Route::get('/summary', [ApiController::class, 'summary']);
+    Route::get('/wa-templates', [ApiController::class, 'waTemplates']);
 
     // Building data (reads scoped to the user's building; admin may pass ?btype)
     Route::get('/units', [ApiController::class, 'units']);

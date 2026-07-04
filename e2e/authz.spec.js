@@ -4,13 +4,20 @@ const { gotoApp } = require('./lib');
 
 test.beforeEach(async ({ page }) => { await gotoApp(page); });
 
-test('guest can read public endpoints but not protected ones', async ({ page }) => {
+test('guest can read only branding endpoints; financials + data require auth', async ({ page }) => {
   const r = await page.evaluate(async () => {
-    const building = await window.T.req('GET', '/building'); // public
-    const units = await window.T.req('GET', '/units'); // protected
-    return { building: building.status, units: units.status };
+    return {
+      building: (await window.T.req('GET', '/building')).status, // public (branding)
+      settings: (await window.T.req('GET', '/settings')).status, // public (branding)
+      payTypes: (await window.T.req('GET', '/pay-types')).status, // public (onboarding)
+      summary: (await window.T.req('GET', '/summary')).status, // financials → protected
+      units: (await window.T.req('GET', '/units')).status, // protected
+    };
   });
   expect(r.building).toBe(200);
+  expect(r.settings).toBe(200);
+  expect(r.payTypes).toBe(200);
+  expect(r.summary).toBe(401); // real financials are not public
   expect(r.units).toBe(401);
 });
 
