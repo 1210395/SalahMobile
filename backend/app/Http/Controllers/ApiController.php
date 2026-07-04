@@ -228,15 +228,26 @@ class ApiController extends Controller
             // Bounded both ways so a huge (or hugely negative) value can't
             // overflow the INT column with a raw MySQL 500 — mirrors storePayment.
             'amount' => 'nullable|integer|max:'.self::MONEY_MAX.'|min:-'.self::MONEY_MAX,
-            'name' => 'nullable|string',
-            'kind' => 'nullable|string',
+            'name' => 'nullable|string|max:120',
+            'kind' => 'nullable|string|max:80',
             'month' => 'nullable|integer|min:0|max:11',
-            'year' => 'nullable|integer',
+            'year' => 'nullable|integer|min:2000|max:2100',
             'date' => 'nullable|date',
-            'method' => 'nullable|string',
+            'method' => 'nullable|string|max:40',
         ]);
         $before = (int) $payment->amount;
-        $payment->update(array_filter($data, fn ($v) => $v !== null));
+        $clean = array_filter($data, fn ($v) => $v !== null);
+
+        // The edit form enters a BASE-currency amount. If the amount changed,
+        // resync the original-currency fields so a receipt can't show a stale
+        // "350 ILS" next to a freshly-edited base total.
+        if (array_key_exists('amount', $clean) && (int) $clean['amount'] !== $before) {
+            $base = Building::where('key', $payment->building_key)->value('currency') ?: 'USD';
+            $clean['original_amount'] = (int) $clean['amount'];
+            $clean['currency'] = $base;
+            $clean['exchange_rate'] = 1;
+        }
+        $payment->update($clean);
 
         // Carry-over: shift the unit's balance by the change in (base) amount.
         $delta = (int) $payment->amount - $before;
@@ -271,16 +282,16 @@ class ApiController extends Controller
         $this->requireAdmin($r);
         abort_unless($expense->building_key === $this->bk($r), 403);
         $data = $r->validate([
-            'cat' => 'nullable|string',
-            'supplier' => 'nullable|string',
-            'amount' => 'nullable|integer|max:'.self::MONEY_MAX,
-            'original_amount' => 'nullable|integer|max:'.self::MONEY_MAX,
+            'cat' => 'nullable|string|max:120',
+            'supplier' => 'nullable|string|max:160',
+            'amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
+            'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
             'currency' => 'nullable|string|max:8',
             'exchange_rate' => 'nullable|numeric|min:0|max:100000',
             'date' => 'nullable|date',
-            'description' => 'nullable|string',
-            'icon' => 'nullable|string',
-            'tone' => 'nullable|string',
+            'description' => 'nullable|string|max:255',
+            'icon' => 'nullable|string|max:40',
+            'tone' => 'nullable|string|max:20',
         ]);
 
         // Re-convert if currency/original/rate were supplied (keep `amount` base).
@@ -346,6 +357,12 @@ class ApiController extends Controller
             'note' => 'nullable|string|max:200',
         ]);
         $data['building_key'] = $this->bk($r);
+        // Parking numbers are unique per building — mirrors unit numbers.
+        abort_if(
+            ParkingSpot::where('building_key', $data['building_key'])
+                ->where('no', $data['no'])->exists(),
+            422, 'رقم الموقف مستخدم بالفعل'
+        );
         $data['status'] ??= 'شاغر';
 
         return response()->json(ParkingSpot::create($data), 201);
@@ -436,18 +453,18 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'unit_no' => 'required|string',
-            'name' => 'nullable|string',
+            'unit_no' => 'required|string|max:20',
+            'name' => 'nullable|string|max:120',
             'amount' => 'nullable|integer|max:'.self::MONEY_MAX,   // base amount (legacy/optional)
-            'original_amount' => 'nullable|integer|max:'.self::MONEY_MAX, // amount as entered
+            'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX, // amount as entered
             'currency' => 'nullable|string|max:8',     // entered currency
             'exchange_rate' => 'nullable|numeric|min:0|max:100000', // entered-currency → base
-            'kind' => 'required|string',
+            'kind' => 'required|string|max:80',
             'month' => 'required|integer|min:0|max:11',
-            'year' => 'required|integer',
+            'year' => 'required|integer|min:2000|max:2100',
             'date' => 'required|date',
-            'method' => 'required|string',
-            'notes' => 'nullable|string',
+            'method' => 'required|string|max:40',
+            'notes' => 'nullable|string|max:1000',
         ]);
         $bk = $this->bk($r);
         $unit = Unit::where('building_key', $bk)->where('no', $data['unit_no'])->first();
@@ -519,16 +536,18 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'cat' => 'required|string',
-            'icon' => 'nullable|string',
-            'tone' => 'nullable|string',
-            'supplier' => 'required|string',
-            'amount' => 'required|integer|max:'.self::MONEY_MAX,
-            'original_amount' => 'nullable|integer|max:'.self::MONEY_MAX, // amount as entered
+            // String maxes keep input within the varchar(255) columns — an
+            // over-long value would otherwise overflow into a raw MySQL 500.
+            'cat' => 'required|string|max:120',
+            'icon' => 'nullable|string|max:40',
+            'tone' => 'nullable|string|max:20',
+            'supplier' => 'required|string|max:160',
+            'amount' => 'required|integer|min:0|max:'.self::MONEY_MAX,
+            'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX, // amount as entered
             'currency' => 'nullable|string|max:8',     // entered currency
             'exchange_rate' => 'nullable|numeric|min:0|max:100000', // entered-currency → base
             'date' => 'required|date',
-            'description' => 'nullable|string',
+            'description' => 'nullable|string|max:255',
         ]);
         $bk = $this->bk($r);
 

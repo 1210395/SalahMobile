@@ -161,6 +161,17 @@ class UnitController extends Controller
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
         abort_unless($unit->building_key === $this->bk($r), 403);
+
+        // Deleting a unit would orphan its payment history and leave a resident
+        // account pointing at a gone unit. Block it and steer the admin to mark
+        // the unit vacant instead (which excludes it from dues but keeps records).
+        $hasPayments = Payment::where('building_key', $unit->building_key)
+            ->where('unit_no', $unit->no)->exists();
+        $hasResident = User::where('building_key', $unit->building_key)
+            ->where('unit_no', $unit->no)->exists();
+        abort_if($hasPayments || $hasResident, 422,
+            'لا يمكن حذف وحدة لها دفعات أو ساكن مرتبط — اجعلها شاغرة بدلاً من ذلك');
+
         $unit->delete();
 
         return response()->json(['ok' => true]);

@@ -302,6 +302,83 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertDatabaseMissing('expenses', ['id' => $exp['id']]);
     }
 
+    // ─────────────── Edge cases surfaced by the adversarial probe ───────────────
+
+    public function test_oversized_string_field_is_rejected_not_a_500(): void
+    {
+        // An over-long string must 422 at validation, not overflow the varchar
+        // column into a raw MySQL 500.
+        $this->seedBuilding();
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/expenses', [
+            'cat' => 'صيانة', 'supplier' => str_repeat('A', 5000), 'amount' => 10, 'date' => '2026-01-01',
+        ])->assertStatus(422);
+    }
+
+    public function test_negative_expense_amount_is_rejected(): void
+    {
+        // A negative expense would silently inflate the cash balance.
+        $this->seedBuilding();
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/expenses', [
+            'cat' => 'صيانة', 'supplier' => 'مورّد', 'amount' => -999, 'date' => '2026-01-01',
+        ])->assertStatus(422);
+    }
+
+    public function test_cannot_delete_a_unit_with_payments_or_a_resident(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        // Unit with a payment → delete blocked (422).
+        $withPay = $this->makeUnit(['no' => '101']);
+        Payment::create([
+            'building_key' => 'residential', 'unit_no' => '101', 'name' => 'x', 'amount' => 50,
+            'currency' => 'USD', 'original_amount' => 50, 'exchange_rate' => 1, 'kind' => 'k',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+        ]);
+        $this->actingAs($admin, 'sanctum')->deleteJson("/api/units/{$withPay->id}")->assertStatus(422);
+        $this->assertDatabaseHas('units', ['id' => $withPay->id]);
+
+        // Unit with a linked resident → delete blocked (422).
+        $withRes = $this->makeUnit(['no' => '102']);
+        User::create([
+            'name' => 'ساكن', 'phone' => '0599', 'role' => 'resident',
+            'building_key' => 'residential', 'unit_no' => '102',
+        ]);
+        $this->actingAs($admin, 'sanctum')->deleteJson("/api/units/{$withRes->id}")->assertStatus(422);
+
+        // An empty unit (no payments, no resident) still deletes cleanly.
+        $empty = $this->makeUnit(['no' => '103']);
+        $this->actingAs($admin, 'sanctum')->deleteJson("/api/units/{$empty->id}")->assertOk();
+        $this->assertDatabaseMissing('units', ['id' => $empty->id]);
+    }
+
+    public function test_duplicate_parking_number_is_rejected(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/parking', ['no' => 'P1', 'status' => 'شاغر'])->assertCreated();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/parking', ['no' => 'P1', 'status' => 'شاغر'])->assertStatus(422);
+    }
+
+    public function test_editing_a_payment_amount_resyncs_currency_to_base(): void
+    {
+        // Editing a foreign-currency payment's (base) amount must not leave a
+        // stale original-currency figure on the record.
+        $this->seedBuilding('USD');
+        $admin = $this->admin();
+        $this->makeUnit(['no' => '101']);
+        $pay = $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'original_amount' => 350, 'currency' => 'ILS', 'exchange_rate' => 0.27,
+            'kind' => 'اشتراك', 'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+        ])->json();
+        $this->assertSame('ILS', $pay['currency']);
+
+        $edited = $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/payments/{$pay['id']}", ['amount' => 500])->json();
+        $this->assertSame(500, (int) $edited['amount']);
+        $this->assertSame(500, (int) $edited['original_amount']); // resynced
+        $this->assertSame('USD', $edited['currency']);            // base, not stale ILS
+    }
+
     // ─────────────── Email verification ───────────────
 
     public function test_email_code_request_returns_dev_code_locally(): void
