@@ -17,7 +17,10 @@ class AlertGenerator
     /// Regenerate the full alert set for [bk]. Returns the number created.
     public function regenerate(string $bk): int
     {
-        Alert::where('building_key', $bk)->delete();
+        // Refresh ONLY the auto-derived alerts. Manager-composed notifications
+        // (type = 'notice', sent to residents) are real messages — regenerating
+        // must not wipe them.
+        Alert::where('building_key', $bk)->where('type', '!=', 'notice')->delete();
 
         $created = [];
 

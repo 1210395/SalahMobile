@@ -485,6 +485,23 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertCount(2, $seen);
     }
 
+    public function test_regenerating_alerts_preserves_manager_notifications(): void
+    {
+        // A manager-composed notification is a real message. Refreshing the
+        // auto-derived alerts (the "refresh" button) must NOT delete it.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/notifications', [
+            'title' => 'إعلان مهم', 'body' => 'اجتماع السكان الجمعة', 'target' => 'all',
+        ])->assertCreated();
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
+
+        $this->assertDatabaseHas('alerts', [
+            'building_key' => 'residential', 'type' => 'notice', 'title' => 'إعلان مهم',
+        ]);
+    }
+
     public function test_worker_update_records_attendance_and_full_payment(): void
     {
         $this->seedBuilding();
