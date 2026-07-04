@@ -173,6 +173,32 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(200, (int) $sum['due']);
     }
 
+    public function test_year_summary_months_are_computed_live_with_all_twelve(): void
+    {
+        // The year-transfer grid must reflect real payments across all 12 months,
+        // not a stale/partial stored JSON.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => '101', 'sub' => 100]);
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 5000, 'kind' => 'k', 'month' => 7, 'year' => 2026, 'date' => '2026-08-01', 'method' => 'x',
+        ])->assertCreated();
+
+        $ys = $this->actingAs($admin, 'sanctum')->getJson('/api/year-summary?year=2026')->json();
+        $this->assertCount(12, $ys['months']); // full year, not partial
+        $m7 = collect($ys['months'])->firstWhere('m', 7);
+        $this->assertSame(5000, (int) $m7['paid']); // reflects the live payment
+        $this->assertSame(100, (int) $m7['total']); // expected = active-unit dues
+    }
+
+    public function test_settings_reject_a_non_hex_colour(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->actingAs($admin, 'sanctum')->putJson('/api/settings', ['primary' => 'not-a-hex'])->assertStatus(422);
+        $this->actingAs($admin, 'sanctum')->putJson('/api/settings', ['primary' => '#123456'])->assertOk();
+    }
+
     public function test_year_balance_carries_forward_to_the_next_year(): void
     {
         // The next year's opening must carry the prior year's closing balance —

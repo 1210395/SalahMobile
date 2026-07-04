@@ -106,24 +106,7 @@ class ApiController extends Controller
         $yearRevenue = (int) $payments->where('year', $year)->sum('amount');
         $yearExpense = (int) $expenses->filter(fn ($e) => Carbon::parse($e->date)->year === $year)->sum('amount');
 
-        // Opening balance for the year. If one is explicitly stored, use it.
-        // Otherwise CARRY FORWARD from the earliest recorded year so cash isn't
-        // silently reset to zero every January — opening = genesis opening + the
-        // net (revenue − expenses) of all prior years.
-        $storedOpening = YearSummary::where('building_key', $bk)->where('year', $year)->value('opening_balance');
-        if ($storedOpening !== null) {
-            $opening = (int) $storedOpening;
-        } else {
-            $genesisYear = (int) (YearSummary::where('building_key', $bk)->min('year') ?? $year);
-            $genesisOpening = (int) (YearSummary::where('building_key', $bk)->where('year', $genesisYear)->value('opening_balance') ?? 0);
-            $priorRev = (int) $payments->filter(fn ($p) => $p->year >= $genesisYear && $p->year < $year)->sum('amount');
-            $priorExp = (int) $expenses->filter(function ($e) use ($genesisYear, $year) {
-                $y = Carbon::parse($e->date)->year;
-
-                return $y >= $genesisYear && $y < $year;
-            })->sum('amount');
-            $opening = $genesisOpening + $priorRev - $priorExp;
-        }
+        $opening = $this->openingBalance($bk, $year, $payments, $expenses);
         $balance = $opening + $yearRevenue - $yearExpense;
 
         // Residents' net dues (live, period-independent): owed by residents.
@@ -776,14 +759,52 @@ class ApiController extends Controller
         return WaTemplate::orderBy('id')->get();
     }
 
+    /// Opening cash balance for [year]. Uses an explicitly-stored opening if one
+    /// exists; otherwise carries forward = genesis opening + net (revenue −
+    /// expenses) of all prior years, so cash isn't reset to zero every January.
+    /// Shared by the dashboard summary and the year-transfer screen.
+    private function openingBalance(string $bk, int $year, $payments, $expenses): int
+    {
+        $stored = YearSummary::where('building_key', $bk)->where('year', $year)->value('opening_balance');
+        if ($stored !== null) {
+            return (int) $stored;
+        }
+        $genesisYear = (int) (YearSummary::where('building_key', $bk)->min('year') ?? $year);
+        $genesisOpening = (int) (YearSummary::where('building_key', $bk)->where('year', $genesisYear)->value('opening_balance') ?? 0);
+        $priorRev = (int) $payments->filter(fn ($p) => $p->year >= $genesisYear && $p->year < $year)->sum('amount');
+        $priorExp = (int) $expenses->filter(function ($e) use ($genesisYear, $year) {
+            $y = Carbon::parse($e->date)->year;
+
+            return $y >= $genesisYear && $y < $year;
+        })->sum('amount');
+
+        return $genesisOpening + $priorRev - $priorExp;
+    }
+
+    /// Year-transfer (الترحيل السنوي) data: opening balance + a LIVE 12-month grid
+    /// of paid-vs-expected. Computed from real payments/units so it never goes
+    /// stale (the stored `months` JSON did, and only held a partial set).
     public function yearSummary(Request $r)
     {
-        $year = (int) ($r->query('year') ?: 2026);
-        $ys = YearSummary::where('building_key', $this->bk($r))
-            ->where('year', $year)->first();
+        $bk = $this->bk($r);
+        $year = (int) ($r->query('year') ?: now()->year);
 
-        return response()->json($ys ?? [
-            'year' => $year, 'opening_balance' => 0, 'months' => [],
+        $payments = Payment::where('building_key', $bk)->get(['amount', 'month', 'year']);
+        $expenses = Expense::where('building_key', $bk)->get(['amount', 'date']);
+        // Expected monthly collection = sum of active (non-vacant) unit dues.
+        $monthlyExpected = (int) Unit::where('building_key', $bk)
+            ->where('status', '!=', 'vacant')->sum('sub');
+
+        $months = [];
+        for ($m = 0; $m < 12; $m++) {
+            $paid = (int) $payments->where('year', $year)->where('month', $m)->sum('amount');
+            $months[] = ['m' => $m, 'paid' => $paid, 'total' => $monthlyExpected];
+        }
+
+        return response()->json([
+            'year' => $year,
+            'opening_balance' => $this->openingBalance($bk, $year, $payments, $expenses),
+            'months' => $months,
         ]);
     }
 }

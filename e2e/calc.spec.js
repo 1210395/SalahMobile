@@ -78,6 +78,33 @@ test('dues sum only the negative balances of non-vacant units', async ({ page })
   expect(r.got).toBe(r.expected);
 });
 
+test('the year-transfer grid is live: 12 months reflecting real payments', async ({ page }) => {
+  const r = await page.evaluate(async ({ no }) => {
+    const tok = await window.T.adminToken();
+    await window.T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'ok' });
+    const before = await (await window.T.req('GET', '/year-summary?btype=residential&year=2026', tok)).body;
+    const b7 = (before.months || []).find((m) => m.m === 7);
+    await window.T.req('POST', '/payments?btype=residential', tok, { unit_no: no, amount: 5000, kind: 'k', month: 7, year: 2026, date: '2026-08-01', method: 'x' });
+    const after = await (await window.T.req('GET', '/year-summary?btype=residential&year=2026', tok)).body;
+    const a7 = (after.months || []).find((m) => m.m === 7);
+    return { len: after.months.length, beforePaid: b7 ? b7.paid : null, afterPaid: a7 ? a7.paid : null };
+  }, { no: 'YM' + rnd() });
+  expect(r.len).toBe(12); // full year, not a partial stored set
+  expect(r.afterPaid).toBe(r.beforePaid + 5000); // reflects the live payment
+});
+
+test('settings reject a non-hex colour but accept a valid one', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tok = await window.T.adminToken();
+    return {
+      bad: (await window.T.req('PUT', '/settings', tok, { primary: 'not-a-hex' })).status,
+      good: (await window.T.req('PUT', '/settings', tok, { primary: '#123456' })).status,
+    };
+  });
+  expect(r.bad).toBe(422);
+  expect(r.good).toBe(200);
+});
+
 test('global report totals equal the sum across buildings', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const sup = await window.T.superToken();
