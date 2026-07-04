@@ -225,7 +225,9 @@ class ApiController extends Controller
         $this->requireAdmin($r);
         abort_unless($payment->building_key === $this->bk($r), 403);
         $data = $r->validate([
-            'amount' => 'nullable|integer|max:'.self::MONEY_MAX,
+            // Bounded both ways so a huge (or hugely negative) value can't
+            // overflow the INT column with a raw MySQL 500 — mirrors storePayment.
+            'amount' => 'nullable|integer|max:'.self::MONEY_MAX.'|min:-'.self::MONEY_MAX,
             'name' => 'nullable|string',
             'kind' => 'nullable|string',
             'month' => 'nullable|integer|min:0|max:11',

@@ -45,6 +45,263 @@ class AmaratiOverhaulTest extends TestCase
         ], $attrs));
     }
 
+    /// A commercial building + its own admin — for cross-tenant (IDOR) tests.
+    private function seedCommercial(): Building
+    {
+        Building::create([
+            'key' => 'commercial', 'name' => 'مجمع تجاري', 'address' => 'عنوان',
+            'type' => 'تجاري', 'subscription' => 80, 'currency' => 'USD',
+            'floors' => 3, 'units_count' => 5, 'exchange_rate' => 3.75,
+            'elevator_fee' => 0, 'summary' => [],
+        ]);
+
+        return Building::where('key', 'commercial')->first();
+    }
+
+    private function commercialAdmin(): User
+    {
+        return User::create([
+            'name' => 'مدير تجاري', 'email' => 'cadmin@test.app',
+            'password' => Hash::make('password'), 'role' => 'admin',
+            'building_key' => 'commercial',
+        ]);
+    }
+
+    // ─────────────── Authorization / cross-tenant (IDOR) ───────────────
+
+    public function test_resident_cannot_create_a_payment(): void
+    {
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101']);
+        $resident = User::create([
+            'name' => 'ساكن', 'phone' => '0590', 'role' => 'resident',
+            'building_key' => 'residential', 'unit_no' => '101',
+        ]);
+
+        $this->actingAs($resident, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 100, 'kind' => 'اشتراك', 'month' => 0,
+            'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+        ])->assertStatus(403);
+    }
+
+    public function test_admin_cannot_delete_another_buildings_payment(): void
+    {
+        // A residential admin must not delete a commercial building's payment.
+        $this->seedBuilding();
+        $this->seedCommercial();
+        $resAdmin = $this->admin();
+        $commPay = Payment::create([
+            'building_key' => 'commercial', 'unit_no' => 'S1', 'name' => 'محل',
+            'amount' => 300, 'currency' => 'USD', 'original_amount' => 300,
+            'exchange_rate' => 1, 'kind' => 'اشتراك', 'month' => 0, 'year' => 2026,
+            'date' => '2026-01-05', 'method' => 'نقداً',
+        ]);
+
+        // Even naming ?btype=commercial, a residential admin is blocked by the
+        // building_key ownership check on the bound model.
+        $this->actingAs($resAdmin, 'sanctum')
+            ->deleteJson("/api/payments/{$commPay->id}?btype=residential")
+            ->assertStatus(403);
+        $this->assertDatabaseHas('payments', ['id' => $commPay->id]);
+    }
+
+    public function test_admin_cannot_edit_another_buildings_unit(): void
+    {
+        $this->seedBuilding();
+        $this->seedCommercial();
+        $commUnit = Unit::create([
+            'building_key' => 'commercial', 'ext_id' => 'C1', 'no' => 'S1',
+            'floor' => 0, 'resident' => 'محل', 'kind' => 'مالك', 'phone' => '—',
+            'sub' => 80, 'status' => 'ok', 'balance' => 0, 'payer' => 'الساكن',
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum')
+            ->putJson("/api/units/{$commUnit->id}?btype=residential", [
+                'no' => 'HACK', 'floor' => 0, 'sub' => 1, 'status' => 'ok',
+            ])->assertStatus(403);
+        $this->assertSame('S1', $commUnit->fresh()->no);
+    }
+
+    public function test_note_mark_read_across_buildings_is_forbidden(): void
+    {
+        $this->seedBuilding();
+        $this->seedCommercial();
+        $commNote = \App\Models\Note::create([
+            'building_key' => 'commercial', 'name' => 'ساكن', 'body' => 'رسالة', 'status' => 'new',
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum')
+            ->postJson("/api/notes/{$commNote->id}/read?btype=residential")
+            ->assertStatus(403);
+    }
+
+    // ─────────────── Money bounds ───────────────
+
+    public function test_update_payment_rejects_oversized_value(): void
+    {
+        $this->seedBuilding();
+        $unit = $this->makeUnit(['no' => '101']);
+        $pay = Payment::create([
+            'building_key' => 'residential', 'unit_no' => '101', 'name' => 'ساكن',
+            'amount' => 100, 'currency' => 'USD', 'original_amount' => 100,
+            'exchange_rate' => 1, 'kind' => 'اشتراك', 'month' => 0, 'year' => 2026,
+            'date' => '2026-01-05', 'method' => 'نقداً',
+        ]);
+        $unit->increment('balance', 100);
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/payments/{$pay->id}", ['amount' => 9999999999])
+            ->assertStatus(422);
+        // A hugely-negative value is also rejected (INT underflow guard).
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/payments/{$pay->id}", ['amount' => -9999999999])
+            ->assertStatus(422);
+        $this->assertSame(100, (int) $pay->fresh()->amount);
+    }
+
+    // ─────────────── Summary / dues ───────────────
+
+    public function test_vacant_units_are_excluded_from_dues(): void
+    {
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101', 'status' => 'late', 'balance' => -200]);
+        $this->makeUnit(['no' => '102', 'status' => 'vacant', 'balance' => -999]);
+
+        $sum = $this->actingAs($this->admin(), 'sanctum')->getJson('/api/summary')->json();
+        // Only the occupied late unit's 200 counts; the vacant -999 is ignored.
+        $this->assertSame(200, (int) $sum['due']);
+    }
+
+    public function test_summary_balance_is_opening_plus_revenue_minus_expenses(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        \App\Models\YearSummary::create([
+            'building_key' => 'residential', 'year' => 2026,
+            'opening_balance' => 1000, 'months' => [],
+        ]);
+        $this->makeUnit(['no' => '101']);
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 500, 'kind' => 'اشتراك', 'month' => 0,
+            'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+        ])->assertCreated();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/expenses', [
+            'cat' => 'صيانة', 'supplier' => 'مورّد', 'amount' => 300, 'date' => '2026-02-01',
+        ])->assertCreated();
+
+        $sum = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(1200, (int) $sum['balance']); // 1000 + 500 - 300
+    }
+
+    // ─────────────── Redeem code round-trip ───────────────
+
+    public function test_manager_created_resident_can_redeem_their_code(): void
+    {
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101']);
+        $code = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
+            'name' => 'ساكن جديد', 'phone' => '+966500009999', 'unit_no' => '101',
+        ])->json('login_code');
+
+        $this->assertSame(32, strlen($code));
+        $res = $this->postJson('/api/auth/redeem-code', ['code' => $code]);
+        $res->assertOk();
+        $this->assertNotEmpty($res->json('token'));
+        $this->assertSame('resident', $res->json('user.role'));
+    }
+
+    // ─────────────── Guard / craftsman / parking CRUD ───────────────
+
+    public function test_guard_save_and_fetch(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->actingAs($admin, 'sanctum')->putJson('/api/guard', [
+            'name' => 'حارس', 'phone' => '0599', 'fee' => 150,
+        ])->assertOk();
+
+        $guard = $this->actingAs($admin, 'sanctum')->getJson('/api/guard')->json();
+        $this->assertSame('حارس', $guard['name']);
+        $this->assertSame(150, (int) $guard['fee']);
+    }
+
+    public function test_craftsman_create_and_list(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/craftsmen', [
+            'name' => 'كهربائي', 'job' => 'كهرباء', 'phone' => '0599',
+        ])->assertCreated();
+
+        $list = $this->actingAs($admin, 'sanctum')->getJson('/api/craftsmen')->json();
+        $this->assertNotEmpty($list);
+        $this->assertSame('كهربائي', $list[0]['name']);
+    }
+
+    public function test_parking_crud_and_building_scope(): void
+    {
+        $this->seedBuilding();
+        $this->seedCommercial();
+        $admin = $this->admin();
+        $spot = $this->actingAs($admin, 'sanctum')->postJson('/api/parking', [
+            'no' => 'P1', 'status' => 'مشغول', 'unit_no' => '101',
+        ])->assertCreated()->json();
+
+        // Update it.
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/parking/{$spot['id']}", ['status' => 'شاغر'])
+            ->assertOk()->assertJson(['status' => 'شاغر']);
+
+        // A commercial admin cannot delete the residential spot.
+        $this->actingAs($this->commercialAdmin(), 'sanctum')
+            ->deleteJson("/api/parking/{$spot['id']}?btype=commercial")
+            ->assertStatus(403);
+
+        // The owner can.
+        $this->actingAs($admin, 'sanctum')
+            ->deleteJson("/api/parking/{$spot['id']}")
+            ->assertOk();
+        $this->assertDatabaseMissing('parking_spots', ['id' => $spot['id']]);
+    }
+
+    public function test_store_resident_rejects_duplicate_phone(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
+            'name' => 'أول', 'phone' => '+966500001234',
+        ])->assertCreated();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
+            'name' => 'ثانٍ', 'phone' => '+966500001234',
+        ])->assertStatus(422);
+    }
+
+    public function test_approving_an_anonymous_join_request_does_not_crash(): void
+    {
+        // A join request with no user_id (guest) should approve without error and
+        // without promoting a phantom user.
+        $this->seedBuilding();
+        $jr = JoinRequest::create([
+            'building_key' => 'residential', 'user_id' => null,
+            'name' => 'زائر', 'unit_no' => '101', 'status' => 'pending',
+        ]);
+        $this->actingAs($this->admin(), 'sanctum')
+            ->postJson("/api/join-requests/{$jr->id}/approve")
+            ->assertOk()->assertJson(['status' => 'approved']);
+    }
+
+    public function test_expense_delete_removes_it(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $exp = $this->actingAs($admin, 'sanctum')->postJson('/api/expenses', [
+            'cat' => 'صيانة', 'supplier' => 'مورّد', 'amount' => 100, 'date' => '2026-02-01',
+        ])->json();
+        $this->actingAs($admin, 'sanctum')->deleteJson("/api/expenses/{$exp['id']}")->assertOk();
+        $this->assertDatabaseMissing('expenses', ['id' => $exp['id']]);
+    }
+
     // ─────────────── Email verification ───────────────
 
     public function test_email_code_request_returns_dev_code_locally(): void
