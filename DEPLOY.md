@@ -42,6 +42,11 @@ already have** (no reseed, no wipe).
 - **`SEED_DEMO`**: only matters if you seed. Since you're keeping your data and
   NOT seeding, you can ignore it. (If you ever set up a *fresh* production DB,
   put `SEED_DEMO=false` in `.env` first so `--seed` creates empty buildings.)
+- **⚠️ Super-admin password**: an earlier seed may have created
+  `superadmin@amarati.app` with the password `password`. If that account exists,
+  **change its password now** — it can view every building's finances and create
+  admins. New code no longer seeds a weak super-admin (see `PRODUCTION.md`).
+  Check: `php artisan tinker --execute="echo App\Models\User::where('role','superadmin')->pluck('email');"`
 - **Resident login codes**: new codes are 128-bit; any existing 8-char codes
   still work unchanged — no action needed.
 - **The APK**: install the new `app-release.apk` (built from this branch). It
