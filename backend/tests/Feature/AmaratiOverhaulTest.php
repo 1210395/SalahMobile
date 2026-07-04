@@ -985,6 +985,45 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertStringNotContainsString('305', $titles, 'resident 101 must not see unit 305 overdue');
     }
 
+    public function test_full_worker_payment_advances_the_due_date_by_a_cycle(): void
+    {
+        // Recording a full payment must move next_due forward by the cycle — not
+        // leave it stale on the same past date.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $worker = $this->actingAs($admin, 'sanctum')->postJson('/api/workers', [
+            'name' => 'عامل', 'phone' => '0599', 'cycle' => 'شهري', 'amount' => 200,
+            'next_due' => '2026-01-01',
+        ])->json();
+
+        $updated = $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/workers/{$worker['id']}", ['pay_status' => 'full'])->json();
+
+        // Monthly cycle → next_due ~ one month from today, i.e. in the future.
+        $this->assertTrue(now()->lt(\Illuminate\Support\Carbon::parse($updated['next_due'])),
+            'next_due should advance into the future');
+        $this->assertNotSame('2026-01-01', $updated['next_due']);
+    }
+
+    public function test_elevator_check_reminder_fires_only_when_enabled_and_due(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        // Enable the reminder with a last check well past the interval → overdue.
+        $this->actingAs($admin, 'sanctum')->putJson('/api/building', [
+            'elevator_check_notify' => true,
+            'elevator_check_interval' => 6,
+            'elevator_last_check' => now()->subMonths(12)->toDateString(),
+        ])->assertOk();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
+        $this->assertDatabaseHas('alerts', ['building_key' => 'residential', 'type' => 'elevator_check']);
+
+        // Disable it → the reminder disappears on the next regenerate.
+        $this->actingAs($admin, 'sanctum')->putJson('/api/building', ['elevator_check_notify' => false])->assertOk();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
+        $this->assertDatabaseMissing('alerts', ['building_key' => 'residential', 'type' => 'elevator_check']);
+    }
+
     public function test_worker_update_records_attendance_and_full_payment(): void
     {
         $this->seedBuilding();

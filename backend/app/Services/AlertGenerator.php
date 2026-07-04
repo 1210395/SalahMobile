@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Models\Alert;
+use App\Models\Building;
 use App\Models\Payment;
 use App\Models\Unit;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 // عمارتي — automated alerts engine. Recomputes a building's alerts from live
@@ -49,6 +51,23 @@ class AlertGenerator
                 'type' => $a[0], 'icon' => $a[1], 'tone' => $a[2],
                 'title' => $a[3], 'body' => $a[4], 'time_label' => 'اليوم', 'channel' => $a[5],
             ]);
+        }
+
+        // 2b) Elevator periodic-check reminder — only when the manager enabled
+        // it AND the next check (last check + interval months) is due or within
+        // two weeks. Makes the "تذكير الفحص" toggle actually do something.
+        $b = Building::where('key', $bk)->first();
+        if ($b && $b->elevator_check_notify && $b->elevator_last_check) {
+            $due = Carbon::parse($b->elevator_last_check)
+                ->addMonths((int) ($b->elevator_check_interval ?: 6));
+            if ($due->isPast() || now()->diffInDays($due, false) <= 14) {
+                $created[] = $this->make($bk, [
+                    'type' => 'elevator_check', 'icon' => 'elevator', 'tone' => 'warn',
+                    'title' => 'موعد الفحص الدوري للمصعد',
+                    'body' => 'استحقّ الفحص الدوري للمصعد بتاريخ '.$due->toDateString().' — يُرجى ترتيبه.',
+                    'time_label' => 'اليوم', 'channel' => 'internal',
+                ]);
+            }
         }
 
         // 3) Latest received payment (positive confirmation).

@@ -46,6 +46,24 @@ test('a resident sends a note; the admin sees it in the inbox and can mark it re
   expect(r.nowRead).toBe('read');
 });
 
+test('the elevator periodic-check reminder fires only when enabled and due', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tok = await window.T.adminToken();
+    const past = new Date(); past.setMonth(past.getMonth() - 12);
+    await window.T.req('PUT', '/building?btype=residential', tok, { elevator_check_notify: true, elevator_check_interval: 6, elevator_last_check: past.toISOString().slice(0, 10) });
+    await window.T.req('POST', '/alerts/regenerate?btype=residential', tok);
+    const on = await (await window.T.req('GET', '/alerts?btype=residential', tok)).body;
+    const fires = on.some((a) => a.type === 'elevator_check');
+    await window.T.req('PUT', '/building?btype=residential', tok, { elevator_check_notify: false });
+    await window.T.req('POST', '/alerts/regenerate?btype=residential', tok);
+    const off = await (await window.T.req('GET', '/alerts?btype=residential', tok)).body;
+    const stillThere = off.some((a) => a.type === 'elevator_check');
+    return { fires, stillThere };
+  });
+  expect(r.fires).toBe(true);
+  expect(r.stillThere).toBe(false);
+});
+
 test('regenerating alerts rebuilds derived alerts but keeps manager notices', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const tok = await window.T.adminToken();

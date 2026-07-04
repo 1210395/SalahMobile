@@ -639,10 +639,19 @@ class ApiController extends Controller
             'next_due' => 'nullable|date',
         ]);
 
-        // A full payment records today + advances the due date by one cycle.
+        // A full payment records today + advances the due date by one cycle
+        // (daily/weekly/monthly). Without this the "next due" date stays stale
+        // and the worker looks perpetually due on the same past date.
         if (($data['pay_status'] ?? null) === 'full') {
             $data['paid_amount'] = $data['amount'] ?? $worker->amount;
             $data['last_payment'] ??= now()->toDateString();
+            $cycle = $data['cycle'] ?? $worker->cycle;
+            $next = match ($cycle) {
+                'يومي' => now()->addDay(),
+                'أسبوعي' => now()->addWeek(),
+                default => now()->addMonth(),   // شهري / anything else
+            };
+            $data['next_due'] ??= $next->toDateString();
         }
 
         $worker->update(array_filter($data, fn ($v) => $v !== null));

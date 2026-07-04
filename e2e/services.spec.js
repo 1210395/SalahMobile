@@ -40,6 +40,17 @@ test('worker: create, record attendance + full payment, then delete', async ({ p
   expect(r.gone).toBe(true);
 });
 
+test('worker: a full payment advances the next-due date by a cycle', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tok = await window.T.adminToken();
+    const w = (await window.T.req('POST', '/workers?btype=residential', tok, { name: 'عامل', phone: '0', cycle: 'شهري', amount: 200, next_due: '2026-01-01' })).body;
+    const u = (await window.T.req('PUT', '/workers/' + w.id + '?btype=residential', tok, { pay_status: 'full' })).body;
+    return { before: '2026-01-01', after: u.next_due };
+  });
+  expect(r.after).not.toBe(r.before); // advanced, not stale
+  expect(new Date(r.after).getTime()).toBeGreaterThan(new Date(r.before).getTime());
+});
+
 test('parking: create, update status, delete', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const tok = await window.T.adminToken();
