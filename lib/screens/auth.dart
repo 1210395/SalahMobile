@@ -490,20 +490,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
     setState(() => _saving = true);
-    // 1) Confirm the email code, then 2) register with phone/whatsapp.
-    final codeErr = await AuthStore.I.verifyEmailCode(f['email']!.trim(), f['code']!.trim());
-    if (!mounted) return;
-    if (codeErr != null) {
-      setState(() => _saving = false);
-      ctx.toast(codeErr, tone: 'late');
-      return;
-    }
+    // Register verifies the email code atomically (server-side), so a duplicate
+    // email/phone fails WITHOUT consuming the code — the user can fix it and
+    // retry with the same code instead of getting a misleading "code wrong".
     final err = await ctx.register(
       f['name']!.trim(),
       f['email']!.trim(),
       f['password']!,
       phone: f['phone']!.trim(),
       whatsapp: f['whatsapp']!.trim().isEmpty ? null : f['whatsapp']!.trim(),
+      emailCode: f['code']!.trim(),
     );
     if (!mounted) return;
     setState(() => _saving = false);

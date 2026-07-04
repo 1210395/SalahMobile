@@ -106,13 +106,16 @@ class AuthStore {
 
   /// Create a new account (always a resident — role is server-decided).
   Future<AuthUser> register(String name, String email, String password,
-      {String? phone, String? whatsapp}) async {
+      {String? phone, String? whatsapp, String? emailCode}) async {
     final res = await _dio.post('/auth/register', data: {
       'name': name,
       'email': email,
       'password': password,
       'phone': ?phone,
       'whatsapp': ?whatsapp,
+      // The code is verified atomically server-side, so a failed register never
+      // consumes it (which used to make the correct code read as "wrong").
+      'email_code': ?emailCode,
     });
     await _persist(Map<String, dynamic>.from(res.data));
     return user!;

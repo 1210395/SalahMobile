@@ -254,10 +254,11 @@ class _AmaratiAppState extends State<AmaratiApp> {
   /// Create a new account (always a resident), then route to the bank
   /// subscription screen (Note 4: pay the subscription right after signup).
   Future<String?> _register(String name, String email, String password,
-      {String? phone, String? whatsapp}) async {
+      {String? phone, String? whatsapp, String? emailCode}) async {
     setState(() => _busy = true);
     try {
-      await AuthStore.I.register(name, email, password, phone: phone, whatsapp: whatsapp);
+      await AuthStore.I.register(name, email, password,
+          phone: phone, whatsapp: whatsapp, emailCode: emailCode);
       final u = AuthStore.I.user!;
       final b = btypeFromKey(u.buildingKey);
       await Api.I.loadBundle(b);

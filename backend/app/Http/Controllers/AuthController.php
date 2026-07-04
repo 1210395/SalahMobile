@@ -39,8 +39,20 @@ class AuthController extends Controller
             'phone' => 'nullable|string|max:32|unique:users,phone',
             'whatsapp' => 'nullable|string|max:32',
             'password' => 'required|string|min:6',
+            'email_code' => 'nullable|string',
             'building_key' => 'in:residential,commercial',
         ]);
+        // Validation above (unique email/phone) has already passed, so a
+        // duplicate never reaches — and thus never consumes — the email code.
+        // Verify the code as part of account creation: a wrong code fails here
+        // WITHOUT creating the user, and (crucially) a later failure can't strand
+        // an already-consumed code so the correct code reads as "wrong" on retry.
+        $emailVerified = false;
+        if (! empty($data['email_code'])) {
+            $this->consumeEmailCodeOrFail($data['email'], $data['email_code']);
+            $emailVerified = true;
+        }
+
         // SECURITY: role is never accepted from a public endpoint. New accounts
         // are always unprivileged residents; promotion to admin must be done by
         // an existing admin through a separate, authorized flow.
@@ -52,6 +64,7 @@ class AuthController extends Controller
             'password' => Hash::make($data['password']),
             'role' => 'resident',
             'building_key' => $data['building_key'] ?? 'residential',
+            'email_verified_at' => $emailVerified ? now() : null,
         ]);
 
         return response()->json($this->payload($user), 201);
@@ -107,7 +120,22 @@ class AuthController extends Controller
             'code' => 'required|string',
         ]);
 
-        $ec = EmailCode::where('email', $data['email'])
+        $this->consumeEmailCodeOrFail($data['email'], $data['code']);
+
+        // If an account already uses this email, mark it verified.
+        User::where('email', $data['email'])->whereNull('email_verified_at')
+            ->update(['email_verified_at' => now()]);
+
+        return response()->json(['verified' => true]);
+    }
+
+    /// Verify + consume the latest email code for [email]. Throws a 422 on a
+    /// wrong/expired code (incrementing attempts, locking after 5) and only marks
+    /// the code used on success — shared by verify-email-code and register so the
+    /// two never double-consume a code.
+    private function consumeEmailCodeOrFail(string $email, string $code): void
+    {
+        $ec = EmailCode::where('email', $email)
             ->where('used', false)
             ->where('expires_at', '>', now())
             ->latest()
@@ -124,17 +152,11 @@ class AuthController extends Controller
             $ec->update(['used' => true]);
             $invalid();
         }
-        if (! Hash::check($data['code'], $ec->code)) {
+        if (! Hash::check($code, $ec->code)) {
             $ec->increment('attempts');
             $invalid();
         }
         $ec->update(['used' => true]);
-
-        // If an account already uses this email, mark it verified.
-        User::where('email', $data['email'])->whereNull('email_verified_at')
-            ->update(['email_verified_at' => now()]);
-
-        return response()->json(['verified' => true]);
     }
 
     /// QR / short-code resident login: the code is matched case-insensitively.
@@ -206,17 +228,21 @@ class AuthController extends Controller
             $otp->increment('attempts');
             $invalid();
         }
-        $otp->update(['used' => true]);
 
         $user = User::where('phone', $data['phone'])->first();
 
         // SECURITY: never let an OTP take over a password-protected account
-        // (e.g. an admin). Those must authenticate with their password.
+        // (e.g. an admin). Those must authenticate with their password. Check
+        // this BEFORE consuming the code, so a valid OTP isn't wasted on a login
+        // that can't succeed anyway (mirrors the register fix).
         if ($user && $user->password) {
             throw ValidationException::withMessages(
                 ['phone' => ['هذا الرقم مرتبط بحساب بكلمة مرور — سجّل الدخول بكلمة المرور']]
             );
         }
+
+        // All checks passed — now consume the code.
+        $otp->update(['used' => true]);
 
         // SECURITY: phone-only accounts are always unprivileged residents; role
         // is server-decided, never client-supplied. building_key only scopes

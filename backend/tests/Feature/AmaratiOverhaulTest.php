@@ -78,6 +78,96 @@ class AmaratiOverhaulTest extends TestCase
             ->assertStatus(422);
     }
 
+    // Repro: enter the code wrong, then right — the right one MUST be accepted.
+    public function test_email_code_wrong_then_right_is_accepted(): void
+    {
+        $this->app['env'] = 'local';
+        $code = $this->postJson('/api/auth/request-email-code', ['email' => 'wr@b.com'])->json('dev_code');
+        $wrong = $code === '000000' ? '111111' : '000000';
+
+        $this->postJson('/api/auth/verify-email-code', ['email' => 'wr@b.com', 'code' => $wrong])
+            ->assertStatus(422);
+        // Now the correct code should succeed — NOT still say "wrong".
+        $this->postJson('/api/auth/verify-email-code', ['email' => 'wr@b.com', 'code' => $code])
+            ->assertOk()->assertJson(['verified' => true]);
+    }
+
+    // The core fix: register verifies the code atomically. A duplicate phone
+    // must fail WITHOUT consuming the code, so the user can fix the phone and
+    // retry with the SAME code — instead of the correct code reading as "wrong".
+    public function test_register_dup_phone_does_not_consume_email_code(): void
+    {
+        $this->app['env'] = 'local';
+        // An existing user already owns this phone.
+        User::create(['name' => 'قديم', 'email' => 'old@b.com', 'phone' => '0599',
+            'password' => Hash::make('secret6'), 'role' => 'resident', 'building_key' => 'residential']);
+
+        $code = $this->postJson('/api/auth/request-email-code', ['email' => 'new@b.com'])->json('dev_code');
+
+        // 1) register with the DUP phone + correct code → fails, code NOT consumed.
+        $this->postJson('/api/auth/register', [
+            'name' => 'جديد', 'email' => 'new@b.com', 'password' => 'secret6',
+            'phone' => '0599', 'email_code' => $code,
+        ])->assertStatus(422);
+
+        // 2) retry with a FREE phone + the SAME code → succeeds (code still valid).
+        $this->postJson('/api/auth/register', [
+            'name' => 'جديد', 'email' => 'new@b.com', 'password' => 'secret6',
+            'phone' => '0577', 'email_code' => $code,
+        ])->assertCreated();
+
+        $this->assertNotNull(User::where('email', 'new@b.com')->first()->email_verified_at);
+    }
+
+    public function test_register_wrong_code_is_rejected_and_creates_no_user(): void
+    {
+        $this->app['env'] = 'local';
+        $code = $this->postJson('/api/auth/request-email-code', ['email' => 'z@b.com'])->json('dev_code');
+        $wrong = $code === '000000' ? '111111' : '000000';
+
+        $this->postJson('/api/auth/register', [
+            'name' => 'ز', 'email' => 'z@b.com', 'password' => 'secret6',
+            'phone' => '0588', 'email_code' => $wrong,
+        ])->assertStatus(422);
+        $this->assertNull(User::where('email', 'z@b.com')->first()); // no half-created account
+
+        // The correct code still works afterwards (wrong attempt didn't consume it).
+        $this->postJson('/api/auth/register', [
+            'name' => 'ز', 'email' => 'z@b.com', 'password' => 'secret6',
+            'phone' => '0588', 'email_code' => $code,
+        ])->assertCreated();
+    }
+
+    // Similar-bug fix: a phone OTP for a password-protected account is rejected
+    // WITHOUT consuming the OTP (the check now runs before the code is spent).
+    public function test_otp_not_consumed_for_password_account(): void
+    {
+        $this->app['env'] = 'local';
+        User::create(['name' => 'مدير', 'phone' => '0599', 'password' => Hash::make('secret6'),
+            'role' => 'admin', 'building_key' => 'residential']);
+
+        $code = $this->postJson('/api/auth/request-otp', ['phone' => '0599'])->json('dev_code');
+        $this->postJson('/api/auth/verify-otp', ['phone' => '0599', 'code' => $code])
+            ->assertStatus(422);
+
+        // The OTP must still be unused (not wasted on a login that can't succeed).
+        $this->assertDatabaseHas('otp_codes', ['phone' => '0599', 'used' => false]);
+    }
+
+    // Repro: type old code wrong, request a NEW code, enter the new one — accepted.
+    public function test_email_code_resend_after_wrong_is_accepted(): void
+    {
+        $this->app['env'] = 'local';
+        $first = $this->postJson('/api/auth/request-email-code', ['email' => 're@b.com'])->json('dev_code');
+        $wrong = $first === '000000' ? '111111' : '000000';
+        $this->postJson('/api/auth/verify-email-code', ['email' => 're@b.com', 'code' => $wrong])
+            ->assertStatus(422);
+
+        $second = $this->postJson('/api/auth/request-email-code', ['email' => 're@b.com'])->json('dev_code');
+        $this->postJson('/api/auth/verify-email-code', ['email' => 're@b.com', 'code' => $second])
+            ->assertOk()->assertJson(['verified' => true]);
+    }
+
     // ─────────────── QR / redeem-code login ───────────────
 
     public function test_redeem_code_returns_token(): void
