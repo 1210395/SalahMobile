@@ -110,6 +110,7 @@ class AmaratiOverhaulTest extends TestCase
 
         $this->assertCount(0, $this->actingAs($me, 'sanctum')->getJson('/api/expenses')->json());
         $this->assertCount(0, $this->actingAs($me, 'sanctum')->getJson('/api/workers')->json());
+        $this->assertCount(0, $this->actingAs($me, 'sanctum')->getJson('/api/parking')->json());
 
         // Admin still sees everything + login codes.
         $adminUnits = $this->actingAs($admin, 'sanctum')->getJson('/api/units')->json();

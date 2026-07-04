@@ -24,7 +24,11 @@ AMARATI_SUPERADMIN_EMAIL=owner@yourcompany.com
 AMARATI_SUPERADMIN_PASSWORD=<a long random password>
 
 # Optional:
-# AMARATI_AUTH_RATE=6           # auth requests/min (default 6; leave default in prod)
+# AMARATI_AUTH_RATE=6              # auth requests/min (default 6; leave default in prod)
+# SANCTUM_EXPIRATION_MINUTES=129600  # token lifetime (90 days). Default: never
+                                     # expires. Set this so a lost-device/leaked
+                                     # token can't live forever; users re-login
+                                     # (trivial via QR/code or password).
 ```
 
 With `APP_ENV=production` and no `AMARATI_SUPERADMIN_PASSWORD`, **no super-admin

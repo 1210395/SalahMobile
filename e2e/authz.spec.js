@@ -35,6 +35,7 @@ test('resident reads are scoped: own unit only, no login codes, own payments, no
     const pays = await (await T.req('GET', '/payments?btype=residential', t)).body;
     const exps = await (await T.req('GET', '/expenses?btype=residential', t)).body;
     const workers = await (await T.req('GET', '/workers?btype=residential', t)).body;
+    const parking = await (await T.req('GET', '/parking?btype=residential', t)).body;
     return {
       unitCount: units.length,
       leaksCode: units.some((u) => u.login_code),
@@ -43,6 +44,7 @@ test('resident reads are scoped: own unit only, no login codes, own payments, no
       seesOtherPay: pays.some((p) => p.unit_no === other),
       expCount: exps.length,
       workerCount: workers.length,
+      parkingCount: parking.length,
     };
   });
   expect(r.unitCount).toBe(1);
@@ -52,6 +54,7 @@ test('resident reads are scoped: own unit only, no login codes, own payments, no
   expect(r.seesOtherPay).toBe(false);
   expect(r.expCount).toBe(0);
   expect(r.workerCount).toBe(0);
+  expect(r.parkingCount).toBe(0);
 });
 
 test('a resident cannot perform admin writes (create payment / unit / expense)', async ({ page }) => {

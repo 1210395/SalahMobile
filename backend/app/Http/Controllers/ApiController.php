@@ -715,6 +715,12 @@ class ApiController extends Controller
 
     public function parking(Request $r)
     {
+        // The parking roster (spot → unit mapping + access codes) is admin-only;
+        // residents have no parking screen and must not receive it.
+        if (! $this->isAdmin($r)) {
+            return response()->json([]);
+        }
+
         return ParkingSpot::where('building_key', $this->bk($r))->orderBy('no')->get();
     }
 
