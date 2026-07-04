@@ -138,6 +138,18 @@ class AmaratiOverhaulTest extends TestCase
         ])->assertCreated();
     }
 
+    // Renters can't self-register: an OTP for an unknown phone must be rejected,
+    // NOT silently create a resident account.
+    public function test_otp_for_unknown_phone_creates_no_account(): void
+    {
+        $this->app['env'] = 'local';
+        $code = $this->postJson('/api/auth/request-otp', ['phone' => '0500999'])->json('dev_code');
+
+        $this->postJson('/api/auth/verify-otp', ['phone' => '0500999', 'code' => $code])
+            ->assertStatus(422);
+        $this->assertNull(User::where('phone', '0500999')->first());
+    }
+
     // Similar-bug fix: a phone OTP for a password-protected account is rejected
     // WITHOUT consuming the OTP (the check now runs before the code is spent).
     public function test_otp_not_consumed_for_password_account(): void

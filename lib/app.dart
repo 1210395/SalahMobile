@@ -238,11 +238,22 @@ class _AmaratiAppState extends State<AmaratiApp> {
       // First-time manager (building not set up yet) → run the setup wizard
       // before anything else; configured admins land on their dashboard.
       final needsSetup = r == AppRole.admin && (DataStore.I.building?.name.trim().isEmpty ?? true);
+      // A publicly-registered account is a MANAGER-in-onboarding (never a renter):
+      // it has role 'resident' but no unit. Send it back into the subscription →
+      // building-setup flow on every login until it's promoted to admin — instead
+      // of dropping it into the renter home. (Real renters always have a unit_no,
+      // assigned by their manager via QR/join, so they still land on resHome.)
+      final pendingManager =
+          r == AppRole.resident && (u.unitNo == null || u.unitNo!.trim().isEmpty);
       setState(() {
         _busy = false;
         this.role = r;
         this.btype = b;
-        screen = needsSetup ? 'buildingSetup' : _homeFor(r);
+        screen = needsSetup
+            ? 'buildingSetup'
+            : pendingManager
+                ? 'subscribe'
+                : _homeFor(r);
       });
       return null;
     } catch (e) {

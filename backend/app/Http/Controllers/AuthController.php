@@ -231,11 +231,20 @@ class AuthController extends Controller
 
         $user = User::where('phone', $data['phone'])->first();
 
+        // Renters never self-register: an account only exists if a manager issued
+        // a QR/invite or approved a join request. An OTP for an unknown phone is
+        // rejected (it must NOT silently create a resident account).
+        if (! $user) {
+            throw ValidationException::withMessages(
+                ['phone' => ['لا يوجد حساب لهذا الرقم — انضم عبر رمز/رابط من مسؤول العمارة']]
+            );
+        }
+
         // SECURITY: never let an OTP take over a password-protected account
         // (e.g. an admin). Those must authenticate with their password. Check
         // this BEFORE consuming the code, so a valid OTP isn't wasted on a login
         // that can't succeed anyway (mirrors the register fix).
-        if ($user && $user->password) {
+        if ($user->password) {
             throw ValidationException::withMessages(
                 ['phone' => ['هذا الرقم مرتبط بحساب بكلمة مرور — سجّل الدخول بكلمة المرور']]
             );
@@ -243,16 +252,6 @@ class AuthController extends Controller
 
         // All checks passed — now consume the code.
         $otp->update(['used' => true]);
-
-        // SECURITY: phone-only accounts are always unprivileged residents; role
-        // is server-decided, never client-supplied. building_key only scopes
-        // which dataset they see and defaults to residential.
-        $user ??= User::create([
-            'phone' => $data['phone'],
-            'name' => $data['name'] ?? 'مستخدم عمارتي',
-            'role' => 'resident',
-            'building_key' => $data['building_key'] ?? 'residential',
-        ]);
 
         return response()->json($this->payload($user));
     }
