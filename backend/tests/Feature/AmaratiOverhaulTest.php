@@ -351,6 +351,56 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertDatabaseMissing('units', ['id' => $empty->id]);
     }
 
+    public function test_paying_off_a_late_unit_clears_its_status_and_stops_alerts(): void
+    {
+        // A resident who pays in full must stop showing as 'late' AND stop
+        // generating an overdue alert — status must track the balance.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $unit = $this->makeUnit(['no' => '101', 'status' => 'late', 'balance' => -100]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 100, 'kind' => 'اشتراك', 'month' => 0,
+            'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+        ])->assertCreated();
+
+        $fresh = $unit->fresh();
+        $this->assertSame(0, (int) $fresh->balance);
+        $this->assertSame('ok', $fresh->status); // no longer 'late'
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
+        $this->assertDatabaseMissing('alerts', ['building_key' => 'residential', 'type' => 'subscription']);
+    }
+
+    public function test_overpaying_makes_a_unit_credit_and_deleting_reverts_to_late(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $unit = $this->makeUnit(['no' => '101', 'status' => 'late', 'balance' => -100]);
+
+        $pay = $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 150, 'kind' => 'k', 'month' => 0,
+            'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+        ])->json();
+        $this->assertSame('credit', $unit->fresh()->status); // +50 → credit
+
+        $this->actingAs($admin, 'sanctum')->deleteJson("/api/payments/{$pay['id']}")->assertOk();
+        $this->assertSame('late', $unit->fresh()->status); // back to owing 100
+    }
+
+    public function test_a_back_debt_unit_is_created_late_not_ok(): void
+    {
+        $this->seedBuilding();
+        $past = now()->subMonths(3)->toDateString();
+        $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
+            'no' => 'BD1', 'floor' => 1, 'sub' => 100, 'status' => 'ok',
+            'contract_start' => $past, 'back_debt' => true,
+        ]);
+        $res->assertCreated();
+        $this->assertSame(-300, (int) $res->json('balance'));
+        $this->assertSame('late', $res->json('status')); // owes → late, despite status:ok input
+    }
+
     public function test_back_debt_ignores_a_future_contract_start(): void
     {
         // A lease that starts in the future owes nothing yet — the month diff must

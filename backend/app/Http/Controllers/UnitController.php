@@ -31,6 +31,13 @@ class UnitController extends Controller
             403, 'يتطلب صلاحية المسؤول');
     }
 
+    /// The status label implied by a balance: owes → late, credit → credit,
+    /// settled → ok. Keeps the badge consistent with what's actually owed.
+    private static function statusForBalance(int $balance): string
+    {
+        return $balance < 0 ? 'late' : ($balance > 0 ? 'credit' : 'ok');
+    }
+
     private function rules(): array
     {
         return [
@@ -93,7 +100,9 @@ class UnitController extends Controller
             'kind' => $vacant ? 'شاغر' : ($data['kind'] ?? 'مالك'),
             'phone' => $data['phone'] ?? '—',
             'sub' => $sub,
-            'status' => $vacant ? 'vacant' : ($data['status'] ?? 'ok'),
+            // Status follows the balance (a unit with back-debt is 'late', not
+            // 'ok') so the badge never contradicts what's owed. Vacant is manual.
+            'status' => $vacant ? 'vacant' : self::statusForBalance($balance),
             'balance' => $balance,
             'payer' => $vacant ? '—' : ($data['payer'] ?? 'الساكن'),
             'contract_start' => $contractStart,
@@ -128,7 +137,9 @@ class UnitController extends Controller
             );
         }
 
-        DB::transaction(function () use ($unit, $vacant, $data, $renamed, $oldNo, $newNo) {
+        $newBalance = $vacant ? 0 : (int) ($data['balance'] ?? $unit->balance);
+
+        DB::transaction(function () use ($unit, $vacant, $data, $renamed, $oldNo, $newNo, $newBalance) {
             $unit->update([
                 'no' => $data['no'],
                 'floor' => $data['floor'],
@@ -136,9 +147,10 @@ class UnitController extends Controller
                 'kind' => $vacant ? 'شاغر' : ($data['kind'] ?? $unit->kind),
                 'phone' => $vacant ? '—' : ($data['phone'] ?? $unit->phone),
                 'sub' => $data['sub'] ?? $unit->sub,
-                // A vacant unit is excluded from dues: balance zeroed, status vacant.
-                'status' => $vacant ? 'vacant' : ($data['status'] ?? ($unit->status === 'vacant' ? 'ok' : $unit->status)),
-                'balance' => $vacant ? 0 : ($data['balance'] ?? $unit->balance),
+                // A vacant unit is excluded from dues (balance zeroed). Otherwise
+                // the status is derived from the balance so it can't contradict it.
+                'status' => $vacant ? 'vacant' : self::statusForBalance($newBalance),
+                'balance' => $newBalance,
                 'payer' => $vacant ? '—' : ($data['payer'] ?? $unit->payer),
                 'contract_start' => $vacant ? null : ($data['contract_start'] ?? $unit->contract_start),
                 // Sent null (empty "مستمر") clears the end date; only an ABSENT key

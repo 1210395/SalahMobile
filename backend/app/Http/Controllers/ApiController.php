@@ -252,7 +252,9 @@ class ApiController extends Controller
         // Carry-over: shift the unit's balance by the change in (base) amount.
         $delta = (int) $payment->amount - $before;
         if ($delta !== 0) {
-            $this->unitFor($payment)?->increment('balance', $delta);
+            $unit = $this->unitFor($payment);
+            $unit?->increment('balance', $delta);
+            $this->syncUnitStatus($unit);
         }
 
         return response()->json($payment->fresh());
@@ -263,7 +265,9 @@ class ApiController extends Controller
         $this->requireAdmin($r);
         abort_unless($payment->building_key === $this->bk($r), 403);
         // Carry-over: removing a payment reverts its credit to the unit balance.
-        $this->unitFor($payment)?->decrement('balance', (int) $payment->amount);
+        $unit = $this->unitFor($payment);
+        $unit?->decrement('balance', (int) $payment->amount);
+        $this->syncUnitStatus($unit);
         $payment->delete();
 
         return response()->json(['ok' => true]);
@@ -274,6 +278,21 @@ class ApiController extends Controller
     {
         return Unit::where('building_key', $payment->building_key)
             ->where('no', $payment->unit_no)->first();
+    }
+
+    /// Keep a unit's status label in sync with its (computed) balance so the
+    /// badge, late-count, and overdue alerts never contradict what the resident
+    /// actually owes. Vacant is a manual choice (excluded from dues) and is kept.
+    private function syncUnitStatus(?Unit $unit): void
+    {
+        if (! $unit || $unit->status === 'vacant') {
+            return;
+        }
+        $bal = (int) $unit->fresh()->balance;
+        $status = $bal < 0 ? 'late' : ($bal > 0 ? 'credit' : 'ok');
+        if ($unit->status !== $status) {
+            $unit->update(['status' => $status]);
+        }
     }
 
     // ─────────── Expenses edit / delete ───────────
@@ -499,6 +518,7 @@ class ApiController extends Controller
 
         // Carry-over: a payment credits the unit's balance (base currency).
         $unit->increment('balance', $payment->amount);
+        $this->syncUnitStatus($unit);
 
         return response()->json($payment, 201);
     }

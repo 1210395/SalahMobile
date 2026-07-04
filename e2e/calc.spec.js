@@ -89,6 +89,34 @@ test('a zero or negative exchange rate is rejected; a valid one is accepted', as
   expect(r.valid).toBe(201);
 });
 
+test('a unit status stays consistent with its balance (paying off clears late)', async ({ page }) => {
+  const r = await page.evaluate(async ({ no }) => {
+    const tok = await window.T.adminToken();
+    await window.T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'late', balance: -100 });
+    await window.T.req('POST', '/payments?btype=residential', tok, { unit_no: no, amount: 100, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' });
+    const paid = (await (await window.T.req('GET', '/units?btype=residential', tok)).body).find((u) => u.no === no);
+    // regenerate alerts — a paid-off unit must not produce an overdue alert
+    await window.T.req('POST', '/alerts/regenerate?btype=residential', tok);
+    const alerts = await (await window.T.req('GET', '/alerts?btype=residential', tok)).body;
+    const overdueForThis = alerts.some((a) => a.type === 'subscription' && a.title && a.title.includes(no));
+    return { balance: paid.balance, status: paid.status, overdueForThis };
+  }, { no: 'ST' + rnd() });
+  expect(r.balance).toBe(0);
+  expect(r.status).toBe('ok'); // not 'late'
+  expect(r.overdueForThis).toBe(false); // no spurious overdue alert
+});
+
+test('a back-debt unit is created as late (owes), not ok', async ({ page }) => {
+  const r = await page.evaluate(async ({ no }) => {
+    const tok = await window.T.adminToken();
+    const past = new Date(); past.setMonth(past.getMonth() - 3);
+    const u = (await window.T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'ok', contract_start: past.toISOString().slice(0, 10), back_debt: true })).body;
+    return { balance: u.balance, status: u.status };
+  }, { no: 'BD' + rnd() });
+  expect(r.balance).toBe(-300);
+  expect(r.status).toBe('late'); // balance drives status, despite status:'ok' input
+});
+
 test('a contract end date before the start date is rejected', async ({ page }) => {
   const r = await page.evaluate(async ({ n1, n2 }) => {
     const tok = await window.T.adminToken();
