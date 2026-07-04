@@ -461,7 +461,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       f['password']!.length >= 6 &&
       f['password'] == f['confirm'];
 
-  bool get _valid => _fieldsValid && _codeSent && f['code']!.trim().length >= 4;
+  // Email verification is OPTIONAL — a manager can create the account with just
+  // the base fields. If they DID enter a code, it must be a plausible length so a
+  // half-typed code isn't submitted. (Email delivery isn't wired yet; once it is,
+  // the code simply becomes a real verification step with no other change.)
+  bool get _valid =>
+      _fieldsValid &&
+      (f['code']!.trim().isEmpty || f['code']!.trim().length >= 4);
 
   Future<void> _sendCode() async {
     final ctx = widget.ctx;
@@ -499,7 +505,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       f['password']!,
       phone: f['phone']!.trim(),
       whatsapp: f['whatsapp']!.trim().isEmpty ? null : f['whatsapp']!.trim(),
-      emailCode: f['code']!.trim(),
+      emailCode: f['code']!.trim().isEmpty ? null : f['code']!.trim(),
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -615,7 +621,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: Text('تأكيد البريد الإلكتروني',
+                child: Text('تأكيد البريد الإلكتروني (اختياري)',
                     style: AppType.base(size: 14, weight: FontWeight.w800)),
               ),
               AppButton(
@@ -629,7 +635,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 12),
               Field(
-                label: 'رمز تأكيد البريد',
+                label: 'رمز تأكيد البريد (اختياري)',
                 icon: 'lock',
                 placeholder: 'أدخل الرمز',
                 keyboardType: TextInputType.number,
@@ -637,7 +643,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 marginBottom: 0,
                 hint: _codeSent
                     ? 'أدخل الرمز المُرسَل إلى بريدك الإلكتروني'
-                    : 'املأ الحقول ثم اضغط «إرسال رمز التأكيد»',
+                    : 'يمكنك إنشاء الحساب مباشرةً — تأكيد البريد اختياري',
                 onChanged: (v) => setState(() => f['code'] = v),
               ),
             ],

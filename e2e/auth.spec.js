@@ -38,6 +38,21 @@ test('registration creates a pending-manager (resident) account, never an admin'
   expect(r.body.user.role).toBe('resident'); // promoted to admin only via building setup
 });
 
+test('registration works WITHOUT an email code, then that account can log in', async ({ page }) => {
+  // Email verification is optional — a new manager must be able to register and
+  // sign in without a code (email delivery isn't wired yet).
+  const r = await page.evaluate(async () => {
+    const email = 'nocode' + Math.floor(Math.random() * 1e9) + '@e2e.app';
+    const reg = await window.T.req('POST', '/auth/register', null, { name: 'مدير', email, password: 'secret123' });
+    const login = await window.T.req('POST', '/auth/login', null, { email, password: 'secret123' });
+    return { reg: reg.status, regRole: reg.body && reg.body.user && reg.body.user.role, login: login.status, hasToken: !!(login.body && login.body.token) };
+  });
+  expect(r.reg).toBe(201);
+  expect(r.regRole).toBe('resident'); // pending-manager, promoted via building setup
+  expect(r.login).toBe(200);
+  expect(r.hasToken).toBe(true);
+});
+
 test('registration rejects a duplicate email (422)', async ({ page }) => {
   const r = await page.evaluate(async () => window.T.req('POST', '/auth/register', null, { name: 'x', email: 'admin@amarati.app', password: 'secret123' }));
   expect(r.status).toBe(422);
