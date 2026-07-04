@@ -622,6 +622,19 @@ class AmaratiOverhaulTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_building_and_money_fields_reject_out_of_range_values(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        // Oversized subscription/elevator_fee would overflow the unsigned column.
+        $this->actingAs($admin, 'sanctum')->putJson('/api/building', ['subscription' => 9999999999])->assertStatus(422);
+        $this->actingAs($admin, 'sanctum')->putJson('/api/building', ['elevator_fee' => 9999999999])->assertStatus(422);
+        // Elevator contract end before start is rejected.
+        $this->actingAs($admin, 'sanctum')->putJson('/api/building', [
+            'elevator_contract_start' => '2026-06-01', 'elevator_contract_end' => '2026-01-01',
+        ])->assertStatus(422);
+    }
+
     public function test_duplicate_parking_number_is_rejected(): void
     {
         $this->seedBuilding();

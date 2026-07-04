@@ -150,12 +150,12 @@ class ApiController extends Controller
             'address' => 'nullable|string|max:200',
             'floors' => 'nullable|integer|min:-50|max:300',
             'units_count' => 'nullable|integer|min:0|max:2000',
-            'subscription' => 'nullable|integer|min:0',
-            'elevator_fee' => 'nullable|integer|min:0',
+            'subscription' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
+            'elevator_fee' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
             'elevator_phone' => 'nullable|string|max:60',
             'elevator_company' => 'nullable|string|max:160',
             'elevator_contract_start' => 'nullable|date',
-            'elevator_contract_end' => 'nullable|date',
+            'elevator_contract_end' => 'nullable|date|after_or_equal:elevator_contract_start',
             'elevator_last_check' => 'nullable|date',
             'elevator_check_notify' => 'nullable|boolean',
             'elevator_check_interval' => 'nullable|integer|min:1|max:60',
@@ -433,7 +433,7 @@ class ApiController extends Controller
         $this->requireAdmin($r);
         $data = $r->validate([
             'label' => 'nullable|string|max:120',
-            'amount' => 'nullable|integer|min:0',
+            'amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
             'enabled' => 'nullable|boolean',
             'optional' => 'nullable|boolean',
         ]);
