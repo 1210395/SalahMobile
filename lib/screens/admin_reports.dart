@@ -1251,7 +1251,11 @@ class _YearsScreenState extends State<YearsScreen> {
         title: 'الترحيل السنوي',
         subtitle: 'متابعة الدفع شهرياً',
         onBack: () => ctx.go('home'),
-        right: RoundBtn(icon: 'plus', onTap: () => ctx.toast('تمت إضافة سنة جديدة')),
+        right: RoundBtn(
+            icon: 'refresh',
+            // Years are derived automatically from recorded payments — don't
+            // claim a fake "year added".
+            onTap: () => ctx.toast('تُضاف السنوات تلقائياً عند تسجيل دفعات في سنة جديدة', tone: 'info')),
       ),
       nav: ctx.adminNav,
       children: [

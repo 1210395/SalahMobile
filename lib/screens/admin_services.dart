@@ -116,7 +116,31 @@ class GuardScreen extends StatelessWidget {
           label: 'تسجيل دفعة جديدة',
           full: true,
           icon: 'wallet',
-          onTap: () => ctx.toast('تم تسجيل دفعة الحارس'),
+          // Records the guard's wage as a real expense (shows up in expenses +
+          // reports) — previously this only showed a toast without saving.
+          onTap: () async {
+            if (g.fee <= 0) {
+              ctx.toast('حدّد أجرة الحارس الشهرية أولاً', tone: 'late');
+              return;
+            }
+            try {
+              await Api.I.createExpense(ctx.btype, {
+                'cat': 'أخرى',
+                'icon': 'user',
+                'tone': 'gold',
+                'supplier': 'أجرة الحارس — ${g.name}',
+                'amount': g.fee,
+                'original_amount': g.fee,
+                'currency': activeCurrency,
+                'date': todayIso(),
+                'description': 'دفعة أجرة الحارس الشهرية',
+              });
+              await ctx.reload();
+              ctx.toast('تم تسجيل دفعة الحارس (${fmtUSD(g.fee)})');
+            } catch (e) {
+              ctx.toast(apiErrorText(e), tone: 'late');
+            }
+          },
         ),
       ],
     );
