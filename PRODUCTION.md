@@ -29,6 +29,9 @@ AMARATI_SUPERADMIN_PASSWORD=<a long random password>
                                      # expires. Set this so a lost-device/leaked
                                      # token can't live forever; users re-login
                                      # (trivial via QR/code or password).
+# AMARATI_APP_URL=https://...        # where the /join/CODE invite page's
+                                     # "download the app" button points (default:
+                                     # the GitHub release). Set to your store listing.
 ```
 
 With `APP_ENV=production` and no `AMARATI_SUPERADMIN_PASSWORD`, **no super-admin

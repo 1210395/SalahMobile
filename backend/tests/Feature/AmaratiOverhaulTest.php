@@ -1034,6 +1034,15 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertCount(12, $res->json('trend'));
     }
 
+    public function test_join_invite_url_serves_a_landing_page_not_a_404(): void
+    {
+        // The shared invite link must resolve to a helpful page (was a 404).
+        $res = $this->get('/join/AMR-1206');
+        $res->assertOk();
+        $res->assertSee('عمارتي', false);
+        $res->assertSee('AMR-1206', false);
+    }
+
     public function test_summary_requires_authentication(): void
     {
         // Financials must not be public — an unauthenticated request is rejected.
