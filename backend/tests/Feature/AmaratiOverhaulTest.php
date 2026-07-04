@@ -267,6 +267,40 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(32, strlen($code), 'join-approval login code must be 128-bit');
     }
 
+    public function test_editing_a_unit_without_renaming_still_works(): void
+    {
+        // The common case: edit fields WITHOUT changing the number. Must not trip
+        // the rename collision guard or cascade — just a plain update.
+        $this->seedBuilding();
+        $unit = $this->makeUnit(['no' => '101', 'sub' => 50, 'status' => 'ok']);
+
+        $this->actingAs($this->admin(), 'sanctum')
+            ->putJson("/api/units/{$unit->id}", [
+                'no' => '101', 'floor' => 2, 'sub' => 75, 'status' => 'late', 'balance' => -75,
+            ])->assertOk();
+
+        $fresh = $unit->fresh();
+        $this->assertSame('101', $fresh->no);
+        $this->assertSame(75, (int) $fresh->sub);
+        $this->assertSame(-75, (int) $fresh->balance);
+    }
+
+    public function test_admin_still_sees_a_units_overdue_alert(): void
+    {
+        // The privacy fix targets per-unit alerts to their unit. The ADMIN must
+        // still see them (admin's feed is unfiltered) — the fix must not hide a
+        // unit's overdue notice from the manager.
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '305', 'resident' => 'مدين', 'status' => 'late', 'balance' => -500]);
+
+        $admin = $this->admin();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
+        $seen = $this->actingAs($admin, 'sanctum')->getJson('/api/alerts')->json();
+
+        $titles = collect($seen)->pluck('title')->implode(' | ');
+        $this->assertStringContainsString('305', $titles, 'admin must still see unit 305 overdue');
+    }
+
     public function test_renaming_a_unit_cascades_to_payments_and_resident(): void
     {
         // Renaming a unit's number must carry its payment history and the linked
