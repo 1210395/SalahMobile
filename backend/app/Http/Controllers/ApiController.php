@@ -287,7 +287,7 @@ class ApiController extends Controller
             'amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
             'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
             'currency' => 'nullable|string|max:8',
-            'exchange_rate' => 'nullable|numeric|min:0|max:100000',
+            'exchange_rate' => 'nullable|numeric|gt:0|max:100000',
             'date' => 'nullable|date',
             'description' => 'nullable|string|max:255',
             'icon' => 'nullable|string|max:40',
@@ -458,7 +458,7 @@ class ApiController extends Controller
             'amount' => 'nullable|integer|max:'.self::MONEY_MAX,   // base amount (legacy/optional)
             'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX, // amount as entered
             'currency' => 'nullable|string|max:8',     // entered currency
-            'exchange_rate' => 'nullable|numeric|min:0|max:100000', // entered-currency → base
+            'exchange_rate' => 'nullable|numeric|gt:0|max:100000', // entered-currency → base
             'kind' => 'required|string|max:80',
             'month' => 'required|integer|min:0|max:11',
             'year' => 'required|integer|min:2000|max:2100',
@@ -545,7 +545,7 @@ class ApiController extends Controller
             'amount' => 'required|integer|min:0|max:'.self::MONEY_MAX,
             'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX, // amount as entered
             'currency' => 'nullable|string|max:8',     // entered currency
-            'exchange_rate' => 'nullable|numeric|min:0|max:100000', // entered-currency → base
+            'exchange_rate' => 'nullable|numeric|gt:0|max:100000', // entered-currency → base
             'date' => 'required|date',
             'description' => 'nullable|string|max:255',
         ]);

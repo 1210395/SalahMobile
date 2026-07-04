@@ -351,6 +351,52 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertDatabaseMissing('units', ['id' => $empty->id]);
     }
 
+    public function test_back_debt_ignores_a_future_contract_start(): void
+    {
+        // A lease that starts in the future owes nothing yet — the month diff must
+        // not go negative and fabricate a phantom credit/debit.
+        $this->seedBuilding();
+        $future = now()->addMonths(6)->toDateString();
+        $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
+            'no' => 'F1', 'floor' => 1, 'sub' => 100, 'status' => 'ok',
+            'contract_start' => $future, 'back_debt' => true,
+        ]);
+        $res->assertCreated();
+        $this->assertSame(0, (int) $res->json('balance'));
+    }
+
+    public function test_back_debt_accrues_for_a_past_contract_start(): void
+    {
+        // Sanity companion: a 6-months-ago start with sub 100 owes ~600.
+        $this->seedBuilding();
+        $past = now()->subMonths(6)->toDateString();
+        $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
+            'no' => 'P9', 'floor' => 1, 'sub' => 100, 'status' => 'ok',
+            'contract_start' => $past, 'back_debt' => true,
+        ]);
+        $res->assertCreated();
+        $this->assertSame(-600, (int) $res->json('balance'));
+    }
+
+    public function test_payment_with_zero_exchange_rate_is_rejected(): void
+    {
+        $this->seedBuilding('USD');
+        $this->makeUnit(['no' => '101']);
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'original_amount' => 500, 'currency' => 'ILS', 'exchange_rate' => 0,
+            'kind' => 'k', 'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'x',
+        ])->assertStatus(422);
+    }
+
+    public function test_contract_end_before_start_is_rejected(): void
+    {
+        $this->seedBuilding();
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
+            'no' => 'CE1', 'floor' => 1, 'sub' => 100, 'status' => 'ok',
+            'contract_start' => '2026-06-01', 'contract_end' => '2026-01-01',
+        ])->assertStatus(422);
+    }
+
     public function test_duplicate_parking_number_is_rejected(): void
     {
         $this->seedBuilding();

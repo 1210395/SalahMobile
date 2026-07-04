@@ -44,7 +44,8 @@ class UnitController extends Controller
             'balance' => 'nullable|integer|min:-2000000000|max:2000000000', // frontend pre-negates ذمم سابقة
             'payer' => 'nullable|string|max:60',
             'contract_start' => 'nullable|date',
-            'contract_end' => 'nullable|date',
+            // A lease can't end before it starts (open-ended = null end is fine).
+            'contract_end' => 'nullable|date|after_or_equal:contract_start',
             'notes' => 'nullable|string|max:300',
             // When true, seed the opening debt as (sub × whole months since the
             // contract start) — "احتساب الإيجار من بداية العقد".
@@ -71,7 +72,11 @@ class UnitController extends Controller
         // Auto opening debt from the contract start (− = owes). Unchecked → start
         // from the current month (no back-debt, keep any provided balance).
         if (! $vacant && ($data['back_debt'] ?? false) && $contractStart) {
-            $months = (int) Carbon::parse($contractStart)->diffInMonths(now());
+            $start = Carbon::parse($contractStart);
+            // Back-debt only accrues for a contract that has ALREADY started. A
+            // future start owes nothing yet — without this guard the month diff
+            // goes negative and fabricates a phantom credit.
+            $months = $start->isPast() ? (int) $start->diffInMonths(now()) : 0;
             $balance = -1 * $sub * $months;
             // A very old contract × a large fee can exceed the INT column — reject
             // cleanly instead of a raw MySQL overflow 500.
