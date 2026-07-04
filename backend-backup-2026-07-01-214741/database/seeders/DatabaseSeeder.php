@@ -61,22 +61,12 @@ class DatabaseSeeder extends Seeder
             'address' => 'حي النرجس، شارع 12، الرياض', 'type' => 'سكني',
             'subscription' => 40, 'currency' => 'USD', 'floors' => 6, 'units_count' => 12,
             'exchange_rate' => 3.75, 'elevator_fee' => 15, 'summary' => $summary,
-            'elevator_phone' => '+966 92 000 1234',
-            'elevator_company' => 'شركة أوتيس للمصاعد',
-            'elevator_contract_start' => '2026-01-01', 'elevator_contract_end' => '2026-12-31',
-            'elevator_last_check' => '2026-05-04',
-            'elevator_check_notify' => true, 'elevator_check_interval' => 6,
         ]);
         Building::create([
             'key' => 'commercial', 'name' => 'مجمع التجارة الذهبي',
             'address' => 'طريق الملك فهد، الرياض', 'type' => 'تجاري',
             'subscription' => 120, 'currency' => 'USD', 'floors' => 3, 'units_count' => 10,
             'exchange_rate' => 3.75, 'elevator_fee' => 15, 'summary' => $summary,
-            'elevator_phone' => '+966 92 000 1234',
-            'elevator_company' => 'شركة أوتيس للمصاعد',
-            'elevator_contract_start' => '2026-01-01', 'elevator_contract_end' => '2026-12-31',
-            'elevator_last_check' => '2026-05-04',
-            'elevator_check_notify' => true, 'elevator_check_interval' => 6,
         ]);
         $this->seedSubscriptions();
 
@@ -215,13 +205,12 @@ class DatabaseSeeder extends Seeder
         }
 
         // Demo accounts (password = "password").
-        // NOTE: Admin accounts removed to allow new users to claim buildings via setupBuilding().
-        // Buildings are now unclaimed and available for registration flow testing.
-        $residentialBuilding = Building::where('key', 'residential')->first();
+        User::create(['name' => 'مدير اللجنة', 'email' => 'admin@amarati.app',
+            'phone' => '+966500000001', 'password' => Hash::make('password'),
+            'role' => 'admin', 'building_key' => 'residential']);
         User::create(['name' => 'أحمد العامري', 'email' => 'resident@amarati.app',
             'phone' => '+966500000002', 'password' => Hash::make('password'),
-            'role' => 'resident', 'building_id' => $residentialBuilding?->id,
-            'building_key' => 'residential', 'unit_no' => '101',
+            'role' => 'resident', 'building_key' => 'residential', 'unit_no' => '101',
             'login_code' => $this->loginCode()]);
 
         // Make sure every seeded resident has a QR / login code.

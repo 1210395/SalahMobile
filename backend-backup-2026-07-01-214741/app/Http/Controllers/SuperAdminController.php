@@ -27,7 +27,7 @@ class SuperAdminController extends Controller
 
         return User::where('role', 'admin')
             ->orderBy('building_key')->orderBy('name')
-            ->get(['id', 'name', 'email', 'phone', 'role', 'building_id', 'building_key']);
+            ->get(['id', 'name', 'email', 'phone', 'role', 'building_key']);
     }
 
     /// Create a regular building admin (super-admin only).
@@ -41,18 +41,16 @@ class SuperAdminController extends Controller
             'building_key' => 'required|in:residential,commercial',
         ]);
 
-        $building = Building::where('key', $data['building_key'])->firstOrFail();
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
             'role' => 'admin',
-            'building_id' => $building->id,
             'building_key' => $data['building_key'],
         ]);
 
         return response()->json(
-            $user->only(['id', 'name', 'email', 'role', 'building_id', 'building_key']),
+            $user->only(['id', 'name', 'email', 'role', 'building_key']),
             201,
         );
     }

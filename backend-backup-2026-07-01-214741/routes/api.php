@@ -28,9 +28,6 @@ Route::get('/pay-types', [ApiController::class, 'payTypes']);
 Route::get('/wa-templates', [ApiController::class, 'waTemplates']);
 Route::get('/settings', [SettingsController::class, 'index']);
 
-// Subscription query only (doesn't need auth)
-Route::get('/subscription', [OnboardingController::class, 'subscription']);
-
 // ───────────────────── Protected (signed-in users) ─────────────────────
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
@@ -83,9 +80,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/notes', [NoteController::class, 'index']);
     Route::post('/notes/{note}/read', [NoteController::class, 'markRead']);
 
-    // Onboarding — subscription activation, building setup (promotes to admin), joins
+    // Onboarding — subscription, building setup (promotes to admin), joins
+    Route::get('/subscription', [OnboardingController::class, 'subscription']);
     Route::post('/subscription/activate', [OnboardingController::class, 'activateSubscription']);
     Route::post('/building/setup', [OnboardingController::class, 'setupBuilding']);
+
     Route::post('/join-requests', [OnboardingController::class, 'storeJoinRequest']);
     Route::get('/join-requests', [OnboardingController::class, 'joinRequests']);
     Route::post('/join-requests/{joinRequest}/approve', [OnboardingController::class, 'approveJoinRequest']);

@@ -5,9 +5,4 @@ class Building extends Model
 {
     protected $guarded = [];
     protected $casts = ['summary' => 'array', 'exchange_rate' => 'float'];
-
-    public function users()
-    {
-        return $this->hasMany(User::class);
-    }
 }
