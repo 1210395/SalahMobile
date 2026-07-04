@@ -267,6 +267,33 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(32, strlen($code), 'join-approval login code must be 128-bit');
     }
 
+    public function test_renaming_a_unit_cascades_to_payments_and_resident(): void
+    {
+        // Renaming a unit's number must carry its payment history and the linked
+        // resident's account along — not orphan them under the old number.
+        $this->seedBuilding();
+        $unit = $this->makeUnit(['no' => '101']);
+        $resident = User::create([
+            'name' => 'ساكن', 'phone' => '+966500004444', 'role' => 'resident',
+            'building_key' => 'residential', 'unit_no' => '101',
+        ]);
+        Payment::create([
+            'building_key' => 'residential', 'unit_no' => '101', 'name' => 'ساكن',
+            'amount' => 100, 'currency' => 'USD', 'original_amount' => 100,
+            'exchange_rate' => 1, 'kind' => 'اشتراك', 'month' => 0, 'year' => 2026,
+            'date' => '2026-01-05', 'method' => 'نقداً',
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum')
+            ->putJson("/api/units/{$unit->id}", [
+                'no' => '202', 'floor' => 1, 'sub' => 50, 'status' => 'ok',
+            ])->assertOk();
+
+        $this->assertDatabaseHas('payments', ['unit_no' => '202', 'amount' => 100]);
+        $this->assertDatabaseMissing('payments', ['unit_no' => '101']);
+        $this->assertSame('202', $resident->fresh()->unit_no);
+    }
+
     public function test_units_payload_includes_login_code(): void
     {
         $this->seedBuilding();

@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Payment;
 use App\Models\Unit;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 // عمارتي — unit CRUD (admin only). Adding/editing/removing apartments or shops,
@@ -105,25 +108,51 @@ class UnitController extends Controller
         $data = $r->validate($this->rules());
 
         $vacant = ($data['kind'] ?? $unit->kind) === 'شاغر' || ($data['status'] ?? null) === 'vacant';
-        $unit->update([
-            'no' => $data['no'],
-            'floor' => $data['floor'],
-            'resident' => $vacant ? 'وحدة شاغرة' : ($data['resident'] ?? $unit->resident),
-            'kind' => $vacant ? 'شاغر' : ($data['kind'] ?? $unit->kind),
-            'phone' => $vacant ? '—' : ($data['phone'] ?? $unit->phone),
-            'sub' => $data['sub'] ?? $unit->sub,
-            // A vacant unit is excluded from dues: balance zeroed, status vacant.
-            'status' => $vacant ? 'vacant' : ($data['status'] ?? ($unit->status === 'vacant' ? 'ok' : $unit->status)),
-            'balance' => $vacant ? 0 : ($data['balance'] ?? $unit->balance),
-            'payer' => $vacant ? '—' : ($data['payer'] ?? $unit->payer),
-            'contract_start' => $vacant ? null : ($data['contract_start'] ?? $unit->contract_start),
-            // Sent null (empty "مستمر") clears the end date; only an ABSENT key
-            // keeps the current value — so toggling مستمر on edit works.
-            'contract_end' => $vacant
-                ? null
-                : (array_key_exists('contract_end', $data) ? $data['contract_end'] : $unit->contract_end),
-            'notes' => $data['notes'] ?? $unit->notes,
-        ]);
+
+        // Renaming a unit's number must cascade: payments and the resident's login
+        // both reference the unit by its `no` string. Without this, a rename
+        // silently orphans the payment history and the resident's account.
+        $oldNo = $unit->no;
+        $newNo = $data['no'];
+        $renamed = $newNo !== $oldNo;
+        if ($renamed) {
+            abort_if(
+                Unit::where('building_key', $unit->building_key)
+                    ->where('no', $newNo)->where('id', '!=', $unit->id)->exists(),
+                422, 'رقم الوحدة مستخدم بالفعل'
+            );
+        }
+
+        DB::transaction(function () use ($unit, $vacant, $data, $renamed, $oldNo, $newNo) {
+            $unit->update([
+                'no' => $data['no'],
+                'floor' => $data['floor'],
+                'resident' => $vacant ? 'وحدة شاغرة' : ($data['resident'] ?? $unit->resident),
+                'kind' => $vacant ? 'شاغر' : ($data['kind'] ?? $unit->kind),
+                'phone' => $vacant ? '—' : ($data['phone'] ?? $unit->phone),
+                'sub' => $data['sub'] ?? $unit->sub,
+                // A vacant unit is excluded from dues: balance zeroed, status vacant.
+                'status' => $vacant ? 'vacant' : ($data['status'] ?? ($unit->status === 'vacant' ? 'ok' : $unit->status)),
+                'balance' => $vacant ? 0 : ($data['balance'] ?? $unit->balance),
+                'payer' => $vacant ? '—' : ($data['payer'] ?? $unit->payer),
+                'contract_start' => $vacant ? null : ($data['contract_start'] ?? $unit->contract_start),
+                // Sent null (empty "مستمر") clears the end date; only an ABSENT key
+                // keeps the current value — so toggling مستمر on edit works.
+                'contract_end' => $vacant
+                    ? null
+                    : (array_key_exists('contract_end', $data) ? $data['contract_end'] : $unit->contract_end),
+                'notes' => $data['notes'] ?? $unit->notes,
+            ]);
+
+            // Cascade the rename so payment history and the resident's account
+            // stay linked to the unit.
+            if ($renamed) {
+                Payment::where('building_key', $unit->building_key)
+                    ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
+                User::where('building_key', $unit->building_key)
+                    ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
+            }
+        });
 
         return response()->json($unit->fresh());
     }
