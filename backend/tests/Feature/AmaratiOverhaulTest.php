@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Building;
 use App\Models\EmailCode;
+use App\Models\JoinRequest;
 use App\Models\Payment;
 use App\Models\Unit;
 use App\Models\User;
@@ -241,6 +242,29 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertDatabaseHas('users', [
             'phone' => '+966500001111', 'login_code' => $res->json('login_code'),
         ]);
+    }
+
+    public function test_join_approval_mints_a_strong_login_code(): void
+    {
+        // A resident admitted via join-request approval must get the same
+        // high-entropy (128-bit → 32 hex char) login code as one added directly
+        // by the manager — the join path must not mint a weak short code.
+        $this->seedBuilding();
+        $applicant = User::create([
+            'name' => 'مُنضم', 'phone' => '+966500003333', 'role' => 'resident',
+            'building_key' => 'residential',
+        ]);
+        $jr = JoinRequest::create([
+            'building_key' => 'residential', 'user_id' => $applicant->id,
+            'name' => 'مُنضم', 'unit_no' => '101', 'status' => 'pending',
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum')
+            ->postJson("/api/join-requests/{$jr->id}/approve")
+            ->assertOk();
+
+        $code = $applicant->fresh()->login_code;
+        $this->assertSame(32, strlen($code), 'join-approval login code must be 128-bit');
     }
 
     public function test_units_payload_includes_login_code(): void

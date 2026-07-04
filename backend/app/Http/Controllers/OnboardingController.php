@@ -33,7 +33,7 @@ class OnboardingController extends Controller
     private function loginCode(): string
     {
         do {
-            $code = strtoupper(bin2hex(random_bytes(4)));
+            $code = strtoupper(bin2hex(random_bytes(16)));
         } while (User::where('login_code', $code)->exists());
 
         return $code;
