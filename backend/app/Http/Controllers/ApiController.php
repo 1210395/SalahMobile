@@ -601,12 +601,12 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'name' => 'required|string',
-            'type' => 'nullable|string',
-            'phone' => 'required|string',
-            'address' => 'nullable|string',
-            'cycle' => 'required|string',
-            'amount' => 'required|integer',
+            'name' => 'required|string|max:120',
+            'type' => 'nullable|string|max:40',
+            'phone' => 'required|string|max:32',
+            'address' => 'nullable|string|max:200',
+            'cycle' => 'required|string|max:20',
+            'amount' => 'required|integer|min:0|max:'.self::MONEY_MAX,
             'last_payment' => 'nullable|date',
             'next_due' => 'nullable|date',
         ]);
@@ -626,16 +626,16 @@ class ApiController extends Controller
         $this->requireAdmin($r);
         abort_unless($worker->building_key === $this->bk($r), 403);
         $data = $r->validate([
-            'name' => 'nullable|string',
-            'type' => 'nullable|string',
-            'phone' => 'nullable|string',
-            'address' => 'nullable|string',
-            'cycle' => 'nullable|string',
-            'amount' => 'nullable|integer',
+            'name' => 'nullable|string|max:120',
+            'type' => 'nullable|string|max:40',
+            'phone' => 'nullable|string|max:32',
+            'address' => 'nullable|string|max:200',
+            'cycle' => 'nullable|string|max:20',
+            'amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
             'came' => 'nullable|boolean',
             'last_visit' => 'nullable|date',
             'pay_status' => ['nullable', \Illuminate\Validation\Rule::in(['full', 'partial', 'none'])],
-            'paid_amount' => 'nullable|integer|min:0',
+            'paid_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
             'last_payment' => 'nullable|date',
             'next_due' => 'nullable|date',
         ]);
@@ -653,6 +653,13 @@ class ApiController extends Controller
                 default => now()->addMonth(),   // شهري / anything else
             };
             $data['next_due'] ??= $next->toDateString();
+        }
+
+        // A partial payment can't exceed the fee — clamp so paid_amount stays
+        // within [0, fee] and can't imply the worker was overpaid "partially".
+        if (($data['pay_status'] ?? null) === 'partial' && isset($data['paid_amount'])) {
+            $fee = (int) ($data['amount'] ?? $worker->amount);
+            $data['paid_amount'] = max(0, min((int) $data['paid_amount'], $fee));
         }
 
         $worker->update(array_filter($data, fn ($v) => $v !== null));
@@ -704,10 +711,10 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'name' => 'required|string',
-            'job' => 'required|string',
-            'phone' => 'required|string',
-            'note' => 'nullable|string',
+            'name' => 'required|string|max:120',
+            'job' => 'required|string|max:80',
+            'phone' => 'required|string|max:32',
+            'note' => 'nullable|string|max:200',
         ]);
 
         return response()->json(Craftsman::create($data), 201);

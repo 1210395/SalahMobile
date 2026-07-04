@@ -140,8 +140,8 @@ class OnboardingController extends Controller
     {
         $data = $r->validate([
             'btype' => 'required|in:residential,commercial',
-            'floor' => 'nullable|integer',
-            'unit_no' => 'nullable|string',
+            'floor' => 'nullable|integer|min:-50|max:300',
+            'unit_no' => 'nullable|string|max:20',
             'name' => 'nullable|string|max:120',
             'phone' => 'nullable|string|max:32',
             'note' => 'nullable|string|max:200',

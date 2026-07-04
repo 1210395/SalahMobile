@@ -281,11 +281,24 @@ class DatabaseSeeder extends Seeder
 
     private function seedSuperAdmin(): void
     {
+        // SECURITY: never create a platform-owner account with a known password
+        // in production. Use AMARATI_SUPERADMIN_PASSWORD (+ optional _EMAIL); if
+        // it's not provided, only fall back to the dev default OUTSIDE production
+        // (local/demo/tests). A real deployment must set the env var so no weak
+        // super-admin ever exists.
+        $password = env('AMARATI_SUPERADMIN_PASSWORD');
+        if (! $password) {
+            if (app()->environment('production')) {
+                return;
+            }
+            $password = 'password'; // local / demo / test convenience only
+        }
+
         User::firstOrCreate(
-            ['email' => 'superadmin@amarati.app'],
+            ['email' => env('AMARATI_SUPERADMIN_EMAIL', 'superadmin@amarati.app')],
             [
                 'name' => 'المدير العام', 'phone' => '+966500000000',
-                'password' => Hash::make('password'),
+                'password' => Hash::make($password),
                 'role' => 'superadmin', 'building_key' => 'residential',
             ],
         );

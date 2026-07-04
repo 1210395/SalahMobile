@@ -76,7 +76,7 @@ class AuthController extends Controller
         $data = $r->validate([
             'email' => 'required_without:phone|email',
             'phone' => 'required_without:email|string|max:32',
-            'password' => 'required|string',
+            'password' => 'required|string|max:200',
         ]);
         $user = isset($data['email'])
             ? User::where('email', $data['email'])->first()
@@ -117,7 +117,7 @@ class AuthController extends Controller
     {
         $data = $r->validate([
             'email' => 'required|email',
-            'code' => 'required|string',
+            'code' => 'required|string|max:64',
         ]);
 
         $this->consumeEmailCodeOrFail($data['email'], $data['code']);
@@ -162,7 +162,7 @@ class AuthController extends Controller
     /// QR / short-code resident login: the code is matched case-insensitively.
     public function redeemCode(Request $r)
     {
-        $data = $r->validate(['code' => 'required|string']);
+        $data = $r->validate(['code' => 'required|string|max:64']);
         $user = User::where('login_code', strtoupper(trim($data['code'])))->first();
         if (! $user) {
             throw ValidationException::withMessages(['code' => ['رمز الدخول غير صحيح']]);
@@ -200,7 +200,7 @@ class AuthController extends Controller
     {
         $data = $r->validate([
             'phone' => 'required|string|max:32',
-            'code' => 'required|string',
+            'code' => 'required|string|max:64',
             'building_key' => 'in:residential,commercial',
             // Optional full name captured on first sign-up (used only when the
             // phone-only account is created; never overwrites an existing one).

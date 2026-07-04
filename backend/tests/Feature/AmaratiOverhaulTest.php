@@ -1105,6 +1105,19 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertDatabaseMissing('alerts', ['building_key' => 'residential', 'type' => 'elevator_check']);
     }
 
+    public function test_partial_worker_payment_is_clamped_to_the_fee(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $worker = $this->actingAs($admin, 'sanctum')->postJson('/api/workers', [
+            'name' => 'عامل', 'phone' => '0599', 'cycle' => 'شهري', 'amount' => 200,
+        ])->json();
+        $updated = $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/workers/{$worker['id']}", ['pay_status' => 'partial', 'paid_amount' => 999999])
+            ->json();
+        $this->assertSame(200, (int) $updated['paid_amount']); // clamped to the fee
+    }
+
     public function test_worker_update_records_attendance_and_full_payment(): void
     {
         $this->seedBuilding();
