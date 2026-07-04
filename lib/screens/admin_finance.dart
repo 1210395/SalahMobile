@@ -1486,6 +1486,23 @@ class WorkersScreen extends StatelessWidget {
                 onChanged: (v) => setS(() => partial = v),
               ),
             ],
+            const SizedBox(height: 14),
+            AppButton(
+              label: 'حذف العامل / الشركة',
+              variant: BtnVariant.outline,
+              full: true,
+              icon: 'trash',
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                try {
+                  await Api.I.deleteWorker(ctx.btype, w.id);
+                  await ctx.reload();
+                  ctx.toast('تم حذف ${w.name}');
+                } catch (e) {
+                  ctx.toast(apiErrorText(e), tone: 'late');
+                }
+              },
+            ),
           ],
         ),
       ),
