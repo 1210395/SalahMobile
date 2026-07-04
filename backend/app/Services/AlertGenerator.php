@@ -33,6 +33,9 @@ class AlertGenerator
                 'title' => 'اشتراك متأخر — وحدة '.$u->no,
                 'body' => $u->resident.' متأخر عن السداد بمبلغ $'.number_format(abs($u->balance)).'.',
                 'time_label' => 'الآن', 'channel' => 'whatsapp',
+                // Addressed to that unit only — a resident must never see a
+                // neighbour's name + debt in their own notifications.
+                'target' => $u->no,
             ]);
         }
 
@@ -56,6 +59,9 @@ class AlertGenerator
                 'title' => 'تم استلام دفعة',
                 'body' => $pay->name.' — وحدة '.$pay->unit_no.' سدّد $'.number_format($pay->amount).'.',
                 'time_label' => 'مؤخراً', 'channel' => 'internal',
+                // Payment confirmation is for that unit (+ the admin), not a
+                // building-wide broadcast of who paid what.
+                'target' => $pay->unit_no,
             ]);
         }
 

@@ -502,6 +502,25 @@ class AmaratiOverhaulTest extends TestCase
         ]);
     }
 
+    public function test_resident_does_not_see_a_neighbours_overdue_alert(): void
+    {
+        // Auto-derived overdue alerts embed a named resident + their debt. They
+        // must be addressed to that unit only, never broadcast to every resident.
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101', 'resident' => 'ساكن 101', 'status' => 'ok']);
+        $this->makeUnit(['no' => '305', 'resident' => 'جار مدين', 'status' => 'late', 'balance' => -500]);
+        $r101 = User::create([
+            'name' => 'ساكن 101', 'phone' => '0591', 'role' => 'resident',
+            'building_key' => 'residential', 'unit_no' => '101',
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
+
+        $seen = $this->actingAs($r101, 'sanctum')->getJson('/api/alerts')->json();
+        $titles = collect($seen)->pluck('title')->implode(' | ');
+        $this->assertStringNotContainsString('305', $titles, 'resident 101 must not see unit 305 overdue');
+    }
+
     public function test_worker_update_records_attendance_and_full_payment(): void
     {
         $this->seedBuilding();
