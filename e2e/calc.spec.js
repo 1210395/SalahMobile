@@ -45,6 +45,28 @@ test('summary balance = opening + year revenue − year expenses', async ({ page
   expect(r.got).toBe(r.expected);
 });
 
+test('a year\'s closing balance carries forward to the next year\'s opening', async ({ page }) => {
+  const r = await page.evaluate(async ({ no }) => {
+    const tok = await window.T.adminToken();
+    await window.T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'ok' });
+    // add a 2027 payment; 2027 has no stored opening → must carry 2026's closing
+    await window.T.req('POST', '/payments?btype=residential', tok, { unit_no: no, amount: 200, kind: 'k', month: 0, year: 2027, date: '2027-01-05', method: 'x' });
+    const s2026 = await (await window.T.req('GET', '/summary?btype=residential&year=2026', tok)).body;
+    const s2027 = await (await window.T.req('GET', '/summary?btype=residential&year=2027', tok)).body;
+    // recompute 2026 closing from raw, then 2027 opening should equal it
+    const pays = await (await window.T.req('GET', '/payments?btype=residential', tok)).body;
+    const exps = await (await window.T.req('GET', '/expenses?btype=residential', tok)).body;
+    const ys = await (await window.T.req('GET', '/year-summary?btype=residential&year=2026', tok)).body;
+    const rev2026 = pays.filter((p) => p.year === 2026).reduce((s, p) => s + p.amount, 0);
+    const exp2026 = exps.filter((e) => new Date(e.date).getFullYear() === 2026).reduce((s, e) => s + e.amount, 0);
+    const closing2026 = (ys.opening_balance || 0) + rev2026 - exp2026;
+    const rev2027 = pays.filter((p) => p.year === 2027).reduce((s, p) => s + p.amount, 0);
+    return { balance2026: s2026.balance, closing2026, balance2027: s2027.balance, expected2027: closing2026 + rev2027 };
+  }, { no: 'YC' + rnd() });
+  expect(r.balance2026).toBe(r.closing2026);
+  expect(r.balance2027).toBe(r.expected2027); // 2027 opened at 2026's closing, not 0
+});
+
 test('dues sum only the negative balances of non-vacant units', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const tok = await window.T.adminToken();

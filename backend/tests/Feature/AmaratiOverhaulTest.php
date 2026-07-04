@@ -173,6 +173,36 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(200, (int) $sum['due']);
     }
 
+    public function test_year_balance_carries_forward_to_the_next_year(): void
+    {
+        // The next year's opening must carry the prior year's closing balance —
+        // cash must not reset to zero every January.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        \App\Models\YearSummary::create([
+            'building_key' => 'residential', 'year' => 2026, 'opening_balance' => 1000, 'months' => [],
+        ]);
+        $this->makeUnit(['no' => '101']);
+        // 2026: +500 revenue, -300 expense → closing 1200.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 500, 'kind' => 'k', 'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'x',
+        ])->assertCreated();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/expenses', [
+            'cat' => 'x', 'supplier' => 'y', 'amount' => 300, 'date' => '2026-02-01',
+        ])->assertCreated();
+
+        // 2026 explicit opening is unchanged.
+        $s2026 = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(1200, (int) $s2026['balance']); // 1000 + 500 - 300
+
+        // 2027 has no stored opening → opens at 2026's closing (1200).
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 200, 'kind' => 'k', 'month' => 0, 'year' => 2027, 'date' => '2027-01-05', 'method' => 'x',
+        ])->assertCreated();
+        $s2027 = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2027')->json();
+        $this->assertSame(1400, (int) $s2027['balance']); // opening 1200 + 200 - 0
+    }
+
     public function test_summary_balance_is_opening_plus_revenue_minus_expenses(): void
     {
         $this->seedBuilding();

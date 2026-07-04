@@ -105,7 +105,25 @@ class ApiController extends Controller
         // Cash balance = opening + the whole selected YEAR's revenue − expenses.
         $yearRevenue = (int) $payments->where('year', $year)->sum('amount');
         $yearExpense = (int) $expenses->filter(fn ($e) => Carbon::parse($e->date)->year === $year)->sum('amount');
-        $opening = (int) (YearSummary::where('building_key', $bk)->where('year', $year)->value('opening_balance') ?? 0);
+
+        // Opening balance for the year. If one is explicitly stored, use it.
+        // Otherwise CARRY FORWARD from the earliest recorded year so cash isn't
+        // silently reset to zero every January — opening = genesis opening + the
+        // net (revenue − expenses) of all prior years.
+        $storedOpening = YearSummary::where('building_key', $bk)->where('year', $year)->value('opening_balance');
+        if ($storedOpening !== null) {
+            $opening = (int) $storedOpening;
+        } else {
+            $genesisYear = (int) (YearSummary::where('building_key', $bk)->min('year') ?? $year);
+            $genesisOpening = (int) (YearSummary::where('building_key', $bk)->where('year', $genesisYear)->value('opening_balance') ?? 0);
+            $priorRev = (int) $payments->filter(fn ($p) => $p->year >= $genesisYear && $p->year < $year)->sum('amount');
+            $priorExp = (int) $expenses->filter(function ($e) use ($genesisYear, $year) {
+                $y = Carbon::parse($e->date)->year;
+
+                return $y >= $genesisYear && $y < $year;
+            })->sum('amount');
+            $opening = $genesisOpening + $priorRev - $priorExp;
+        }
         $balance = $opening + $yearRevenue - $yearExpense;
 
         // Residents' net dues (live, period-independent): owed by residents.
