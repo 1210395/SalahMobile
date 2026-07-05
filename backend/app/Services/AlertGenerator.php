@@ -16,21 +16,26 @@ use Illuminate\Support\Facades\Log;
 // external credentials.
 class AlertGenerator
 {
-    /// Regenerate the full alert set for [bk]. Returns the number created.
-    public function regenerate(string $bk): int
+    /// Regenerate the full alert set for a building. Returns the number created.
+    public function regenerate(?Building $building): int
     {
+        if (! $building) {
+            return 0;
+        }
+        $buildingId = $building->id;
+
         // Refresh ONLY the auto-derived alerts. Manager-composed notifications
         // (type = 'notice', sent to residents) are real messages — regenerating
         // must not wipe them.
-        Alert::where('building_id', Building::idForKey($bk))->where('type', '!=', 'notice')->delete();
+        Alert::where('building_id', $buildingId)->where('type', '!=', 'notice')->delete();
 
         $created = [];
 
         // 1) Overdue subscriptions — derived from current unit balances.
-        $late = Unit::where('building_id', Building::idForKey($bk))
+        $late = Unit::where('building_id', $buildingId)
             ->where('status', 'late')->orderBy('no')->get();
         foreach ($late as $u) {
-            $created[] = $this->make($bk, [
+            $created[] = $this->make($buildingId, [
                 'type' => 'subscription', 'icon' => 'wallet', 'tone' => 'late',
                 'title' => 'اشتراك متأخر — وحدة '.$u->no,
                 'body' => $u->resident.' متأخر عن السداد بمبلغ $'.number_format(abs($u->balance)).'.',
@@ -47,7 +52,7 @@ class AlertGenerator
             ['insurance', 'shield', 'warn', 'تأمين المبنى', 'تأكد من سريان وثيقة تأمين المبنى.', 'internal'],
             ['cleaning', 'broom', 'navy', 'أجور النظافة', 'استحقاق دفعة شركة النظافة قريباً.', 'internal'],
         ] as $a) {
-            $created[] = $this->make($bk, [
+            $created[] = $this->make($buildingId, [
                 'type' => $a[0], 'icon' => $a[1], 'tone' => $a[2],
                 'title' => $a[3], 'body' => $a[4], 'time_label' => 'اليوم', 'channel' => $a[5],
             ]);
@@ -56,12 +61,11 @@ class AlertGenerator
         // 2b) Elevator periodic-check reminder — only when the manager enabled
         // it AND the next check (last check + interval months) is due or within
         // two weeks. Makes the "تذكير الفحص" toggle actually do something.
-        $b = Building::where('key', $bk)->first();
-        if ($b && $b->elevator_check_notify && $b->elevator_last_check) {
-            $due = Carbon::parse($b->elevator_last_check)
-                ->addMonths((int) ($b->elevator_check_interval ?: 6));
+        if ($building->elevator_check_notify && $building->elevator_last_check) {
+            $due = Carbon::parse($building->elevator_last_check)
+                ->addMonths((int) ($building->elevator_check_interval ?: 6));
             if ($due->isPast() || now()->diffInDays($due, false) <= 14) {
-                $created[] = $this->make($bk, [
+                $created[] = $this->make($buildingId, [
                     'type' => 'elevator_check', 'icon' => 'elevator', 'tone' => 'warn',
                     'title' => 'موعد الفحص الدوري للمصعد',
                     'body' => 'استحقّ الفحص الدوري للمصعد بتاريخ '.$due->toDateString().' — يُرجى ترتيبه.',
@@ -71,9 +75,9 @@ class AlertGenerator
         }
 
         // 3) Latest received payment (positive confirmation).
-        $pay = Payment::where('building_id', Building::idForKey($bk))->orderByDesc('date')->first();
+        $pay = Payment::where('building_id', $buildingId)->orderByDesc('date')->first();
         if ($pay) {
-            $created[] = $this->make($bk, [
+            $created[] = $this->make($buildingId, [
                 'type' => 'paid', 'icon' => 'checkCircle', 'tone' => 'ok',
                 'title' => 'تم استلام دفعة',
                 'body' => $pay->name.' — وحدة '.$pay->unit_no.' سدّد $'.number_format($pay->amount).'.',
@@ -91,9 +95,9 @@ class AlertGenerator
         return count($created);
     }
 
-    private function make(string $bk, array $attrs): Alert
+    private function make(int $buildingId, array $attrs): Alert
     {
-        return Alert::create(array_merge(['building_key' => $bk], $attrs));
+        return Alert::create(array_merge(['building_id' => $buildingId], $attrs));
     }
 
     /// Delivery hook. Plug a real provider here (Twilio / Meta WhatsApp / FCM).
@@ -102,7 +106,7 @@ class AlertGenerator
     {
         Log::info('amarati.alert.dispatch', [
             'channel' => $alert->channel,
-            'building' => $alert->building_key,
+            'building' => $alert->building_id,
             'title' => $alert->title,
         ]);
     }

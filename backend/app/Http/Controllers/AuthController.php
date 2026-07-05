@@ -63,7 +63,11 @@ class AuthController extends Controller
             'whatsapp' => $data['whatsapp'] ?? null,
             'password' => Hash::make($data['password']),
             'role' => 'resident',
-            'building_key' => $data['building_key'] ?? 'residential',
+            // Multi-building: a fresh registrant is a pending manager with NO
+            // building yet — they create their own at building-setup. Leaving
+            // building_key/id null keeps them from being scoped into someone
+            // else's building.
+            'building_key' => $data['building_key'] ?? null,
             'email_verified_at' => $emailVerified ? now() : null,
         ]);
 

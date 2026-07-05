@@ -138,6 +138,42 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertCount(1, $units);
     }
 
+    public function test_two_managers_each_create_their_own_building_no_already_managed(): void
+    {
+        // Multi-building: a second manager setting up the SAME type must get their
+        // OWN building, never a 403 'already managed'.
+        $setup = function (string $email, string $name) {
+            $tok = $this->postJson('/api/auth/register', [
+                'name' => $name, 'email' => $email, 'password' => 'secret123',
+            ])->json('token');
+            $u = User::where('email', $email)->first();
+            $this->actingAs($u, 'sanctum')->postJson('/api/subscription/activate', ['btype' => 'residential'])->assertOk();
+
+            return $this->actingAs($u, 'sanctum')->postJson('/api/building/setup', [
+                'btype' => 'residential', 'name' => $name, 'address' => 'ع', 'floors' => 5, 'units_count' => 10,
+            ]);
+        };
+
+        $a = $setup('a@mgr.app', 'مبنى أ');
+        $a->assertOk();
+        $b = $setup('b@mgr.app', 'مبنى ب');
+        $b->assertOk(); // ← the bug: this used to 403 'already managed'
+
+        $bidA = (int) $a->json('building.id');
+        $bidB = (int) $b->json('building.id');
+        $this->assertNotSame($bidA, $bidB); // two distinct buildings
+        $this->assertSame('admin', User::where('email', 'a@mgr.app')->first()->role);
+        $this->assertSame($bidA, (int) User::where('email', 'a@mgr.app')->first()->building_id);
+        $this->assertSame($bidB, (int) User::where('email', 'b@mgr.app')->first()->building_id);
+
+        // Each admin's data is isolated: A adds a unit; B must not see it.
+        $ua = User::where('email', 'a@mgr.app')->first();
+        $ub = User::where('email', 'b@mgr.app')->first();
+        $this->actingAs($ua, 'sanctum')->postJson('/api/units', ['no' => 'A1', 'floor' => 1, 'sub' => 40, 'status' => 'ok'])->assertCreated();
+        $this->assertCount(1, $this->actingAs($ua, 'sanctum')->getJson('/api/units')->json());
+        $this->assertCount(0, $this->actingAs($ub, 'sanctum')->getJson('/api/units')->json()); // isolated
+    }
+
     public function test_resident_cannot_create_a_payment(): void
     {
         $this->seedBuilding();
@@ -564,7 +600,7 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame('ok', $fresh->status); // no longer 'late'
 
         $this->actingAs($admin, 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
-        $this->assertDatabaseMissing('alerts', ['building_key' => 'residential', 'type' => 'subscription']);
+        $this->assertDatabaseMissing('alerts', ['type' => 'subscription']);
     }
 
     public function test_overpaying_makes_a_unit_credit_and_deleting_reverts_to_late(): void
@@ -1240,12 +1276,12 @@ class AmaratiOverhaulTest extends TestCase
             'elevator_last_check' => now()->subMonths(12)->toDateString(),
         ])->assertOk();
         $this->actingAs($admin, 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
-        $this->assertDatabaseHas('alerts', ['building_key' => 'residential', 'type' => 'elevator_check']);
+        $this->assertDatabaseHas('alerts', ['type' => 'elevator_check']);
 
         // Disable it → the reminder disappears on the next regenerate.
         $this->actingAs($admin, 'sanctum')->putJson('/api/building', ['elevator_check_notify' => false])->assertOk();
         $this->actingAs($admin, 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
-        $this->assertDatabaseMissing('alerts', ['building_key' => 'residential', 'type' => 'elevator_check']);
+        $this->assertDatabaseMissing('alerts', ['type' => 'elevator_check']);
     }
 
     public function test_partial_worker_payment_is_clamped_to_the_fee(): void

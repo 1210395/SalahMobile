@@ -20,6 +20,14 @@ class NoteController extends Controller
         return $r->query('btype') === 'commercial' ? 'commercial' : 'residential';
     }
 
+    /// The building this request is scoped to — the acting user's own building.
+    private function buildingId(Request $r): ?int
+    {
+        $u = $r->user();
+
+        return $u && $u->building_id ? (int) $u->building_id : Building::idForKey($this->bk($r));
+    }
+
     public function store(Request $r)
     {
         $data = $r->validate([
@@ -28,6 +36,7 @@ class NoteController extends Controller
         ]);
         $u = $r->user();
         $note = Note::create([
+            'building_id' => $u->building_id,
             'building_key' => $u->building_key ?: 'residential',
             'user_id' => $u->id,
             'name' => $u->name,
@@ -44,13 +53,13 @@ class NoteController extends Controller
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
 
-        return Note::where('building_id', Building::idForKey($this->bk($r)))->orderByDesc('id')->get();
+        return Note::where('building_id', $this->buildingId($r))->orderByDesc('id')->get();
     }
 
     public function markRead(Request $r, Note $note)
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
-        abort_unless($note->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($note->building_id === $this->buildingId($r), 403);
         $note->update(['status' => 'read']);
 
         return response()->json($note->fresh());

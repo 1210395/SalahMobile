@@ -63,6 +63,21 @@ class ApiController extends Controller
         return in_array(optional($r->user())->role, ['admin', 'superadmin']);
     }
 
+    /// The building this request is scoped to (multi-building).
+    /// - An authenticated user is locked to THEIR OWN building (building_id) — an
+    ///   admin owns one building; a resident belongs to one. A user without a
+    ///   building yet (a pending manager mid-onboarding) scopes to nothing.
+    /// - A guest/public request resolves by type (first building of that type).
+    private function buildingId(Request $r): ?int
+    {
+        $u = $r->user();
+        if ($u) {
+            return $u->building_id ? (int) $u->building_id : null;
+        }
+
+        return Building::idForKey($this->bk($r));
+    }
+
     /// A short, unique, uppercase login code (QR / shareable) for a resident.
     private function loginCode(): string
     {
@@ -77,6 +92,13 @@ class ApiController extends Controller
 
     public function building(Request $r)
     {
+        // An authenticated user gets THEIR building; a guest gets the first of
+        // the requested type (for the public preview / branding).
+        $id = $this->buildingId($r);
+        if ($id) {
+            return Building::findOrFail($id);
+        }
+
         return Building::where('key', $this->bk($r))->firstOrFail();
     }
 
@@ -85,8 +107,6 @@ class ApiController extends Controller
         // Computed LIVE from the building's real payments/expenses/units so the
         // dashboard always reflects current data (the old stored JSON went stale
         // and never updated when payments/expenses were recorded).
-        $bk = $this->bk($r);
-        Building::where('key', $bk)->firstOrFail();
         $now = now();
 
         // The dashboard period: a year (default current) and an optional month
@@ -95,9 +115,9 @@ class ApiController extends Controller
         $year = (int) ($r->query('year') ?: $now->year);
         $month = $r->filled('month') ? (int) $r->query('month') : null;
 
-        $payments = Payment::where('building_id', Building::idForKey($bk))->get(['amount', 'month', 'year']);
-        $expenses = Expense::where('building_id', Building::idForKey($bk))->get(['amount', 'cat', 'date']);
-        $units = Unit::where('building_id', Building::idForKey($bk))->where('status', '!=', 'vacant')->get(['balance']);
+        $payments = Payment::where('building_id', $this->buildingId($r))->get(['amount', 'month', 'year']);
+        $expenses = Expense::where('building_id', $this->buildingId($r))->get(['amount', 'cat', 'date']);
+        $units = Unit::where('building_id', $this->buildingId($r))->where('status', '!=', 'vacant')->get(['balance']);
 
         $expYM = fn ($e) => Carbon::parse($e->date)->year === $year
             && ($month === null || (int) Carbon::parse($e->date)->month === $month + 1);
@@ -112,7 +132,7 @@ class ApiController extends Controller
         $yearRevenue = (int) $payments->where('year', $year)->sum('amount');
         $yearExpense = (int) $expenses->filter(fn ($e) => Carbon::parse($e->date)->year === $year)->sum('amount');
 
-        $opening = $this->openingBalance($bk, $year, $payments, $expenses);
+        $opening = $this->openingBalance($this->buildingId($r), $year, $payments, $expenses);
         $balance = $opening + $yearRevenue - $yearExpense;
 
         // Residents' net dues (live, period-independent): owed by residents.
@@ -162,7 +182,7 @@ class ApiController extends Controller
             'exchange_rate' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|max:8',   // building base currency
         ]);
-        $building = Building::where('key', $this->bk($r))->firstOrFail();
+        $building = Building::findOrFail($this->buildingId($r));
         $building->update(array_filter($data, fn ($v) => $v !== null));
 
         return response()->json($building->fresh());
@@ -187,7 +207,7 @@ class ApiController extends Controller
         // (e.g. the previous tenant) so they can't keep seeing the new tenant's
         // payments via /me/payments.
         if (! empty($data['unit_no'])) {
-            User::where('building_id', Building::idForKey($bk))->where('unit_no', $data['unit_no'])
+            User::where('building_id', $this->buildingId($r))->where('unit_no', $data['unit_no'])
                 ->update(['unit_no' => null]);
         }
 
@@ -198,6 +218,7 @@ class ApiController extends Controller
             'password' => isset($data['password']) ? Hash::make($data['password']) : null,
             'role' => 'resident',
             'building_key' => $bk,
+            'building_id' => $this->buildingId($r),
             'unit_no' => $data['unit_no'] ?? null,
             'login_code' => $this->loginCode(),  // QR / shareable resident login
         ]);
@@ -226,6 +247,7 @@ class ApiController extends Controller
             'password' => Hash::make($data['password']),
             'role' => 'admin',
             'building_key' => $bk,
+            'building_id' => $this->buildingId($r),
         ]);
 
         return response()->json(
@@ -238,7 +260,7 @@ class ApiController extends Controller
     public function updatePayment(Request $r, Payment $payment)
     {
         $this->requireAdmin($r);
-        abort_unless($payment->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($payment->building_id === $this->buildingId($r), 403);
         $data = $r->validate([
             // Bounded both ways so a huge (or hugely negative) value can't
             // overflow the INT column with a raw MySQL 500 — mirrors storePayment.
@@ -278,7 +300,7 @@ class ApiController extends Controller
     public function deletePayment(Request $r, Payment $payment)
     {
         $this->requireAdmin($r);
-        abort_unless($payment->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($payment->building_id === $this->buildingId($r), 403);
         // Carry-over: removing a payment reverts its credit to the unit balance.
         $unit = $this->unitFor($payment);
         $unit?->decrement('balance', (int) $payment->amount);
@@ -291,7 +313,7 @@ class ApiController extends Controller
     /// The unit a payment belongs to (same building + unit_no), or null.
     private function unitFor(Payment $payment): ?Unit
     {
-        return Unit::where('building_id', Building::idForKey($payment->building_key))
+        return Unit::where('building_id', $payment->building_id)
             ->where('no', $payment->unit_no)->first();
     }
 
@@ -314,7 +336,7 @@ class ApiController extends Controller
     public function updateExpense(Request $r, Expense $expense)
     {
         $this->requireAdmin($r);
-        abort_unless($expense->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($expense->building_id === $this->buildingId($r), 403);
         $data = $r->validate([
             'cat' => 'nullable|string|max:120',
             'supplier' => 'nullable|string|max:160',
@@ -348,7 +370,7 @@ class ApiController extends Controller
     public function deleteExpense(Request $r, Expense $expense)
     {
         $this->requireAdmin($r);
-        abort_unless($expense->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($expense->building_id === $this->buildingId($r), 403);
         $expense->delete();
 
         return response()->json(['ok' => true]);
@@ -365,9 +387,10 @@ class ApiController extends Controller
             'fee' => 'nullable|integer|min:0',
         ]);
         $bk = $this->bk($r);
-        $cur = Guard::where('building_id', Building::idForKey($bk))->first();
+        $cur = Guard::where('building_id', $this->buildingId($r))->first();
         // All guard columns are NOT NULL — fill every one (keep existing where not edited).
-        $guard = Guard::updateOrCreate(['building_key' => $bk], [
+        $guard = Guard::updateOrCreate(['building_id' => $this->buildingId($r)], [
+            'building_key' => $bk,
             'name' => $data['name'] ?? $cur->name ?? '',
             'phone' => $data['phone'] ?? $cur->phone ?? '—',
             'address' => $data['address'] ?? $cur->address ?? '',
@@ -391,9 +414,10 @@ class ApiController extends Controller
             'note' => 'nullable|string|max:200',
         ]);
         $data['building_key'] = $this->bk($r);
+        $data['building_id'] = $this->buildingId($r);
         // Parking numbers are unique per building — mirrors unit numbers.
         abort_if(
-            ParkingSpot::where('building_id', Building::idForKey($data['building_key']))
+            ParkingSpot::where('building_id', $this->buildingId($r))
                 ->where('no', $data['no'])->exists(),
             422, 'رقم الموقف مستخدم بالفعل'
         );
@@ -405,7 +429,7 @@ class ApiController extends Controller
     public function updateParking(Request $r, ParkingSpot $parking)
     {
         $this->requireAdmin($r);
-        abort_unless($parking->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($parking->building_id === $this->buildingId($r), 403);
         $data = $r->validate([
             'no' => 'nullable|string|max:20',
             'status' => 'nullable|string|max:20',
@@ -421,7 +445,7 @@ class ApiController extends Controller
     public function deleteParking(Request $r, ParkingSpot $parking)
     {
         $this->requireAdmin($r);
-        abort_unless($parking->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($parking->building_id === $this->buildingId($r), 403);
         $parking->delete();
 
         return response()->json(['ok' => true]);
@@ -446,12 +470,11 @@ class ApiController extends Controller
     public function regenerateAlerts(Request $r, AlertGenerator $gen)
     {
         $this->requireAdmin($r);
-        $bk = $this->bk($r);
-        $count = $gen->regenerate($bk);
+        $count = $gen->regenerate(Building::find($this->buildingId($r)));
 
         return response()->json([
             'generated' => $count,
-            'alerts' => Alert::where('building_id', Building::idForKey($bk))->orderBy('id')->get(),
+            'alerts' => Alert::where('building_id', $this->buildingId($r))->orderBy('id')->get(),
         ]);
     }
 
@@ -463,17 +486,17 @@ class ApiController extends Controller
         // a login credential — exposing all of them would let any resident take
         // over any other resident's account).
         if (! $this->isAdmin($r)) {
-            return Unit::where('building_id', Building::idForKey($bk))
+            return Unit::where('building_id', $this->buildingId($r))
                 ->where('no', optional($r->user())->unit_no ?? '__none__')
                 ->orderBy('no')->get();
         }
 
-        $units = Unit::where('building_id', Building::idForKey($bk))
+        $units = Unit::where('building_id', $this->buildingId($r))
             ->orderBy('floor')->orderBy('no')->get();
 
         // Attach each unit's resident login code (matched by building + unit_no),
         // so the admin can show a QR / share the code. Null if no such user.
-        $codes = User::where('building_id', Building::idForKey($bk))
+        $codes = User::where('building_id', $this->buildingId($r))
             ->whereNotNull('unit_no')->whereNotNull('login_code')
             ->pluck('login_code', 'unit_no');
 
@@ -485,7 +508,7 @@ class ApiController extends Controller
 
     public function payments(Request $r)
     {
-        $q = Payment::where('building_id', Building::idForKey($this->bk($r)));
+        $q = Payment::where('building_id', $this->buildingId($r));
         // A resident only sees their OWN unit's payments — not the whole building.
         if (! $this->isAdmin($r)) {
             $q->where('unit_no', optional($r->user())->unit_no ?? '__none__');
@@ -515,7 +538,7 @@ class ApiController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
         $bk = $this->bk($r);
-        $unit = Unit::where('building_id', Building::idForKey($bk))->where('no', $data['unit_no'])->first();
+        $unit = Unit::where('building_id', $this->buildingId($r))->where('no', $data['unit_no'])->first();
         abort_unless($unit !== null, 422, 'الوحدة غير موجودة في هذا المبنى');
 
         // Convert the entered amount to the building's base currency. `amount` is
@@ -531,6 +554,7 @@ class ApiController extends Controller
 
         $payment = Payment::create([
             'building_key' => $bk,
+            'building_id' => $this->buildingId($r),
             'unit_no' => $data['unit_no'],
             'name' => $data['name'] ?? $unit->resident,
             'amount' => $baseAmount,  // base currency
@@ -556,7 +580,7 @@ class ApiController extends Controller
     public function myPayments(Request $r)
     {
         $user = $r->user();
-        $q = Payment::where('building_id', Building::idForKey($user->building_key));
+        $q = Payment::where('building_id', $user->building_id);
         if ($user->unit_no) {
             $q->where('unit_no', $user->unit_no);
         } else {
@@ -577,7 +601,7 @@ class ApiController extends Controller
         if (! $this->isAdmin($r)) {
             return response()->json([]);
         }
-        $q = Expense::where('building_id', Building::idForKey($this->bk($r)));
+        $q = Expense::where('building_id', $this->buildingId($r));
         if ($r->filled('cat') && $r->query('cat') !== 'all') {
             $q->where('cat', $r->query('cat'));
         }
@@ -612,6 +636,7 @@ class ApiController extends Controller
         $original = (int) ($data['original_amount'] ?? $data['amount']);
 
         $data['building_key'] = $bk;
+        $data['building_id'] = $this->buildingId($r);
         $data['amount'] = (int) round($original * $rate);
         $this->guardIntRange($data['amount']);
         $data['original_amount'] = $original;
@@ -631,7 +656,7 @@ class ApiController extends Controller
             return response()->json([]);
         }
 
-        return Worker::where('building_id', Building::idForKey($this->bk($r)))->get();
+        return Worker::where('building_id', $this->buildingId($r))->get();
     }
 
     public function storeWorker(Request $r)
@@ -648,6 +673,7 @@ class ApiController extends Controller
             'next_due' => 'nullable|date',
         ]);
         $data['building_key'] = $this->bk($r);
+        $data['building_id'] = $this->buildingId($r);
         $data['type'] ??= 'عامل';
         $data['address'] ??= '';
         $data['last_payment'] ??= now()->toDateString();
@@ -661,7 +687,7 @@ class ApiController extends Controller
     public function updateWorker(Request $r, Worker $worker)
     {
         $this->requireAdmin($r);
-        abort_unless($worker->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($worker->building_id === $this->buildingId($r), 403);
         $data = $r->validate([
             'name' => 'nullable|string|max:120',
             'type' => 'nullable|string|max:40',
@@ -707,7 +733,7 @@ class ApiController extends Controller
     public function destroyWorker(Request $r, Worker $worker)
     {
         $this->requireAdmin($r);
-        abort_unless($worker->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($worker->building_id === $this->buildingId($r), 403);
         $worker->delete();
 
         return response()->json(['ok' => true]);
@@ -721,14 +747,14 @@ class ApiController extends Controller
             return response()->json([]);
         }
 
-        return ParkingSpot::where('building_id', Building::idForKey($this->bk($r)))->orderBy('no')->get();
+        return ParkingSpot::where('building_id', $this->buildingId($r))->orderBy('no')->get();
     }
 
     public function guard(Request $r)
     {
         // An empty building has no guard yet — return a blank default (not a 404)
         // so the app's bundle load never breaks.
-        $guard = Guard::where('building_id', Building::idForKey($this->bk($r)))->first();
+        $guard = Guard::where('building_id', $this->buildingId($r))->first();
 
         return response()->json($guard ?? [
             'name' => '', 'phone' => '', 'address' => '',
@@ -765,7 +791,7 @@ class ApiController extends Controller
 
     public function alerts(Request $r)
     {
-        $q = Alert::where('building_id', Building::idForKey($this->bk($r)));
+        $q = Alert::where('building_id', $this->buildingId($r));
 
         // Residents only see building-wide notices + ones addressed to their unit.
         $u = $r->user();
@@ -791,6 +817,7 @@ class ApiController extends Controller
 
         $alert = Alert::create([
             'building_key' => $this->bk($r),
+            'building_id' => $this->buildingId($r),
             'type' => 'notice',
             'icon' => $data['icon'] ?? 'bell',
             'tone' => $data['tone'] ?? 'navy',
@@ -813,14 +840,14 @@ class ApiController extends Controller
     /// exists; otherwise carries forward = genesis opening + net (revenue −
     /// expenses) of all prior years, so cash isn't reset to zero every January.
     /// Shared by the dashboard summary and the year-transfer screen.
-    private function openingBalance(string $bk, int $year, $payments, $expenses): int
+    private function openingBalance(?int $buildingId, int $year, $payments, $expenses): int
     {
-        $stored = YearSummary::where('building_id', Building::idForKey($bk))->where('year', $year)->value('opening_balance');
+        $stored = YearSummary::where('building_id', $buildingId)->where('year', $year)->value('opening_balance');
         if ($stored !== null) {
             return (int) $stored;
         }
-        $genesisYear = (int) (YearSummary::where('building_id', Building::idForKey($bk))->min('year') ?? $year);
-        $genesisOpening = (int) (YearSummary::where('building_id', Building::idForKey($bk))->where('year', $genesisYear)->value('opening_balance') ?? 0);
+        $genesisYear = (int) (YearSummary::where('building_id', $buildingId)->min('year') ?? $year);
+        $genesisOpening = (int) (YearSummary::where('building_id', $buildingId)->where('year', $genesisYear)->value('opening_balance') ?? 0);
         $priorRev = (int) $payments->filter(fn ($p) => $p->year >= $genesisYear && $p->year < $year)->sum('amount');
         $priorExp = (int) $expenses->filter(function ($e) use ($genesisYear, $year) {
             $y = Carbon::parse($e->date)->year;
@@ -839,10 +866,10 @@ class ApiController extends Controller
         $bk = $this->bk($r);
         $year = (int) ($r->query('year') ?: now()->year);
 
-        $payments = Payment::where('building_id', Building::idForKey($bk))->get(['amount', 'month', 'year']);
-        $expenses = Expense::where('building_id', Building::idForKey($bk))->get(['amount', 'date']);
+        $payments = Payment::where('building_id', $this->buildingId($r))->get(['amount', 'month', 'year']);
+        $expenses = Expense::where('building_id', $this->buildingId($r))->get(['amount', 'date']);
         // Expected monthly collection = sum of active (non-vacant) unit dues.
-        $monthlyExpected = (int) Unit::where('building_id', Building::idForKey($bk))
+        $monthlyExpected = (int) Unit::where('building_id', $this->buildingId($r))
             ->where('status', '!=', 'vacant')->sum('sub');
 
         $months = [];
@@ -853,7 +880,7 @@ class ApiController extends Controller
 
         return response()->json([
             'year' => $year,
-            'opening_balance' => $this->openingBalance($bk, $year, $payments, $expenses),
+            'opening_balance' => $this->openingBalance($this->buildingId($r), $year, $payments, $expenses),
             'months' => $months,
         ]);
     }

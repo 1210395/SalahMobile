@@ -34,6 +34,15 @@ class UnitController extends Controller
 
     /// The status label implied by a balance: owes → late, credit → credit,
     /// settled → ok. Keeps the badge consistent with what's actually owed.
+
+    /// The building this request is scoped to — the acting user's own building.
+    private function buildingId(Request $r): ?int
+    {
+        $u = $r->user();
+
+        return $u && $u->building_id ? (int) $u->building_id : Building::idForKey($this->bk($r));
+    }
+
     private static function statusForBalance(int $balance): string
     {
         return $balance < 0 ? 'late' : ($balance > 0 ? 'credit' : 'ok');
@@ -68,7 +77,7 @@ class UnitController extends Controller
         $data = $r->validate($this->rules());
 
         abort_if(
-            Unit::where('building_id', Building::idForKey($bk))->where('no', $data['no'])->exists(),
+            Unit::where('building_id', $this->buildingId($r))->where('no', $data['no'])->exists(),
             422, 'رقم الوحدة مستخدم بالفعل'
         );
 
@@ -94,6 +103,7 @@ class UnitController extends Controller
 
         $unit = Unit::create([
             'building_key' => $bk,
+            'building_id' => $this->buildingId($r),
             'ext_id' => strtoupper(substr($bk, 0, 1)).'-'.$data['no'],
             'no' => $data['no'],
             'floor' => $data['floor'],
@@ -119,7 +129,7 @@ class UnitController extends Controller
     public function update(Request $r, Unit $unit)
     {
         $this->requireAdmin($r);
-        abort_unless($unit->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($unit->building_id === $this->buildingId($r), 403);
         $data = $r->validate($this->rules());
 
         $vacant = ($data['kind'] ?? $unit->kind) === 'شاغر' || ($data['status'] ?? null) === 'vacant';
@@ -132,7 +142,7 @@ class UnitController extends Controller
         $renamed = $newNo !== $oldNo;
         if ($renamed) {
             abort_if(
-                Unit::where('building_id', Building::idForKey($unit->building_key))
+                Unit::where('building_id', $unit->building_id)
                     ->where('no', $newNo)->where('id', '!=', $unit->id)->exists(),
                 422, 'رقم الوحدة مستخدم بالفعل'
             );
@@ -165,9 +175,9 @@ class UnitController extends Controller
             // Cascade the rename so payment history and the resident's account
             // stay linked to the unit.
             if ($renamed) {
-                Payment::where('building_id', Building::idForKey($unit->building_key))
+                Payment::where('building_id', $unit->building_id)
                     ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
-                User::where('building_id', Building::idForKey($unit->building_key))
+                User::where('building_id', $unit->building_id)
                     ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
             }
         });
@@ -178,14 +188,14 @@ class UnitController extends Controller
     public function destroy(Request $r, Unit $unit)
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
-        abort_unless($unit->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($unit->building_id === $this->buildingId($r), 403);
 
         // Deleting a unit would orphan its payment history and leave a resident
         // account pointing at a gone unit. Block it and steer the admin to mark
         // the unit vacant instead (which excludes it from dues but keeps records).
-        $hasPayments = Payment::where('building_id', Building::idForKey($unit->building_key))
+        $hasPayments = Payment::where('building_id', $unit->building_id)
             ->where('unit_no', $unit->no)->exists();
-        $hasResident = User::where('building_id', Building::idForKey($unit->building_key))
+        $hasResident = User::where('building_id', $unit->building_id)
             ->where('unit_no', $unit->no)->exists();
         abort_if($hasPayments || $hasResident, 422,
             'لا يمكن حذف وحدة لها دفعات أو ساكن مرتبط — اجعلها شاغرة بدلاً من ذلك');

@@ -8,9 +8,10 @@ use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Http\Request;
 
-// عمارتي — onboarding flow: subscription, building setup (which promotes the
-// actor to admin of that building — the secure role path), and resident join
-// requests + admin approvals.
+// عمارتي — onboarding flow: subscription, building setup (which CREATES the
+// manager's own building and promotes them to its admin), and resident join
+// requests + admin approvals. Multi-building: every manager owns their own
+// building (building_id), so setups never collide ('already managed' is gone).
 class OnboardingController extends Controller
 {
     private function bk(Request $r): string
@@ -24,9 +25,17 @@ class OnboardingController extends Controller
             ? 'commercial' : 'residential';
     }
 
+    /// The building this request is scoped to — the acting user's own building.
+    private function buildingId(Request $r): ?int
+    {
+        $u = $r->user();
+
+        return $u && $u->building_id ? (int) $u->building_id : Building::idForKey($this->bk($r));
+    }
+
     private function userPayload(User $u): array
     {
-        return $u->only(['id', 'name', 'email', 'phone', 'role', 'building_key', 'unit_no']);
+        return $u->only(['id', 'name', 'email', 'phone', 'role', 'building_id', 'building_key', 'unit_no']);
     }
 
     /// A short, unique, uppercase login code (QR / shareable) for a resident.
@@ -43,60 +52,33 @@ class OnboardingController extends Controller
 
     public function subscription(Request $r)
     {
-        $bk = $this->bk($r);
-        $sub = Subscription::firstOrCreate(['building_key' => $bk], ['status' => 'inactive']);
+        $u = $r->user();
+        // A manager's subscription is tied to THEIR building. Before they've set
+        // one up, they simply aren't subscribed yet.
+        if ($u && $u->building_id) {
+            $sub = Subscription::firstOrCreate(
+                ['building_id' => $u->building_id],
+                ['building_key' => $u->building_key, 'status' => 'inactive'],
+            );
 
-        return response()->json($sub);
+            return response()->json($sub);
+        }
+
+        return response()->json(['status' => 'inactive']);
     }
 
-    /// Simulated card payment → activate the building's subscription.
-    ///
-    /// SECURITY: this is a SIMULATION — there is no real payment gateway yet
-    /// (that integration, e.g. Stripe/HyperPay with a signed webhook, is the
-    /// deliberately-deferred next step). To keep the simulation safe:
-    /// - the plan/amount are fixed server-side (client-supplied values are NOT
-    ///   trusted as evidence of payment), and
-    /// - a building already managed by another admin cannot be (re)activated by
-    ///   a different user.
+    /// Simulated card payment. SECURITY: there is no real gateway yet (the signed
+    /// webhook integration is the deliberately-deferred next step). The real
+    /// subscription row is created together with the building at setup, so this
+    /// just acknowledges the simulated payment succeeded.
     public function activateSubscription(Request $r)
     {
-        $data = $r->validate(['btype' => 'required|in:residential,commercial']);
-        $bk = $data['btype'];
-        $this->abortIfClaimedByAnother($r, $bk);
+        $r->validate(['btype' => 'required|in:residential,commercial']);
 
-        $sub = Subscription::updateOrCreate(
-            ['building_key' => $bk],
-            [
-                'status' => 'active',
-                'plan' => 'سنوي',
-                'amount' => 299,
-                'payment_ref' => 'SIM-'.strtoupper(bin2hex(random_bytes(4))),
-                'activated_at' => now(),
-                'expires_at' => now()->addYear(),
-            ],
-        );
-
-        return response()->json($sub);
+        return response()->json(['status' => 'active']);
     }
 
-    /// A building may only be claimed/managed by one admin. Block any actor who
-    /// is not already that admin from setting up / activating it.
-    private function abortIfClaimedByAnother(Request $r, string $bk): void
-    {
-        $u = $r->user();
-        abort_if(
-            User::where('building_id', Building::idForKey($bk))
-                ->where('role', 'admin')
-                ->where('id', '!=', $u->id)
-                ->exists(),
-            403, 'هذا المبنى مُدار بالفعل من قبل مسؤول آخر'
-        );
-        // An admin of one building can't claim a different one.
-        abort_if($u->role === 'admin' && $u->building_key !== $bk, 403,
-            'أنت مسؤول عن مبنى آخر بالفعل');
-    }
-
-    // ───────────── Building setup (promotes actor to admin) ─────────────
+    // ───────────── Building setup (CREATES + promotes actor to admin) ─────────────
 
     public function setupBuilding(Request $r)
     {
@@ -107,26 +89,52 @@ class OnboardingController extends Controller
             'floors' => 'required|integer|min:-50|max:300',
             'units_count' => 'required|integer|min:0|max:2000',
         ]);
-        $bk = $data['btype'];
-        // SECURITY: a building with an existing admin cannot be taken over.
-        $this->abortIfClaimedByAnother($r, $bk);
-
-        $sub = Subscription::firstOrCreate(['building_key' => $bk], ['status' => 'inactive']);
-        abort_unless($sub->status === 'active', 402, 'الاشتراك غير مفعّل — فعّل الاشتراك أولاً');
-
-        $building = Building::where('key', $bk)->firstOrFail();
-        $building->update([
-            'name' => $data['name'],
-            'address' => $data['address'],
-            'type' => $bk === 'residential' ? 'سكني' : 'تجاري',
-            'floors' => $data['floors'],
-            'units_count' => $data['units_count'],
-        ]);
-
-        // SECURITY (role model): you become an admin by paying for + setting up a
-        // building, not by self-declaring the role at sign-up.
+        $type = $data['btype'];
         $u = $r->user();
-        $u->update(['role' => 'admin', 'building_key' => $bk]);
+
+        // Multi-building: the manager gets THEIR OWN building. Reuse it if they
+        // already set one up (idempotent re-submit); otherwise create a fresh one
+        // — a new manager never collides with someone else's building.
+        $building = $u->building_id ? Building::find($u->building_id) : null;
+        if ($building) {
+            $building->update([
+                'name' => $data['name'],
+                'address' => $data['address'],
+                'type' => $type === 'residential' ? 'سكني' : 'تجاري',
+                'floors' => $data['floors'],
+                'units_count' => $data['units_count'],
+            ]);
+        } else {
+            $building = Building::create([
+                'key' => $type,   // the TYPE now (not a unique id)
+                'name' => $data['name'],
+                'address' => $data['address'],
+                'type' => $type === 'residential' ? 'سكني' : 'تجاري',
+                'subscription' => 0,
+                'currency' => 'USD',
+                'floors' => $data['floors'],
+                'units_count' => $data['units_count'],
+                'exchange_rate' => 3.75,
+                'elevator_fee' => 0,
+                'summary' => [],
+            ]);
+            // The manager "paid" in the subscribe step — activate this building's
+            // subscription (simulated).
+            Subscription::create([
+                'building_id' => $building->id,
+                'building_key' => $type,
+                'status' => 'active',
+                'plan' => 'سنوي',
+                'amount' => 299,
+                'payment_ref' => 'SIM-'.strtoupper(bin2hex(random_bytes(4))),
+                'activated_at' => now(),
+                'expires_at' => now()->addYear(),
+            ]);
+        }
+
+        // SECURITY (role model): you become an admin by setting up a building, not
+        // by self-declaring the role at sign-up.
+        $u->update(['role' => 'admin', 'building_id' => $building->id, 'building_key' => $type]);
 
         return response()->json([
             'building' => $building->fresh(),
@@ -147,6 +155,7 @@ class OnboardingController extends Controller
             'note' => 'nullable|string|max:200',
         ]);
         $u = $r->user();
+        // building_id is auto-derived from building_key by the model trait.
         $jr = JoinRequest::create([
             'building_key' => $data['btype'],
             'user_id' => $u?->id,
@@ -165,28 +174,29 @@ class OnboardingController extends Controller
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
 
-        return JoinRequest::where('building_id', Building::idForKey($this->bk($r)))
+        return JoinRequest::where('building_id', $this->buildingId($r))
             ->orderByDesc('id')->get();
     }
 
     public function approveJoinRequest(Request $r, JoinRequest $joinRequest)
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
-        abort_unless($joinRequest->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($joinRequest->building_id === $this->buildingId($r), 403);
 
         $joinRequest->update(['status' => 'approved']);
         if ($joinRequest->user_id && ($u = User::find($joinRequest->user_id))) {
             // A unit has at most one resident — unlink any previous occupant so
             // they can't keep seeing the new resident's payments.
             if ($joinRequest->unit_no) {
-                User::where('building_id', Building::idForKey($joinRequest->building_key))
+                User::where('building_id', $this->buildingId($r))
                     ->where('unit_no', $joinRequest->unit_no)
                     ->where('id', '!=', $u->id)
                     ->update(['unit_no' => null]);
             }
             $u->update([
                 'role' => 'resident',
-                'building_key' => $joinRequest->building_key,
+                'building_id' => $this->buildingId($r),   // joins the admin's building
+                'building_key' => $r->user()->building_key,
                 'unit_no' => $joinRequest->unit_no,
                 // Give the resident a QR / shareable login code if they lack one.
                 'login_code' => $u->login_code ?: $this->loginCode(),
@@ -199,7 +209,7 @@ class OnboardingController extends Controller
     public function rejectJoinRequest(Request $r, JoinRequest $joinRequest)
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
-        abort_unless($joinRequest->building_id === Building::idForKey($this->bk($r)), 403);
+        abort_unless($joinRequest->building_id === $this->buildingId($r), 403);
 
         $joinRequest->update(['status' => 'rejected']);
 
