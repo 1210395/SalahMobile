@@ -15,9 +15,23 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   // Dashboard period: a year + an optional 0-based month (null = whole year).
-  late int selYear = kYears.isNotEmpty ? kYears.last : DateTime.now().year;
+  // Prefer the current year when it has data on record; else the latest year.
+  late int selYear = kYears.contains(DateTime.now().year)
+      ? DateTime.now().year
+      : (kYears.isNotEmpty ? kYears.last : DateTime.now().year);
   int? selMonth; // null = whole year (matches the bundle's default summary)
   bool _loadingPeriod = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // The bundle's first /summary is for the current year with no month; if the
+    // dashboard's default period differs (e.g. a later record year), the quick
+    // summary looks empty until the user touches a dropdown. Align it on open.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _applyPeriod();
+    });
+  }
 
   String get _periodLabel =>
       selMonth == null ? 'سنة $selYear' : '${monthLabelNum(selMonth!)} $selYear';
@@ -40,6 +54,7 @@ class _DashboardState extends State<Dashboard> {
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
     final res = ctx.res;
+    final b = ctx.building;
     final tiles = [
       QuickTile(label: res ? 'الشقق السكنية' : 'المحلات التجارية', sub: res ? 'الشقق والملاك' : 'المحلات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
       QuickTile(label: 'الإيرادات', sub: 'متابعة التحصيل', icon: 'wallet', tone: 'gold', onTap: () => ctx.go('payments')),
@@ -62,9 +77,23 @@ class _DashboardState extends State<Dashboard> {
       nav: ctx.adminNav,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(2, 0, 2, 4),
-          child: Text('لوحة التحكم · ${ctx.building.name}',
-              style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.ink500)),
+          padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(b.name.trim().isNotEmpty ? b.name : 'لوحة التحكم',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.base(size: 17, weight: FontWeight.w800, color: AppColors.ink900)),
+              if (b.address.trim().isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(b.address,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink500)),
+              ],
+            ],
+          ),
         ),
         const SizedBox(height: 4),
         IntrinsicHeight(
@@ -83,6 +112,14 @@ class _DashboardState extends State<Dashboard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Text(b.name.trim().isNotEmpty ? b.name : (res ? 'المبنى السكني' : 'المبنى التجاري'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.base(size: 12.5, weight: FontWeight.w800, color: Colors.white)),
+                    const SizedBox(height: 2),
+                    Text('${res ? 'سكني' : 'تجاري'} · ${b.units} وحدة · ${b.currency}',
+                        style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.navy300)),
+                    const SizedBox(height: 12),
                     Text('الرصيد الحالي',
                         style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.navy300)),
                     const SizedBox(height: 6),
@@ -322,7 +359,7 @@ class BuildingScreen extends StatelessWidget {
           QuickTile(label: res ? 'الشقق' : 'المحلات', sub: 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
           QuickTile(label: 'الباركينج', sub: 'المواقف', icon: 'parking', tone: 'gold', onTap: () => ctx.go('parking')),
           QuickTile(label: 'الحارس', sub: 'بيانات الحارس', icon: 'shield', tone: 'ok', onTap: () => ctx.go('guard')),
-          QuickTile(label: 'السنوات', sub: 'الأشهر والأرصدة', icon: 'calendar', tone: 'credit', onTap: () => ctx.go('years')),
+          QuickTile(label: 'الترحيل السنوي', sub: 'الأرصدة الافتتاحية والترحيل', icon: 'calendar', tone: 'credit', onTap: () => ctx.go('years')),
           QuickTile(label: 'طلبات الانضمام', sub: 'الموافقة على السكان', icon: 'users', tone: 'gold', onTap: () => ctx.go('approvals')),
           QuickTile(label: 'الاشتراك بالتطبيق', sub: 'تفعيل الاشتراك بالتطبيق', icon: 'shield', tone: 'navy', onTap: () => ctx.go('subscribe')),
           QuickTile(label: 'مسؤول مساعد', sub: 'إضافة مسؤول للمبنى', icon: 'users', tone: 'credit', onTap: () => _openCoAdmin(context, ctx)),

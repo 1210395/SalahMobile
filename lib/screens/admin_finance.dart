@@ -529,6 +529,11 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     // The total expressed in the building's base currency (exchange applied) —
     // this is what reflects on the dashboard/reports, so the button shows it.
     final baseTotal = sameCur ? total : (total * rate).round();
+    // A payment row is saved per covered month, so the amount the manager
+    // actually commits is (per-month total × number of selected months). The
+    // button + a note below show this grand total, not just one month.
+    final monthsCount = payMonths.isEmpty ? 1 : payMonths.length;
+    final grandTotal = baseTotal * monthsCount;
     final canSave = ((target == 'one' && unit != '') ||
             (target == 'group' && selUnits.isNotEmpty) ||
             target == 'all') &&
@@ -539,7 +544,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     return SheetShell(
       title: 'تسجيل دفعة جديدة',
       footer: AppButton(
-        label: 'حفظ الدفعة · ${fmtMoney(baseTotal, activeCurrency)}',
+        label: 'حفظ الدفعة · ${fmtMoney(grandTotal, activeCurrency)}',
         full: true,
         size: BtnSize.lg,
         icon: 'check',
@@ -758,54 +763,45 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                 '${fmtMoney((total * (double.tryParse(rateStr) ?? 0)).round(), activeCurrency)} '
                 '($activeCurrency) بعملة المبنى.'),
           ),
-        // Months covered — multi-select. One payment row is saved per month, so
-        // ticking 3 months records the bill three times for the chosen unit(s).
+        // Months covered — a multi-select dropdown (a payment row is saved per
+        // month, so choosing 3 months records the bill three times for the units).
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: Row(
-            children: [
-              Text('الأشهر المشمولة (${payMonths.length})',
-                  style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => setState(() => payMonths
-                  ..clear()
-                  ..add(DateTime.now().month - 1)),
-                child: Text('الشهر الحالي',
-                    style: AppType.base(size: 12, weight: FontWeight.w700, color: AppColors.navy600)),
-              ),
-            ],
-          ),
+          child: Text('الأشهر المشمولة',
+              style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
         ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (var i = 0; i < 12; i++)
-                GestureDetector(
-                  onTap: () => setState(() =>
-                      payMonths.contains(i) ? payMonths.remove(i) : payMonths.add(i)),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: payMonths.contains(i) ? AppColors.navy700 : AppColors.surface,
-                      border: Border.all(
-                          color: payMonths.contains(i) ? AppColors.navy700 : AppColors.line2,
-                          width: 1.5),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(monthLabelNum(i),
-                        style: AppType.base(
-                            size: 12.5,
-                            weight: FontWeight.w700,
-                            color: payMonths.contains(i) ? Colors.white : AppColors.ink600)),
-                  ),
+        GestureDetector(
+          onTap: _pickMonths,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border.all(color: AppColors.line2, width: 1.5),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Row(
+              children: [
+                const AppIcon('calendar', size: 20, color: AppColors.navy600),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(_monthsSummary(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.base(size: 14, weight: FontWeight.w700, color: AppColors.ink900)),
                 ),
-            ],
+                const AppIcon('chevronDown', size: 18, color: AppColors.ink400),
+              ],
+            ),
           ),
         ),
+        if (payMonths.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: _infoNote(
+                'الإجمالي ${fmtMoney(grandTotal, activeCurrency)} = '
+                '${fmtMoney(baseTotal, activeCurrency)} × ${payMonths.length} أشهر.'),
+          ),
         DateField(
           label: 'تاريخ الدفع',
           value: dateIso,
@@ -938,10 +934,105 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
               ? '${targets.length} $unitWord'
               : '$unitWord $unit';
       final mLabel = months.length == 1 ? 'شهر واحد' : '${months.length} أشهر';
-      ctx.toast('تم تسجيل دفعة بقيمة ${fmtMoney(total, cur)} لـ $who عن $mLabel');
+      ctx.toast('تم تسجيل دفعة بقيمة ${fmtMoney(total * months.length, cur)} لـ $who عن $mLabel');
     } catch (_) {
       ctx.toast('تعذّر حفظ الدفعة، تحقّق من الاتصال', tone: 'late');
     }
+  }
+
+  /// Summary text for the months dropdown field.
+  String _monthsSummary() {
+    if (payMonths.isEmpty) return 'اختر الأشهر';
+    final cur = DateTime.now().month - 1;
+    if (payMonths.length == 12) return 'كل الأشهر (12)';
+    if (payMonths.length == 1) {
+      final m = payMonths.first;
+      return m == cur ? 'الشهر الحالي (${monthLabelNum(m)})' : monthLabelNum(m);
+    }
+    final sorted = payMonths.toList()..sort();
+    return sorted.map(monthLabelNum).join('، ');
+  }
+
+  /// Multi-select months picker (opened from the dropdown field). A payment row
+  /// is saved per selected month, so the total scales with the count.
+  void _pickMonths() {
+    final cur = DateTime.now().month - 1;
+    showAppSheet(
+      context,
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: 'الأشهر المشمولة',
+          footer: AppButton(
+            label: 'تم · ${payMonths.length} شهر',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            disabled: payMonths.isEmpty,
+            onTap: () {
+              Navigator.of(sheetCtx).pop();
+              setState(() {});
+            },
+          ),
+          children: [
+            Row(children: [
+              Expanded(
+                child: AppButton(
+                  label: 'الشهر الحالي فقط',
+                  variant: BtnVariant.outline,
+                  size: BtnSize.sm,
+                  full: true,
+                  onTap: () => setS(() => payMonths
+                    ..clear()
+                    ..add(cur)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: AppButton(
+                  label: payMonths.length == 12 ? 'إلغاء الكل' : 'كل الأشهر',
+                  variant: BtnVariant.outline,
+                  size: BtnSize.sm,
+                  full: true,
+                  onTap: () => setS(() {
+                    if (payMonths.length == 12) {
+                      payMonths
+                        ..clear()
+                        ..add(cur);
+                    } else {
+                      payMonths
+                        ..clear()
+                        ..addAll([for (var i = 0; i < 12; i++) i]);
+                    }
+                  }),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            for (var i = 0; i < 12; i++)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                decoration: BoxDecoration(
+                  color: payMonths.contains(i) ? AppColors.navy50 : AppColors.surface,
+                  border: Border.all(
+                      color: payMonths.contains(i) ? AppColors.navy100 : AppColors.line, width: 1.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: Text('${monthLabelNum(i)}${i == cur ? ' — الحالي' : ''}',
+                        style: AppType.base(size: 14, weight: FontWeight.w700)),
+                  ),
+                  AppSwitch(
+                    checked: payMonths.contains(i),
+                    onChanged: (v) => setS(() => v ? payMonths.add(i) : payMonths.remove(i)),
+                  ),
+                ]),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _infoNote(String text) => Container(
@@ -1055,7 +1146,11 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 child: ListRow(
                   leading: IconChip(icon: e.icon, tone: e.tone, size: 42),
                   title: e.supplier,
-                  sub: '${e.cat} · ${e.desc}',
+                  // Show the entered (foreign) amount when it differs from the
+                  // building's base currency, so "375 ₪" isn't hidden as its base value.
+                  sub: '${e.cat}'
+                      '${e.foreignCurrency ? ' · ${fmtMoney(e.originalAmount, e.currency)}' : ''}'
+                      '${e.desc.isNotEmpty ? ' · ${e.desc}' : ''}',
                   dividerBelow: i < list.length - 1,
                   trailing: _amountTrailing('-${fmtUSD(e.amount)}', e.date, AppColors.late700),
                 ),

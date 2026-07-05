@@ -306,15 +306,23 @@ class Expense {
     required this.amount,
     required this.date,
     required this.desc,
+    this.currency = '',
+    this.originalAmount = 0,
   });
   final int id;
   final String cat;
   final String icon;
   final String tone;
   final String supplier;
-  final int amount;
+  final int amount;       // base (building-currency) amount
   final String date;
   final String desc;
+  final String currency;      // currency the amount was entered in (may differ from base)
+  final int originalAmount;   // amount as entered, before conversion to base
+
+  /// True when the expense was entered in a currency other than the building's.
+  bool get foreignCurrency =>
+      currency.isNotEmpty && originalAmount > 0 && currency != activeCurrency;
 
   factory Expense.fromJson(Map<String, dynamic> j) => Expense(
         id: _int(j['id']),
@@ -325,6 +333,8 @@ class Expense {
         amount: _int(j['amount']),
         date: '${j['date']}'.split('T').first,
         desc: j['description'] ?? j['desc'] ?? '',
+        currency: j['currency'] ?? '',
+        originalAmount: _int(j['original_amount']),
       );
 }
 

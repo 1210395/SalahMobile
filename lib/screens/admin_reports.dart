@@ -48,6 +48,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // Expense-report filters (category + month; -1 month = whole year).
   String expCat = 'all';
   int expMonth = -1;
+  String expSupplier = 'all';
   String? selUnitNo;
 
   /// Building-wide amount collected in the selected month/year.
@@ -209,47 +210,44 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final defaultSheet = book.getDefaultSheet();
       for (final y in years) {
         final sheet = book['$y'];
-        // Header: month column + one column per apartment/shop + a row-total.
+        // Header: one row per apartment/shop; a column per month; then the
+        // yearly summary columns (paid, required, remaining, paid-in-full).
         sheet.appendRow([
-          xlsx.TextCellValue('الشهر'),
-          for (final u in residents) xlsx.TextCellValue('${u.no} — ${u.resident}'),
-          xlsx.TextCellValue('الإجمالي'),
+          xlsx.TextCellValue(ctx.res ? 'الشقة' : 'المحل'),
+          for (var m = 0; m < 12; m++) xlsx.TextCellValue(monthLabelNum(m)),
+          xlsx.TextCellValue('إجمالي المدفوع'),
+          xlsx.TextCellValue('المطلوب سنوياً'),
+          xlsx.TextCellValue('المتبقي'),
+          xlsx.TextCellValue('مسدّد بالكامل؟'),
         ]);
-        final colTotals = List<int>.filled(residents.length, 0);
-        for (var m = 0; m < 12; m++) {
-          var rowTotal = 0;
-          final cells = <xlsx.CellValue>[xlsx.TextCellValue(monthLabelNum(m))];
-          for (var i = 0; i < residents.length; i++) {
-            final v = _paymentFor(residents[i].no, m, y);
-            colTotals[i] += v;
-            rowTotal += v;
+        final monthTotals = List<int>.filled(12, 0);
+        var paidAll = 0, reqAll = 0, remAll = 0;
+        for (final u in residents) {
+          var paidYear = 0;
+          final cells = <xlsx.CellValue>[xlsx.TextCellValue('${u.no} — ${u.resident}')];
+          for (var m = 0; m < 12; m++) {
+            final v = _paymentFor(u.no, m, y);
+            monthTotals[m] += v;
+            paidYear += v;
             cells.add(xlsx.IntCellValue(v));
           }
-          cells.add(xlsx.IntCellValue(rowTotal));
+          final required = u.sub * 12;
+          cells.add(xlsx.IntCellValue(paidYear));
+          cells.add(xlsx.IntCellValue(required));
+          cells.add(xlsx.IntCellValue(u.balance)); // − = مدين/owes, + = دائن/credit
+          cells.add(xlsx.TextCellValue(u.balance >= 0 ? 'نعم' : 'لا'));
           sheet.appendRow(cells);
+          paidAll += paidYear;
+          reqAll += required;
+          remAll += u.balance;
         }
-        // Column totals (paid per unit across the year) + grand total.
+        // Trailing totals row: per-month column sums + the grand totals.
         sheet.appendRow([
           xlsx.TextCellValue('الإجمالي'),
-          for (final t in colTotals) xlsx.IntCellValue(t),
-          xlsx.IntCellValue(colTotals.fold<int>(0, (s, t) => s + t)),
-        ]);
-        // Required for the year (subscription × 12) per unit.
-        sheet.appendRow([
-          xlsx.TextCellValue('المطلوب سنوياً'),
-          for (final u in residents) xlsx.IntCellValue(u.sub * 12),
-          xlsx.IntCellValue(residents.fold<int>(0, (s, u) => s + u.sub * 12)),
-        ]);
-        // Remaining balance (− = مدين/owes, + = دائن/credit).
-        sheet.appendRow([
-          xlsx.TextCellValue('المتبقي (الرصيد)'),
-          for (final u in residents) xlsx.IntCellValue(u.balance),
-          xlsx.IntCellValue(residents.fold<int>(0, (s, u) => s + u.balance)),
-        ]);
-        // Paid-in-full? (✓ when balance ≥ 0).
-        sheet.appendRow([
-          xlsx.TextCellValue('مسدّد بالكامل؟'),
-          for (final u in residents) xlsx.TextCellValue(u.balance >= 0 ? 'نعم' : 'لا'),
+          for (final t in monthTotals) xlsx.IntCellValue(t),
+          xlsx.IntCellValue(paidAll),
+          xlsx.IntCellValue(reqAll),
+          xlsx.IntCellValue(remAll),
           xlsx.TextCellValue(''),
         ]);
       }
@@ -332,6 +330,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (d != null && d.year != selYear) continue;
       if (expMonth >= 0 && (d == null || d.month - 1 != expMonth)) continue;
       if (expCat != 'all' && e.cat != expCat) continue;
+      if (expSupplier != 'all' && e.supplier != expSupplier) continue;
       byCat[e.cat] = (byCat[e.cat] ?? 0) + e.amount;
     }
     const palette = [
@@ -662,6 +661,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 10),
+        // Supplier/vendor filter (in addition to category + month + year).
+        SelectField(
+          label: 'المورّد / الجهة',
+          icon: 'building',
+          options: [
+            const SelectOption('all', 'كل الموردين'),
+            for (final s in (kExpenses.map((e) => e.supplier).where((s) => s.isNotEmpty).toSet().toList()
+              ..sort()))
+              SelectOption(s, s),
+          ],
+          value: expSupplier,
+          onChanged: (v) => setState(() => expSupplier = v as String),
+        ),
         const SizedBox(height: 4),
         if (expData.isEmpty)
           const EmptyState(icon: 'expense', title: 'لا توجد مصروفات مطابقة للفلاتر'),
@@ -868,61 +881,114 @@ class _AlertsScreenState extends State<AlertsScreen> {
     ['اجتماع لجنة المبنى', 'يُعقد اجتماع لسكان المبنى لمناقشة شؤون العمارة. حضوركم مهم.'],
   ];
 
-  /// Manager composes a notification: pick all residents or one unit, choose a
-  /// ready template or write custom text, then send.
+  /// Manager composes a notification: choose recipients (all / a specific unit /
+  /// late payers / a floor), pick a ready template or write custom text, send.
   void _openCompose(Ctx ctx) {
     final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
+    final floors = units.map((u) => u.floor).toSet().toList()..sort();
+    final unitWord = ctx.res ? 'شقة' : 'محل';
     String target = 'all';
     String unitNo = units.isNotEmpty ? units.first.no : '';
+    int selFloor = floors.isNotEmpty ? floors.first : 0;
     String title = '';
     String body = '';
     int seq = 0; // bump to re-seed title/body fields when a template is chosen
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
-          title: 'إرسال إشعار',
-          footer: AppButton(
-            label: 'إرسال',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'send',
-            disabled: title.trim().isEmpty || body.trim().isEmpty || (target == 'unit' && unitNo.isEmpty),
-            onTap: () async {
-              Navigator.of(sheetCtx).pop();
-              try {
-                await Api.I.sendNotification(ctx.btype, {
-                  'title': title.trim(),
-                  'body': body.trim(),
-                  'target': target == 'unit' ? unitNo : 'all',
-                });
-                await ctx.reload();
-                ctx.toast('تم إرسال الإشعار');
-              } catch (e) {
-                ctx.toast(apiErrorText(e), tone: 'late');
-              }
-            },
-          ),
-          children: [
-            Segmented(
-              small: true,
-              value: target,
-              onChanged: (v) => setS(() => target = v as String),
-              options: [
-                const SegOption('all', 'كل السكان'),
-                SegOption('unit', ctx.res ? 'شقة محددة' : 'محل محدد'),
-              ],
+        builder: (sheetCtx, setS) {
+          // Resolve the concrete recipient units for the chosen target. A
+          // resident sees an alert whose target is 'all' or their own unit_no,
+          // so non-'all' targets are sent as one alert per matched unit.
+          final recips = target == 'unit'
+              ? units.where((u) => u.no == unitNo).toList()
+              : target == 'late'
+                  ? units.where((u) => u.balance < 0).toList()
+                  : target == 'floor'
+                      ? units.where((u) => u.floor == selFloor).toList()
+                      : units;
+          final canSend = title.trim().isNotEmpty &&
+              body.trim().isNotEmpty &&
+              (target == 'all' || recips.isNotEmpty);
+          return SheetShell(
+            title: 'إرسال إشعار',
+            footer: AppButton(
+              label: target == 'all' ? 'إرسال للجميع' : 'إرسال · ${recips.length} مستلم',
+              full: true,
+              size: BtnSize.lg,
+              icon: 'send',
+              disabled: !canSend,
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                try {
+                  if (target == 'all') {
+                    await Api.I.sendNotification(ctx.btype, {
+                      'title': title.trim(),
+                      'body': body.trim(),
+                      'target': 'all',
+                    });
+                  } else {
+                    for (final u in recips) {
+                      await Api.I.sendNotification(ctx.btype, {
+                        'title': title.trim(),
+                        'body': body.trim(),
+                        'target': u.no,
+                      });
+                    }
+                  }
+                  await ctx.reload();
+                  final n = target == 'all' ? units.length : recips.length;
+                  ctx.toast('تم إرسال الإشعار ($n مستلم)');
+                } catch (e) {
+                  ctx.toast(apiErrorText(e), tone: 'late');
+                }
+              },
             ),
-            const SizedBox(height: 12),
-            if (target == 'unit')
+            children: [
               SelectField(
-                label: ctx.res ? 'الشقة' : 'المحل',
-                icon: 'building',
-                options: [for (final u in units) SelectOption(u.no, '${u.no} — ${u.resident}')],
-                value: unitNo.isEmpty ? null : unitNo,
-                onChanged: (v) => setS(() => unitNo = v as String),
+                label: 'المستلمون',
+                icon: 'bell',
+                options: [
+                  const SelectOption('all', 'كل السكان'),
+                  SelectOption('unit', '$unitWord محدد'),
+                  const SelectOption('late', 'المتأخرون عن السداد'),
+                  const SelectOption('floor', 'طابق محدد'),
+                ],
+                value: target,
+                onChanged: (v) => setS(() => target = v as String),
               ),
-            Text('اختيارات جاهزة',
+              const SizedBox(height: 12),
+              if (target == 'unit')
+                SelectField(
+                  label: unitWord,
+                  icon: 'building',
+                  options: [for (final u in units) SelectOption(u.no, '${u.no} — ${u.resident}')],
+                  value: unitNo.isEmpty ? null : unitNo,
+                  onChanged: (v) => setS(() => unitNo = v as String),
+                ),
+              if (target == 'floor')
+                SelectField(
+                  label: 'الطابق',
+                  icon: 'building',
+                  options: [for (final fl in floors) SelectOption(fl, 'الطابق $fl')],
+                  value: selFloor,
+                  onChanged: (v) => setS(() => selFloor = v as int),
+                ),
+              if (target != 'all')
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    recips.isEmpty
+                        ? 'لا يوجد مستلمون مطابقون'
+                        : 'سيصل إلى ${recips.length} ${recips.length == 1 ? 'مستلم' : 'مستلمين'}: '
+                            '${recips.take(4).map((u) => u.no).join('، ')}${recips.length > 4 ? '…' : ''}',
+                    style: AppType.base(
+                        size: 11.5,
+                        weight: FontWeight.w600,
+                        color: recips.isEmpty ? AppColors.late700 : AppColors.ink500),
+                  ),
+                ),
+              Text('اختيارات جاهزة',
                 style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
             const SizedBox(height: 8),
             Wrap(
@@ -970,7 +1036,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
               onChanged: (v) => setS(() => body = v),
             ),
           ],
-        ),
+          );
+        },
       ),
     );
   }
