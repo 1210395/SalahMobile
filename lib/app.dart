@@ -271,13 +271,14 @@ class _AmaratiAppState extends State<AmaratiApp> {
       await AuthStore.I.register(name, email, password,
           phone: phone, whatsapp: whatsapp, emailCode: emailCode);
       final u = AuthStore.I.user!;
-      final b = btypeFromKey(u.buildingKey);
-      await Api.I.loadBundle(b);
+      // A fresh registrant is a pending manager with NO building yet — do NOT
+      // load a building bundle here (there's nothing to load, and it made
+      // registration hang). They create their building on the setup screen.
       if (!mounted) return null;
       setState(() {
         _busy = false;
         role = _roleFromString(u.role);
-        btype = b;
+        btype = btypeFromKey(u.buildingKey);
         screen = 'subscribe';
       });
       return null;

@@ -452,6 +452,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // The email must be confirmed (mirrors the OTP flow) before "إنشاء الحساب".
   bool _codeSent = false;
   bool _saving = false;
+  String? _devCode; // shown in a prominent card when the API returns it
 
   // The base fields must be valid before a confirmation code can be requested.
   bool get _fieldsValid =>
@@ -482,8 +483,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       final dev = await AuthStore.I.requestEmailCode(f['email']!.trim());
       if (!mounted) return;
-      setState(() => _codeSent = true);
-      ctx.toast(dev != null ? 'رمز التأكيد التجريبي: $dev' : 'تم إرسال رمز التأكيد إلى بريدك');
+      setState(() {
+        _codeSent = true;
+        _devCode = dev; // shown in the golden card below (dev/demo)
+      });
+      if (dev == null) ctx.toast('تم إرسال رمز التأكيد إلى بريدك');
     } catch (_) {
       ctx.toast('تعذّر إرسال رمز التأكيد', tone: 'late');
     }
@@ -633,6 +637,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 disabled: !_fieldsValid,
                 onTap: _sendCode,
               ),
+              // Prominent code card (dev/demo): shows the code clearly and stays
+              // visible while the user types it in, with a copy button.
+              if (_devCode != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold400.withValues(alpha: 0.14),
+                    border: Border.all(color: AppColors.gold500, width: 1.4),
+                    borderRadius: BorderRadius.circular(AppRadii.lg),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('رمز التأكيد (تجريبي)',
+                                style: AppType.base(size: 12, weight: FontWeight.w700, color: AppColors.ink600)),
+                            const SizedBox(height: 4),
+                            NumText(_devCode!,
+                                style: AppType.num(size: 26, weight: FontWeight.w800, color: AppColors.navy800)),
+                          ],
+                        ),
+                      ),
+                      AppButton(
+                        label: 'نسخ',
+                        variant: BtnVariant.outline,
+                        size: BtnSize.sm,
+                        icon: 'check',
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: _devCode!));
+                          widget.ctx.toast('تم نسخ الرمز');
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Field(
                 label: 'رمز تأكيد البريد (اختياري)',

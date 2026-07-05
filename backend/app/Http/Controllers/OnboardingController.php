@@ -92,6 +92,13 @@ class OnboardingController extends Controller
         $type = $data['btype'];
         $u = $r->user();
 
+        // SECURITY: only a PENDING manager (no building yet) may create a building,
+        // or an existing admin may edit their OWN. A resident who was assigned to a
+        // manager's building must NOT be able to 'set up' (and thereby take over /
+        // become admin of) that building.
+        abort_if($u->building_id && $u->role !== 'admin', 403,
+            'لا يمكنك إعداد مبنى — أنت مرتبط بمبنى قائم');
+
         // Multi-building: the manager gets THEIR OWN building. Reuse it if they
         // already set one up (idempotent re-submit); otherwise create a fresh one
         // — a new manager never collides with someone else's building.

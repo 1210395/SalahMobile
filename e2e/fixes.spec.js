@@ -104,14 +104,23 @@ test('FIX: renaming a unit cascades its payments (no orphans)', async ({ page })
   expect(res.orphans).toBe(0);
 });
 
-test('SECURITY: a residential admin cannot edit a commercial unit (IDOR blocked)', async ({ page }) => {
-  const status = await inPage(page, async ({ API, ADMIN }) => {
+test('SECURITY: a manager cannot edit another building\'s unit (IDOR blocked)', async ({ page }) => {
+  const status = await inPage(page, async ({ API }) => {
     const H = (t) => ({ Accept: 'application/json', 'Content-Type': 'application/json', ...(t ? { Authorization: 'Bearer ' + t } : {}) });
-    const tok = (await (await fetch(API + '/auth/login', { method: 'POST', headers: H(), body: JSON.stringify(ADMIN) })).json()).token;
-    const cu = await (await fetch(API + '/units?btype=commercial', { headers: H(tok) })).json();
-    if (!Array.isArray(cu) || !cu.length) return 'skip';
-    const rr = await fetch(API + '/units/' + cu[0].id + '?btype=residential', { method: 'PUT', headers: H(tok), body: JSON.stringify({ no: 'HACK', floor: 0, sub: 1, status: 'ok' }) });
+    // Two managers each own a building + a unit (multi-building).
+    const mk = async (name) => {
+      const email = 'idor' + Math.floor(Math.random() * 1e9) + '@e2e.app';
+      const tok = (await (await fetch(API + '/auth/register', { method: 'POST', headers: H(), body: JSON.stringify({ name, email, password: 'secret123' }) })).json()).token;
+      await fetch(API + '/subscription/activate', { method: 'POST', headers: H(tok), body: JSON.stringify({ btype: 'residential' }) });
+      await fetch(API + '/building/setup', { method: 'POST', headers: H(tok), body: JSON.stringify({ btype: 'residential', name, address: 'x', floors: 5, units_count: 10 }) });
+      const unit = await (await fetch(API + '/units', { method: 'POST', headers: H(tok), body: JSON.stringify({ no: 'U' + Math.floor(Math.random() * 1e6), floor: 1, sub: 40, status: 'ok' }) })).json();
+      return { tok, unitId: unit.id };
+    };
+    const a = await mk('A');
+    const b = await mk('B');
+    // B tries to edit A's unit → must be blocked.
+    const rr = await fetch(API + '/units/' + a.unitId, { method: 'PUT', headers: H(b.tok), body: JSON.stringify({ no: 'HACK', floor: 0, sub: 1, status: 'ok' }) });
     return rr.status;
   });
-  if (status !== 'skip') expect(status).toBe(403);
+  expect(status).toBe(403);
 });

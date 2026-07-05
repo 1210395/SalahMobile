@@ -138,6 +138,24 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertCount(1, $units);
     }
 
+    public function test_resident_cannot_take_over_a_building_via_setup(): void
+    {
+        // A resident assigned to a manager's building must NOT be able to call
+        // building/setup and become its admin (privilege escalation).
+        $b = $this->seedBuilding();
+        $resident = User::create([
+            'name' => 'ساكن', 'phone' => '0590', 'role' => 'resident',
+            'building_id' => $b->id, 'building_key' => 'residential', 'unit_no' => '101',
+        ]);
+
+        $this->actingAs($resident, 'sanctum')->postJson('/api/building/setup', [
+            'btype' => 'residential', 'name' => 'اختطاف', 'address' => 'x', 'floors' => 5, 'units_count' => 10,
+        ])->assertStatus(403);
+
+        $this->assertSame('resident', $resident->fresh()->role); // still a resident
+        $this->assertSame('عمارة الاختبار', $b->fresh()->name);   // building unchanged
+    }
+
     public function test_two_managers_each_create_their_own_building_no_already_managed(): void
     {
         // Multi-building: a second manager setting up the SAME type must get their

@@ -70,25 +70,29 @@ test('a resident cannot perform admin writes (create payment / unit / expense)',
   expect(r.exp).toBe(403);
 });
 
-test('a residential admin cannot touch commercial data (cross-tenant IDOR)', async ({ page }) => {
+test('a manager cannot touch another building\'s data (cross-building IDOR)', async ({ page }) => {
   const r = await page.evaluate(async () => {
-    const tok = await window.T.adminToken();
-    // seed a commercial payment + unit + parking directly is not possible without a
-    // commercial admin, so read the commercial units (admins may switch btype) and
-    // attempt a residential-scoped mutation against a commercial-bound id.
-    const cUnits = await (await window.T.req('GET', '/units?btype=commercial', tok)).body;
-    const cPays = await (await window.T.req('GET', '/payments?btype=commercial', tok)).body;
-    const out = {};
-    if (Array.isArray(cUnits) && cUnits.length) {
-      out.unit = (await window.T.req('PUT', '/units/' + cUnits[0].id + '?btype=residential', tok, { no: 'HACK', floor: 0, sub: 1, status: 'ok' })).status;
-    }
-    if (Array.isArray(cPays) && cPays.length) {
-      out.pay = (await window.T.req('DELETE', '/payments/' + cPays[0].id + '?btype=residential', tok)).status;
-    }
-    return out;
+    const T = window.T;
+    // Two managers each own a building with a unit + payment (multi-building).
+    const mk = async (name) => {
+      const email = 'x' + Math.floor(Math.random() * 1e9) + '@e2e.app';
+      const tok = (await T.req('POST', '/auth/register', null, { name, email, password: 'secret123' })).body.token;
+      await T.req('POST', '/subscription/activate', tok, { btype: 'residential' });
+      await T.req('POST', '/building/setup', tok, { btype: 'residential', name, address: 'x', floors: 5, units_count: 10 });
+      const no = 'U' + Math.floor(Math.random() * 1e6);
+      const unit = (await T.req('POST', '/units', tok, { no, floor: 1, sub: 40, status: 'ok' })).body;
+      const pay = (await T.req('POST', '/payments', tok, { unit_no: no, amount: 50, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' })).body;
+      return { tok, unitId: unit.id, payId: pay.id };
+    };
+    const a = await mk('A');
+    const b = await mk('B');
+    return {
+      unit: (await T.req('PUT', '/units/' + a.unitId, b.tok, { no: 'HACK', floor: 0, sub: 1, status: 'ok' })).status,
+      pay: (await T.req('DELETE', '/payments/' + a.payId, b.tok)).status,
+    };
   });
-  if ('unit' in r) expect(r.unit).toBe(403);
-  if ('pay' in r) expect(r.pay).toBe(403);
+  expect(r.unit).toBe(403);
+  expect(r.pay).toBe(403);
 });
 
 test('a unit has one resident: reassigning unlinks the previous tenant (no payment leak)', async ({ page }) => {

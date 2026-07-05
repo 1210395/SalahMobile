@@ -4,16 +4,37 @@ const { gotoApp } = require('./lib');
 
 test.beforeEach(async ({ page }) => { await gotoApp(page); });
 
-test('a non-owner cannot set up the already-claimed residential building (403)', async ({ page }) => {
+test('multi-building: a new manager creates their OWN building (no "already managed")', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const setup = async (name) => {
+      const email = 'ob' + Math.floor(Math.random() * 1e9) + '@e2e.app';
+      const tok = (await window.T.req('POST', '/auth/register', null, { name, email, password: 'secret123' })).body.token;
+      await window.T.req('POST', '/subscription/activate', tok, { btype: 'residential' });
+      const s = await window.T.req('POST', '/building/setup', tok, { btype: 'residential', name, address: 'ع', floors: 5, units_count: 10 });
+      const me = await (await window.T.req('GET', '/me', tok)).body;
+      return { status: s.status, buildingId: s.body && s.body.building && s.body.building.id, role: me.user.role, unitTok: tok };
+    };
+    const a = await setup('مبنى أ');
+    const b = await setup('مبنى ب'); // same type — must NOT be 'already managed'
+    return { aStatus: a.status, bStatus: b.status, distinct: a.buildingId !== b.buildingId, aRole: a.role, bRole: b.role };
+  });
+  expect(r.aStatus).toBe(200);
+  expect(r.bStatus).toBe(200); // ← the fixed bug
+  expect(r.distinct).toBe(true); // two separate buildings
+  expect(r.aRole).toBe('admin');
+  expect(r.bRole).toBe('admin');
+});
+
+test('a resident cannot take over a building via setup (403)', async ({ page }) => {
   const status = await page.evaluate(async () => {
-    const email = 'ob' + Math.floor(Math.random() * 1e9) + '@e2e.app';
-    const tok = (await window.T.req('POST', '/auth/register', null, { name: 'مالك', email, password: 'secret123' })).body.token;
-    const r = await window.T.req('POST', '/building/setup', tok, {
-      btype: 'residential', name: 'محاولة', address: 'عنوان', floors: 5, units_count: 10,
+    // A resident issued by the seeded admin has a building_id; setup must 403.
+    const res = await window.T.residentSession('101');
+    const r = await window.T.req('POST', '/building/setup', res.token, {
+      btype: 'residential', name: 'اختطاف', address: 'x', floors: 5, units_count: 10,
     });
     return r.status;
   });
-  expect(status).toBe(403); // residential is owned by the seeded admin
+  expect(status).toBe(403);
 });
 
 test('the subscription status endpoint is reachable', async ({ page }) => {
