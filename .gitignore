@@ -55,3 +55,6 @@ composer-setup.php
 # Flutter Dart tooling
 .flutter-plugins
 v[0-9]*.png
+
+# Never commit backend backup snapshots
+backend-backup-*/

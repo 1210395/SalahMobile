@@ -74,20 +74,20 @@ class SuperAdminController extends Controller
             if (! $b) {
                 continue;
             }
-            $payQ = Payment::where('building_key', $bk);
+            $payQ = Payment::where('building_id', Building::idForKey($bk));
             if ($month !== null) {
                 $payQ->where('month', $month);
             }
             $collected = (int) $payQ->sum('amount');
             $payCount = $payQ->count();
-            $expenses = (int) Expense::where('building_key', $bk)->sum('amount');
+            $expenses = (int) Expense::where('building_id', Building::idForKey($bk))->sum('amount');
             // Genesis opening so the per-building balance reflects true cash on
             // hand (consistent with the dashboard's opening + revenue − expenses).
-            $opening = (int) (\App\Models\YearSummary::where('building_key', $bk)
+            $opening = (int) (\App\Models\YearSummary::where('building_id', Building::idForKey($bk))
                 ->orderBy('year')->value('opening_balance') ?? 0);
-            $units = Unit::where('building_key', $bk)->where('status', '!=', 'vacant')->count();
-            $late = Unit::where('building_key', $bk)->where('status', 'late')->count();
-            $admins = User::where('building_key', $bk)->where('role', 'admin')->count();
+            $units = Unit::where('building_id', Building::idForKey($bk))->where('status', '!=', 'vacant')->count();
+            $late = Unit::where('building_id', Building::idForKey($bk))->where('status', 'late')->count();
+            $admins = User::where('building_id', Building::idForKey($bk))->where('role', 'admin')->count();
 
             $buildings[] = [
                 'key' => $bk,

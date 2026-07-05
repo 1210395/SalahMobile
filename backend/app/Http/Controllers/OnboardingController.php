@@ -85,7 +85,7 @@ class OnboardingController extends Controller
     {
         $u = $r->user();
         abort_if(
-            User::where('building_key', $bk)
+            User::where('building_id', Building::idForKey($bk))
                 ->where('role', 'admin')
                 ->where('id', '!=', $u->id)
                 ->exists(),
@@ -165,21 +165,21 @@ class OnboardingController extends Controller
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
 
-        return JoinRequest::where('building_key', $this->bk($r))
+        return JoinRequest::where('building_id', Building::idForKey($this->bk($r)))
             ->orderByDesc('id')->get();
     }
 
     public function approveJoinRequest(Request $r, JoinRequest $joinRequest)
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
-        abort_unless($joinRequest->building_key === $this->bk($r), 403);
+        abort_unless($joinRequest->building_id === Building::idForKey($this->bk($r)), 403);
 
         $joinRequest->update(['status' => 'approved']);
         if ($joinRequest->user_id && ($u = User::find($joinRequest->user_id))) {
             // A unit has at most one resident — unlink any previous occupant so
             // they can't keep seeing the new resident's payments.
             if ($joinRequest->unit_no) {
-                User::where('building_key', $joinRequest->building_key)
+                User::where('building_id', Building::idForKey($joinRequest->building_key))
                     ->where('unit_no', $joinRequest->unit_no)
                     ->where('id', '!=', $u->id)
                     ->update(['unit_no' => null]);
@@ -199,7 +199,7 @@ class OnboardingController extends Controller
     public function rejectJoinRequest(Request $r, JoinRequest $joinRequest)
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
-        abort_unless($joinRequest->building_key === $this->bk($r), 403);
+        abort_unless($joinRequest->building_id === Building::idForKey($this->bk($r)), 403);
 
         $joinRequest->update(['status' => 'rejected']);
 

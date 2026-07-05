@@ -118,6 +118,26 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertStringContainsString('MYCODE1234', json_encode($adminUnits));
     }
 
+    public function test_building_id_is_auto_populated_from_building_key(): void
+    {
+        // The BelongsToBuilding trait must set building_id from building_key on
+        // create, and scoping now runs on the FK.
+        $b = $this->seedBuilding(); // residential
+        $unit = $this->makeUnit(['no' => '101']); // created with building_key only
+        $this->assertSame($b->id, (int) $unit->fresh()->building_id);
+
+        $pay = Payment::create([
+            'building_key' => 'residential', 'unit_no' => '101', 'name' => 'x', 'amount' => 10,
+            'currency' => 'USD', 'original_amount' => 10, 'exchange_rate' => 1, 'kind' => 'k',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+        ]);
+        $this->assertSame($b->id, (int) $pay->fresh()->building_id);
+
+        // Admin list scoping (now by building_id) still returns the row.
+        $units = $this->actingAs($this->admin(), 'sanctum')->getJson('/api/units')->json();
+        $this->assertCount(1, $units);
+    }
+
     public function test_resident_cannot_create_a_payment(): void
     {
         $this->seedBuilding();

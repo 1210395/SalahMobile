@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
+use App\Models\Building;
 
 use App\Models\Note;
 use Illuminate\Http\Request;
@@ -43,13 +44,13 @@ class NoteController extends Controller
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
 
-        return Note::where('building_key', $this->bk($r))->orderByDesc('id')->get();
+        return Note::where('building_id', Building::idForKey($this->bk($r)))->orderByDesc('id')->get();
     }
 
     public function markRead(Request $r, Note $note)
     {
         abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
-        abort_unless($note->building_key === $this->bk($r), 403);
+        abort_unless($note->building_id === Building::idForKey($this->bk($r)), 403);
         $note->update(['status' => 'read']);
 
         return response()->json($note->fresh());

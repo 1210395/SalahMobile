@@ -22,12 +22,12 @@ class AlertGenerator
         // Refresh ONLY the auto-derived alerts. Manager-composed notifications
         // (type = 'notice', sent to residents) are real messages — regenerating
         // must not wipe them.
-        Alert::where('building_key', $bk)->where('type', '!=', 'notice')->delete();
+        Alert::where('building_id', Building::idForKey($bk))->where('type', '!=', 'notice')->delete();
 
         $created = [];
 
         // 1) Overdue subscriptions — derived from current unit balances.
-        $late = Unit::where('building_key', $bk)
+        $late = Unit::where('building_id', Building::idForKey($bk))
             ->where('status', 'late')->orderBy('no')->get();
         foreach ($late as $u) {
             $created[] = $this->make($bk, [
@@ -71,7 +71,7 @@ class AlertGenerator
         }
 
         // 3) Latest received payment (positive confirmation).
-        $pay = Payment::where('building_key', $bk)->orderByDesc('date')->first();
+        $pay = Payment::where('building_id', Building::idForKey($bk))->orderByDesc('date')->first();
         if ($pay) {
             $created[] = $this->make($bk, [
                 'type' => 'paid', 'icon' => 'checkCircle', 'tone' => 'ok',

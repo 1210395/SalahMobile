@@ -218,10 +218,14 @@ class DatabaseSeeder extends Seeder
             WaTemplate::create(['label' => $t[0], 'text' => $t[1]]);
         }
 
-        // Demo accounts (password = "password").
-        // NOTE: Admin accounts removed to allow new users to claim buildings via setupBuilding().
-        // Buildings are now unclaimed and available for registration flow testing.
+        // Demo accounts (password = "password"). RESIDENTIAL has a demo admin so
+        // the demo + e2e suite work out of the box; COMMERCIAL is left unclaimed
+        // so the register → subscribe → building-setup flow stays testable.
         $residentialBuilding = Building::where('key', 'residential')->first();
+        User::create(['name' => 'مدير اللجنة', 'email' => 'admin@amarati.app',
+            'phone' => '+966500000001', 'password' => Hash::make('password'),
+            'role' => 'admin', 'building_id' => $residentialBuilding?->id,
+            'building_key' => 'residential']);
         User::create(['name' => 'أحمد العامري', 'email' => 'resident@amarati.app',
             'phone' => '+966500000002', 'password' => Hash::make('password'),
             'role' => 'resident', 'building_id' => $residentialBuilding?->id,
