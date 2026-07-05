@@ -248,7 +248,8 @@ class _AmaratiAppState extends State<AmaratiApp> {
       setState(() {
         _busy = false;
         this.role = r;
-        this.btype = b;
+        // Multi-building: follow the building the server actually returned.
+        this.btype = DataStore.I.loadedBtype ?? b;
         screen = needsSetup
             ? 'buildingSetup'
             : pendingManager
@@ -307,7 +308,13 @@ class _AmaratiAppState extends State<AmaratiApp> {
     try {
       await Api.I.loadBundle(btype);
     } catch (_) {}
-    if (mounted) setState(() => _busy = false);
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        btype = DataStore.I.loadedBtype ?? btype; // stay on the real building
+      });
+    }
+    return;
   }
 
   /// After building setup the server promoted this user to admin of [b];
@@ -322,7 +329,8 @@ class _AmaratiAppState extends State<AmaratiApp> {
     setState(() {
       _busy = false;
       role = AppRole.admin;
-      btype = b;
+      // Multi-building: follow the building the server actually returned.
+      btype = DataStore.I.loadedBtype ?? b;
       screen = 'home';
     });
   }
@@ -548,29 +556,33 @@ class _AmaratiAppState extends State<AmaratiApp> {
                 ),
               );
             }),
-            Container(
-              padding: const EdgeInsets.only(top: 14),
-              decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.line))),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('نوع المبنى',
-                      style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-                  const SizedBox(height: 9),
-                  Segmented(
-                    value: btype,
-                    onChanged: (v) {
-                      _setBtype(v as BType);
-                      setSheet(() {});
-                    },
-                    options: const [
-                      SegOption(BType.residential, 'سكنية (شقق)', icon: 'building'),
-                      SegOption(BType.commercial, 'تجارية (محلات)', icon: 'store'),
-                    ],
-                  ),
-                ],
+            // The residential/commercial switch only makes sense in GUEST preview.
+            // An authenticated user owns exactly one building (multi-building), so
+            // showing it would blank out their real building — hide it for them.
+            if (role == AppRole.guest)
+              Container(
+                padding: const EdgeInsets.only(top: 14),
+                decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.line))),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('نوع المبنى',
+                        style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+                    const SizedBox(height: 9),
+                    Segmented(
+                      value: btype,
+                      onChanged: (v) {
+                        _setBtype(v as BType);
+                        setSheet(() {});
+                      },
+                      options: const [
+                        SegOption(BType.residential, 'سكنية (شقق)', icon: 'building'),
+                        SegOption(BType.commercial, 'تجارية (محلات)', icon: 'store'),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       ),

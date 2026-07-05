@@ -74,43 +74,30 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           ),
         ),
         const SizedBox(height: 14),
+        // Month + year as dropdowns (droplists) — clearer than the chip strip.
         Row(
           children: [
-            // Numbered month filter — all 12 months reachable (scrollable).
             Expanded(
-              child: SizedBox(
-                height: 36,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: 13,
-                  separatorBuilder: (_, _) => const SizedBox(width: 7),
-                  itemBuilder: (_, i) {
-                    final val = i == 0 ? 'all' : '${i - 1}';
-                    final label = i == 0 ? 'الكل' : monthLabelNum(i - 1);
-                    final on = month == val;
-                    return GestureDetector(
-                      onTap: () => setState(() => month = val),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: on ? AppColors.navy700 : AppColors.surface,
-                          border: Border.all(color: on ? AppColors.navy700 : AppColors.line2),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(label,
-                            style: AppType.base(
-                                size: 12.5, weight: FontWeight.w700, color: on ? Colors.white : AppColors.ink600)),
-                      ),
-                    );
-                  },
-                ),
+              child: SelectField(
+                label: 'الشهر',
+                icon: 'calendar',
+                value: month,
+                options: [
+                  const SelectOption('all', 'كل الأشهر'),
+                  for (var i = 0; i < 12; i++) SelectOption('$i', monthLabelNum(i)),
+                ],
+                onChanged: (v) => setState(() => month = v as String),
               ),
             ),
-            const SizedBox(width: 8),
-            _YearChip(
-              year: year,
-              onTap: () => _pickYear(),
+            const SizedBox(width: 10),
+            Expanded(
+              child: SelectField(
+                label: 'السنة',
+                icon: 'calendar',
+                value: '$year',
+                options: [for (final y in kYears) SelectOption('$y', '$y')],
+                onChanged: (v) => setState(() => year = int.tryParse('$v') ?? year),
+              ),
             ),
           ],
         ),
@@ -195,31 +182,6 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// List picker over [kYears] — replaces the old cycling chip.
-  void _pickYear() {
-    final years = kYears;
-    showAppSheet(
-      context,
-      SheetShell(
-        title: 'اختر السنة',
-        children: [
-          for (final y in years)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _YearPickRow(
-                year: y,
-                selected: y == year,
-                onTap: () {
-                  Navigator.of(context).pop();
-                  setState(() => year = y);
-                },
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -727,7 +689,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                   Field(
                       label: 'المبلغ',
                       ltr: true,
-                      suffix: '\$',
+                      suffix: currencySymbol(currency as String),
                       placeholder: '0',
                       keyboardType: TextInputType.number,
                       marginBottom: 0,
@@ -1575,7 +1537,7 @@ class WorkersScreen extends StatelessWidget {
                 icon: 'dollar',
                 placeholder: '0',
                 ltr: true,
-                suffix: '\$',
+                suffix: currencySymbol(activeCurrency),
                 keyboardType: TextInputType.number,
                 onChanged: (v) => setS(() => f['amount'] = v)),
           ],
@@ -1834,70 +1796,3 @@ class ParkingScreen extends StatelessWidget {
   }
 }
 
-/// Compact tappable year chip — opens a list picker over [kYears].
-class _YearChip extends StatelessWidget {
-  const _YearChip({required this.year, required this.onTap});
-  final int year;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 36,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: AppColors.navy700,
-          borderRadius: BorderRadius.circular(11),
-          boxShadow: AppShadows.sm,
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const AppIcon('calendar', size: 15, color: Colors.white),
-          const SizedBox(width: 5),
-          NumText('$year', style: AppType.num(size: 13, weight: FontWeight.w800, color: Colors.white)),
-          const SizedBox(width: 3),
-          const AppIcon('chevronDown', size: 14, color: Colors.white),
-        ]),
-      ),
-    );
-  }
-}
-
-/// One row in the year list picker.
-class _YearPickRow extends StatelessWidget {
-  const _YearPickRow({required this.year, required this.selected, required this.onTap});
-  final int year;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 50,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.navy50 : AppColors.surface,
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: selected ? AppColors.navy700 : AppColors.line2, width: 1.5),
-        ),
-        child: Row(
-          children: [
-            AppIcon('calendar', size: 19, color: selected ? AppColors.navy700 : AppColors.ink400),
-            const SizedBox(width: 10),
-            Expanded(
-              child: NumText('$year',
-                  style: AppType.num(
-                      size: 15,
-                      weight: FontWeight.w700,
-                      color: selected ? AppColors.navy700 : AppColors.ink900)),
-            ),
-            if (selected) const AppIcon('check', size: 18, color: AppColors.navy700),
-          ],
-        ),
-      ),
-    );
-  }
-}

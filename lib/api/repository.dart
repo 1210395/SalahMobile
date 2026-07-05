@@ -56,8 +56,18 @@ class Api {
     final payTypes = await _dio.get('/pay-types').then((r) => r.data);
 
     final s = DataStore.I;
-    s.loadedBtype = b;
-    s.building = Building.fromJson(_obj(building));
+    final b0 = _obj(building);
+    s.building = Building.fromJson(b0);
+    // Multi-building: the server returns the user's OWN building regardless of the
+    // requested ?btype. Key the loaded dataset off the building the server
+    // actually returned (its `key`/`type`), not the requested type — otherwise
+    // the data getters (kApartments/kShops) and buildingFor() mismatch and the
+    // UI shows a blank name / empty lists.
+    final key = '${b0['key'] ?? ''}';
+    final type = '${b0['type'] ?? ''}';
+    s.loadedBtype = (key == 'commercial' || type == 'تجاري')
+        ? BType.commercial
+        : (key == 'residential' || type == 'سكني' ? BType.residential : b);
     s.summary = SummaryData.fromJson(_obj(summary));
     s.units = _list(units).map(Unit.fromJson).toList();
     s.payments = _list(payments).map(Payment.fromJson).toList();

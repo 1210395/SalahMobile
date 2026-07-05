@@ -45,7 +45,9 @@ class _UnitsScreenState extends State<UnitsScreen> {
 
     return ScreenScaffold(
       header: AppHeader(
-        title: res ? 'إدارة الشقق السكنية' : 'إدارة المحلات التجارية',
+        title: ctx.building.name.trim().isNotEmpty
+            ? ctx.building.name
+            : (res ? 'إدارة الشقق' : 'إدارة المحلات'),
         subtitle: '${all.length} ${res ? 'شقة' : 'محل'} · $lateCount متأخرة',
         onBack: () => ctx.go('home'),
         right: RoundBtn(icon: 'qr', onTap: () => _openAdd(ctx)),
@@ -426,7 +428,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 icon: 'wallet',
                 value: f['sub']!,
                 ltr: true,
-                suffix: '\$',
+                suffix: currencySymbol(activeCurrency),
                 keyboardType: TextInputType.number,
                 onChanged: (v) => f['sub'] = v),
             if (!backDebt)
@@ -435,7 +437,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   icon: 'dollar',
                   placeholder: '0',
                   ltr: true,
-                  suffix: '\$',
+                  suffix: currencySymbol(activeCurrency),
                   keyboardType: TextInputType.number,
                   onChanged: (v) => f['prev'] = v),
             DateField(
@@ -587,7 +589,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 icon: 'wallet',
                 value: f['sub']!,
                 ltr: true,
-                suffix: '\$',
+                suffix: currencySymbol(activeCurrency),
                 keyboardType: TextInputType.number,
                 onChanged: (v) => f['sub'] = v),
             Field(
@@ -596,7 +598,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 icon: 'dollar',
                 value: f['balance']!,
                 ltr: true,
-                suffix: '\$',
+                suffix: currencySymbol(activeCurrency),
                 keyboardType: const TextInputType.numberWithOptions(signed: true),
                 onChanged: (v) => f['balance'] = v),
             DateField(
