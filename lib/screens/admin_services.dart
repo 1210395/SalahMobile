@@ -210,15 +210,20 @@ class ElevatorScreen extends StatefulWidget {
 }
 
 class _ElevatorScreenState extends State<ElevatorScreen> {
-  late final List<Unit> base =
-      (widget.ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
-  late final Map<String, bool> access = {for (final u in base) u.id: u.status != 'late'};
+  // Local elevator-access toggles, keyed by unit id. Reconciled with the live
+  // unit list on every build so newly added/removed units are reflected.
+  final Map<String, bool> access = {};
 
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
     final b = ctx.building;
-    final allowed = access.values.where((v) => v).length;
+    // Recompute from live data each build (was `late final` → stale after edits).
+    final base = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
+    for (final u in base) {
+      access.putIfAbsent(u.id, () => u.status != 'late');
+    }
+    final allowed = base.where((u) => access[u.id] ?? true).length;
 
     return ScreenScaffold(
       header: AppHeader(
