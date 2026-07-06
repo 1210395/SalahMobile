@@ -45,6 +45,17 @@ class ResidentHome extends StatelessWidget {
         RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
         const SizedBox(width: 8),
         RoundBtn(icon: 'bell', dark: true, badge: true, onTap: () => ctx.go('alerts')),
+        const SizedBox(width: 8),
+        RoundBtn(
+            icon: 'logout',
+            dark: true,
+            onTap: () => showConfirmSheet(
+                  context,
+                  title: 'تسجيل الخروج',
+                  message: 'هل تريد تسجيل الخروج؟ ستحتاج إلى تسجيل الدخول مرة أخرى للوصول إلى حسابك.',
+                  confirmLabel: 'تسجيل الخروج',
+                  onConfirm: () => ctx.signOut(),
+                )),
       ]),
     );
 
@@ -556,7 +567,13 @@ class MoreHub extends StatelessWidget {
               ListRow(
                 leading: const IconChip(icon: 'logout', tone: 'late', size: 40),
                 title: 'تسجيل الخروج',
-                onTap: () => ctx.signOut(),
+                onTap: () => showConfirmSheet(
+                  context,
+                  title: 'تسجيل الخروج',
+                  message: 'هل تريد تسجيل الخروج؟ ستحتاج إلى تسجيل الدخول مرة أخرى للوصول إلى حسابك.',
+                  confirmLabel: 'تسجيل الخروج',
+                  onConfirm: () => ctx.signOut(),
+                ),
               ),
             ],
           ),

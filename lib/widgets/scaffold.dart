@@ -166,3 +166,58 @@ Future<T?> showAppSheet<T>(BuildContext context, Widget child) {
     builder: (_) => child,
   );
 }
+
+/// A confirm bottom sheet for destructive/irreversible actions (e.g. sign out).
+/// Shows a message with a cancel + confirm pair; [onConfirm] runs on confirm.
+void showConfirmSheet(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String confirmLabel,
+  required VoidCallback onConfirm,
+  String cancelLabel = 'إلغاء',
+  String confirmIcon = 'logout',
+  bool danger = true,
+}) {
+  showAppSheet(
+    context,
+    Builder(
+      builder: (sheetCtx) => SheetShell(
+        title: title,
+        footer: Row(
+          children: [
+            Expanded(
+              child: AppButton(
+                label: cancelLabel,
+                variant: BtnVariant.outline,
+                size: BtnSize.lg,
+                full: true,
+                onTap: () => Navigator.of(sheetCtx).pop(),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: AppButton(
+                label: confirmLabel,
+                variant: danger ? BtnVariant.danger : BtnVariant.primary,
+                size: BtnSize.lg,
+                icon: confirmIcon,
+                full: true,
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  onConfirm();
+                },
+              ),
+            ),
+          ],
+        ),
+        children: [
+          Text(message,
+              style: AppType.base(
+                  size: 14, weight: FontWeight.w600, color: AppColors.ink600, height: 1.6)),
+          const SizedBox(height: 4),
+        ],
+      ),
+    ),
+  );
+}

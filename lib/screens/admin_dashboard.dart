@@ -72,6 +72,17 @@ class _DashboardState extends State<Dashboard> {
           RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
           const SizedBox(width: 8),
           RoundBtn(icon: 'bell', dark: true, badge: kAlerts.isNotEmpty, onTap: () => ctx.go('alerts')),
+          const SizedBox(width: 8),
+          RoundBtn(
+              icon: 'logout',
+              dark: true,
+              onTap: () => showConfirmSheet(
+                    context,
+                    title: 'تسجيل الخروج',
+                    message: 'هل تريد تسجيل الخروج من حساب الإدارة؟ ستحتاج إلى تسجيل الدخول مرة أخرى.',
+                    confirmLabel: 'تسجيل الخروج',
+                    onConfirm: () => ctx.signOut(),
+                  )),
         ]),
       ),
       nav: ctx.adminNav,
