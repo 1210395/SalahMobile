@@ -39,12 +39,13 @@ class DatabaseSeeder extends Seeder
             return;
         }
 
-        // PRODUCTION: set SEED_DEMO=false in .env so a real deployment starts
-        // with EMPTY building shells (no demo apartments, no demo admin) — a
-        // manager then registers, onboards, and adds their own units without
-        // colliding with seeded numbers or a pre-claimed building. Defaults to
-        // true so local dev, the guest demo, and the test suite are unchanged.
-        if (! filter_var(env('SEED_DEMO', true), FILTER_VALIDATE_BOOLEAN)) {
+        // Demo data is OFF by default so a real deployment starts CLEAN — only
+        // empty building shells + fee items (no demo apartments, admin, payments,
+        // workers or alerts). A manager registers, onboards, and adds their own
+        // units with nothing colliding. Opt into the full sample data with
+        // SEED_DEMO=true (local dev, the guest demo, and the e2e suite, which
+        // sets it explicitly per e2e/README.md).
+        if (! filter_var(env('SEED_DEMO', false), FILTER_VALIDATE_BOOLEAN)) {
             $this->seedEssentials();
             $this->seedSubscriptions();
 
