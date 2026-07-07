@@ -173,14 +173,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  /// Prepend a branded header (app + building name) to exported rows so the
+  /// Excel/CSV file identifies the building, mirroring the PDF header.
+  List<List<String>> _withHeader(Ctx ctx, List<List<String>> rows) {
+    final b = ctx.building.name.trim();
+    return [
+      ['عمارتي${b.isEmpty ? '' : ' — $b'}'],
+      if (b.isNotEmpty) ['المبنى', b],
+      <String>[],
+      ...rows,
+    ];
+  }
+
   Future<void> _shareReport(Ctx ctx, List<List<String>> rows, {required bool excel}) async {
     try {
+      final data = _withHeader(ctx, rows);
       final dir = await getTemporaryDirectory();
       final stamp = '$selYear${(selMonth + 1).toString().padLeft(2, '0')}';
       if (excel) {
         final book = xlsx.Excel.createExcel();
         final sheet = book[book.getDefaultSheet() ?? 'Sheet1'];
-        for (final r in rows) {
+        for (final r in data) {
           sheet.appendRow([for (final c in r) xlsx.TextCellValue(c)]);
         }
         final bytes = book.encode() ?? <int>[];
@@ -189,7 +202,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         await Share.shareXFiles([XFile(file.path)], text: 'تقرير عمارتي');
       } else {
         // Prepend a BOM so Excel opens the Arabic CSV in UTF-8.
-        final csv = '﻿${_rowsToCsv(rows)}';
+        final csv = '﻿${_rowsToCsv(data)}';
         final file = File('${dir.path}/amarati-$tab-$stamp.csv');
         await file.writeAsString(csv);
         await Share.shareXFiles([XFile(file.path)], text: 'تقرير عمارتي');
@@ -209,11 +222,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return;
     }
     final years = kYears.isNotEmpty ? kYears : [selYear];
+    final bName = ctx.building.name.trim();
     try {
       final book = xlsx.Excel.createExcel();
       final defaultSheet = book.getDefaultSheet();
       for (final y in years) {
         final sheet = book['$y'];
+        // Branded header: app + building name + report title, then a blank row.
+        sheet.appendRow([xlsx.TextCellValue('عمارتي${bName.isEmpty ? '' : ' — $bName'}')]);
+        sheet.appendRow([xlsx.TextCellValue('التقرير الشامل · $y')]);
+        sheet.appendRow([xlsx.TextCellValue('')]);
         // Header: one row per apartment/shop; a column per month; then the
         // yearly summary columns (paid, required, remaining, paid-in-full).
         sheet.appendRow([
