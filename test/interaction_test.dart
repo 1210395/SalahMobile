@@ -396,4 +396,83 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(tester.takeException(), isNull);
   });
+
+  // ─────────── Salah feedback regressions (v1.3.4 / v1.3.5) ───────────
+
+  // #3: a payment detail must show WHICH month it covers (الشهر المدفوع عنه),
+  // distinct from the pay date (تاريخ الدفع) — not just the payment date.
+  testWidgets('payment detail shows the covered month and the pay date', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.text('أحمد علي').first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('الشهر المدفوع عنه'), findsOneWidget);
+    expect(find.text('تاريخ الدفع'), findsOneWidget);
+  });
+
+  // #6: tapping an expense (not only long-press) must open its edit sheet.
+  testWidgets('tapping an expense opens the edit sheet', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'expenses', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.text('مؤسسة الصيانة').first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('تعديل المصروف'), findsOneWidget);
+  });
+
+  // #4: the reports month filter defaults to 'كل الأشهر' so a multi-month payment
+  // shows its full whole-year total, not one month's slice.
+  testWidgets('reports default to كل الأشهر (whole-year total)', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'reports', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('كل الأشهر'), findsWidgets);
+  });
+
+  // #2: the add-payment sheet exposes a covered-YEAR selector (record past years).
+  testWidgets('payment sheet exposes a covered-year selector', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final fab = find.byType(AppFab);
+    if (fab.evaluate().isNotEmpty) {
+      await tester.tap(fab.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(tester.takeException(), isNull);
+      expect(find.text('سنة الأشهر المدفوعة'), findsOneWidget);
+    }
+  });
+
+  // #5: commercial screens use 'وحدة' terminology — 'محل' must not appear.
+  testWidgets('commercial units screen uses وحدة, never محل', (tester) async {
+    DataStore.I.loadedBtype = BType.commercial;
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'units', initialRole: AppRole.admin, initialBtype: BType.commercial)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('محل'), findsNothing, reason: 'commercial units must say وحدة');
+  });
+
+  // Logout: the admin home header has a logout button that opens a confirm sheet.
+  testWidgets('admin home logout button opens a confirm sheet', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'home', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final logout = find.byWidgetPredicate((w) => w is RoundBtn && w.icon == 'logout');
+    expect(logout, findsWidgets, reason: 'header must expose a logout button');
+    await tester.tap(logout.first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('تسجيل الخروج'), findsWidgets);
+  });
 }

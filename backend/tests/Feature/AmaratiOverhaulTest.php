@@ -1331,4 +1331,66 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame('full', $res->json('pay_status'));
         $this->assertSame(200, (int) $res->json('paid_amount'));
     }
+
+    // ─────────────── Salah feedback regressions (v1.3.4) ───────────────
+
+    public function test_back_debt_adds_previous_dues_on_top(): void
+    {
+        // #1: enabling 'احتساب الإيجار من بداية العقد' must ADD any previous dues
+        // (ذمم سابقة) to the from-contract debt, not replace them.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $start = now()->subMonths(6)->toDateString();
+        $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
+            'no' => '101', 'floor' => 1, 'resident' => 'ساكن', 'kind' => 'مستأجر',
+            'sub' => 100, 'contract_start' => $start, 'back_debt' => true,
+            'balance' => -250, // frontend pre-negates the ذمم سابقة
+        ])->assertCreated();
+
+        $months = (int) \Illuminate\Support\Carbon::parse($start)->diffInMonths(now());
+        $this->assertGreaterThan(0, $months); // sanity: months actually accrued
+        // Opening debt = rent × months since contract start + previous dues (owed).
+        $this->assertSame(-(100 * $months) - 250, (int) Unit::where('no', '101')->first()->balance);
+    }
+
+    public function test_payment_can_be_recorded_for_a_previous_year(): void
+    {
+        // #2: the payment sheet's year selector lets a manager record months of a
+        // PREVIOUS year; the row must land in that year's totals, not the current.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => '101', 'balance' => 0]);
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 50, 'kind' => 'الاشتراك الشهري',
+            'month' => 11, 'year' => 2024, 'date' => '2026-08-01', 'method' => 'نقداً',
+        ])->assertCreated();
+
+        $this->assertSame(2024, (int) Payment::where('unit_no', '101')->first()->year);
+        $s24 = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2024')->json();
+        $this->assertSame(50, (int) $s24['revenueM']);
+        $s26 = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(0, (int) $s26['revenueM']);
+    }
+
+    public function test_multi_month_payment_sums_to_the_full_total(): void
+    {
+        // #4: recording 100 across 7 months (the multi-month flow saves one row
+        // per month) must total 700 in the whole-year summary — not one month's 100.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => '101', 'sub' => 100, 'balance' => 0]);
+        for ($m = 0; $m < 7; $m++) {
+            $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+                'unit_no' => '101', 'amount' => 100, 'kind' => 'الاشتراك الشهري',
+                'month' => $m, 'year' => 2026, 'date' => '2026-08-01', 'method' => 'نقداً',
+            ])->assertCreated();
+        }
+        $this->assertSame(7, Payment::where('unit_no', '101')->count());
+        $this->assertSame(700, (int) Unit::where('no', '101')->first()->balance);
+
+        $all = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(700, (int) $all['revenueM']); // whole year = 7 × 100
+        $jan = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026&month=0')->json();
+        $this->assertSame(100, (int) $jan['revenueM']); // a single month is still 100
+    }
 }
