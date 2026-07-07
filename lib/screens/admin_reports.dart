@@ -44,22 +44,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   late int selYear = kYears.isNotEmpty ? kYears.last : DateTime.now().year;
-  int selMonth = DateTime.now().month - 1;
+  // -1 = كل الأشهر: default to the whole-year total so multi-month payments show
+  // their full collected amount; the manager can narrow to a single month.
+  int selMonth = -1;
   // Expense-report filters (category + month; -1 month = whole year).
   String expCat = 'all';
   int expMonth = -1;
   String expSupplier = 'all';
   String? selUnitNo;
 
-  /// Building-wide amount collected in the selected month/year.
+  /// Building-wide amount collected in the selected month/year. selMonth == -1
+  /// means "all months" — sums the whole year (so a multi-month payment shows
+  /// its full total, e.g. 7 months × 100 = 700, not one month's 100).
   int _collected() => kPayments
-      .where((p) => p.month == selMonth && p.year == selYear)
+      .where((p) => p.year == selYear && (selMonth == -1 || p.month == selMonth))
       .fold<int>(0, (s, p) => s + p.amount);
 
-  /// Expenses dated within the selected month/year.
+  /// Expenses dated within the selected month/year (selMonth == -1 = whole year).
   int _monthExpenses() => kExpenses.where((e) {
         final d = DateTime.tryParse(e.date);
-        return d != null && d.year == selYear && d.month - 1 == selMonth;
+        return d != null && d.year == selYear && (selMonth == -1 || d.month - 1 == selMonth);
       }).fold<int>(0, (s, e) => s + e.amount);
 
   /// Outstanding dues across late units of the active building type.
@@ -116,7 +120,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             onTap: () async {
               Navigator.of(context).pop();
               try {
-                await exportReportPdf(title, rows);
+                await exportReportPdf(title, rows, buildingName: ctx.building.name);
               } catch (e) {
                 ctx.toast(apiErrorText(e), tone: 'late');
               }
@@ -213,7 +217,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         // Header: one row per apartment/shop; a column per month; then the
         // yearly summary columns (paid, required, remaining, paid-in-full).
         sheet.appendRow([
-          xlsx.TextCellValue(ctx.res ? 'الشقة' : 'المحل'),
+          xlsx.TextCellValue(ctx.res ? 'الشقة' : 'الوحدة'),
           for (var m = 0; m < 12; m++) xlsx.TextCellValue(monthLabelNum(m)),
           xlsx.TextCellValue('إجمالي المدفوع'),
           xlsx.TextCellValue('المطلوب سنوياً'),
@@ -271,11 +275,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
       v.contains(',') || v.contains('"') || v.contains('\n') ? '"${v.replaceAll('"', '""')}"' : v;
 
   List<List<String>> _reportRows(Ctx ctx, List<Unit> lateUnits) {
-    final unitWord = ctx.res ? 'الشقة' : 'المحل';
+    final unitWord = ctx.res ? 'الشقة' : 'الوحدة';
     switch (tab) {
       case 'monthly':
         return [
-          ['التقرير الشهري', '${monthLabelNum(selMonth)} $selYear'],
+          ['التقرير الشهري', selMonth == -1 ? 'كل أشهر $selYear' : '${monthLabelNum(selMonth)} $selYear'],
           [],
           ['البند', 'القيمة'],
           ['إجمالي محصّل', '${_collected()}'],
@@ -298,11 +302,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
       case 'unit':
         final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
         if (units.isEmpty) {
-          return [['تقرير ${ctx.res ? 'الشقة' : 'المحل'}', '—']];
+          return [['تقرير ${ctx.res ? 'الشقة' : 'الوحدة'}', '—']];
         }
         final u = units.firstWhere((x) => x.no == (selUnitNo ?? units.first.no), orElse: () => units.first);
         return [
-          ['تقرير ${ctx.res ? 'الشقة' : 'المحل'}', '${u.no} — ${u.resident}'],
+          ['تقرير ${ctx.res ? 'الشقة' : 'الوحدة'}', '${u.no} — ${u.resident}'],
           [],
           ['البند', 'القيمة'],
           ['المطلوب سنوياً', '${u.sub * 12}'],
@@ -373,7 +377,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           options: [
             const SegOption('monthly', 'شهري'),
             const SegOption('annual', 'سنوي'),
-            SegOption('unit', ctx.res ? 'شقة' : 'محل'),
+            SegOption('unit', ctx.res ? 'شقة' : 'وحدة'),
             const SegOption('expense', 'مصروفات'),
           ],
         ),
@@ -399,7 +403,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 icon: 'file',
                 onTap: () async {
                   try {
-                    await exportReportPdf('تصدير التقرير', _reportRows(ctx, lateUnits));
+                    await exportReportPdf('تصدير التقرير', _reportRows(ctx, lateUnits),
+                        buildingName: ctx.building.name);
                   } catch (e) {
                     ctx.toast(apiErrorText(e), tone: 'late');
                   }
@@ -420,7 +425,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _yearSelect() {
-    final years = kYears.isNotEmpty ? kYears : [selYear];
+    // Offer a range of recent years (not only years that already have data) so
+    // past periods can be viewed/edited in the reports.
+    final now = DateTime.now().year;
+    final years = <int>{for (var y = now - 5; y <= now; y++) y, ...kYears, selYear}.toList()
+      ..sort();
     return SelectField(
       label: 'السنة',
       icon: 'calendar',
@@ -432,7 +441,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _monthSelect() => SelectField(
         label: 'الشهر',
-        options: [for (var i = 0; i < 12; i++) SelectOption(i, monthLabelNum(i))],
+        options: [
+          const SelectOption(-1, 'كل الأشهر'),
+          for (var i = 0; i < 12; i++) SelectOption(i, monthLabelNum(i)),
+        ],
         value: selMonth,
         onChanged: (v) => setState(() => selMonth = v as int),
       );
@@ -441,7 +453,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final collected = _collected();
     final expenses = _monthExpenses();
     final due = _monthDue(ctx);
-    final unitWord = ctx.res ? 'شقة' : 'محل';
+    final unitWord = ctx.res ? 'شقة' : 'وحدة';
     return [
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -549,7 +561,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<Widget> _unit(Ctx ctx) {
     final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
     if (units.isEmpty) {
-      return [EmptyState(icon: 'building', title: ctx.res ? 'لا توجد شقق فعّالة' : 'لا توجد محلات فعّالة')];
+      return [EmptyState(icon: 'building', title: ctx.res ? 'لا توجد شقق فعّالة' : 'لا توجد وحدات فعّالة')];
     }
     final no = selUnitNo ?? units.first.no;
     final u = units.firstWhere((x) => x.no == no, orElse: () => units.first);
@@ -585,7 +597,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     children: [
                       Text(u.resident, style: AppType.base(size: 15, weight: FontWeight.w800)),
                       const SizedBox(height: 2),
-                      Text('${ctx.res ? 'شقة' : 'محل'} ${u.no} · ${u.kind}',
+                      Text('${ctx.res ? 'شقة' : 'وحدة'} ${u.no} · ${u.kind}',
                           style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
                     ],
                   ),
@@ -806,7 +818,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                           Expanded(
                             child: Text(
                               '${n['name'] ?? 'ساكن'}'
-                              '${unit.isEmpty ? '' : ' · ${ctx.res ? 'شقة' : 'محل'} $unit'}',
+                              '${unit.isEmpty ? '' : ' · ${ctx.res ? 'شقة' : 'وحدة'} $unit'}',
                               style: AppType.base(size: 14, weight: FontWeight.w800),
                             ),
                           ),
@@ -886,7 +898,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
   void _openCompose(Ctx ctx) {
     final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
     final floors = units.map((u) => u.floor).toSet().toList()..sort();
-    final unitWord = ctx.res ? 'شقة' : 'محل';
+    final unitWord = ctx.res ? 'شقة' : 'وحدة';
     String target = 'all';
     String unitNo = units.isNotEmpty ? units.first.no : '';
     int selFloor = floors.isNotEmpty ? floors.first : 0;
@@ -1426,7 +1438,7 @@ class _YearsScreenState extends State<YearsScreen> {
         ),
         const SizedBox(height: 12),
         Center(
-          child: Text('$units ${ctx.res ? 'شقة' : 'محل'} فعّالة في $year',
+          child: Text('$units ${ctx.res ? 'شقة' : 'وحدة'} فعّالة في $year',
               style: AppType.base(size: 11.5, weight: FontWeight.w600, color: AppColors.ink400)),
         ),
       ],

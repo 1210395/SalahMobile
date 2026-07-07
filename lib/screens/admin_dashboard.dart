@@ -56,7 +56,7 @@ class _DashboardState extends State<Dashboard> {
     final res = ctx.res;
     final b = ctx.building;
     final tiles = [
-      QuickTile(label: res ? 'الشقق السكنية' : 'المحلات التجارية', sub: res ? 'الشقق والملاك' : 'المحلات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
+      QuickTile(label: res ? 'الشقق السكنية' : 'الوحدات التجارية', sub: res ? 'الشقق والملاك' : 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
       QuickTile(label: 'الإيرادات', sub: 'متابعة التحصيل', icon: 'wallet', tone: 'gold', onTap: () => ctx.go('payments')),
       QuickTile(label: 'المصروفات', sub: 'إدارة المصروفات', icon: 'expense', tone: 'late', onTap: () => ctx.go('expenses')),
       QuickTile(label: 'التقارير', sub: 'تقارير شاملة', icon: 'pie', tone: 'credit', onTap: () => ctx.go('reports')),
@@ -367,7 +367,7 @@ class BuildingScreen extends StatelessWidget {
         const SizedBox(height: 16),
         const SectionTitle(text: 'إدارة سريعة'),
         gridRows([
-          QuickTile(label: res ? 'الشقق' : 'المحلات', sub: 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
+          QuickTile(label: res ? 'الشقق' : 'الوحدات', sub: 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
           QuickTile(label: 'الباركينج', sub: 'المواقف', icon: 'parking', tone: 'gold', onTap: () => ctx.go('parking')),
           QuickTile(label: 'الحارس', sub: 'بيانات الحارس', icon: 'shield', tone: 'ok', onTap: () => ctx.go('guard')),
           QuickTile(label: 'الترحيل السنوي', sub: 'الأرصدة الافتتاحية والترحيل', icon: 'calendar', tone: 'credit', onTap: () => ctx.go('years')),
@@ -436,7 +436,7 @@ class BuildingScreen extends StatelessWidget {
               onChanged: (v) => setS(() => type = v as BType),
               options: const [
                 SegOption(BType.residential, 'سكني (شقق)', icon: 'building'),
-                SegOption(BType.commercial, 'تجاري (محلات)', icon: 'store'),
+                SegOption(BType.commercial, 'تجاري (وحدات)', icon: 'store'),
               ],
             ),
             const SizedBox(height: 14),
@@ -455,7 +455,7 @@ class BuildingScreen extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Field(
-                      label: res ? 'عدد الشقق' : 'عدد المحلات',
+                      label: res ? 'عدد الشقق' : 'عدد الوحدات',
                       icon: 'grid',
                       value: f['units']!,
                       ltr: true,

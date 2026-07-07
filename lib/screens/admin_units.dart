@@ -47,8 +47,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
       header: AppHeader(
         title: ctx.building.name.trim().isNotEmpty
             ? ctx.building.name
-            : (res ? 'إدارة الشقق' : 'إدارة المحلات'),
-        subtitle: '${all.length} ${res ? 'شقة' : 'محل'} · $lateCount متأخرة',
+            : (res ? 'إدارة الشقق' : 'إدارة الوحدات'),
+        subtitle: '${all.length} ${res ? 'شقة' : 'وحدة'} · $lateCount متأخرة',
         onBack: () => ctx.go('home'),
         right: RoundBtn(icon: 'qr', onTap: () => _openAdd(ctx)),
       ),
@@ -57,7 +57,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
       children: [
         Field(
           icon: 'search',
-          placeholder: res ? 'ابحث باسم الساكن أو رقم الشقة' : 'ابحث باسم المحل أو رقمه',
+          placeholder: res ? 'ابحث باسم الساكن أو رقم الشقة' : 'ابحث باسم الوحدة أو رقمه',
           onChanged: (v) => setState(() => q = v),
         ),
         Segmented(
@@ -169,7 +169,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
     showAppSheet(
       context,
       SheetShell(
-        title: '${res ? 'شقة' : 'محل'} ${u.no}',
+        title: '${res ? 'شقة' : 'وحدة'} ${u.no}',
         footer: u.status != 'vacant'
             ? Row(children: [
                 Expanded(
@@ -234,7 +234,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
           ]),
           if (u.kind == 'شاغر') ...[
             const SizedBox(height: 10),
-            _notes('${res ? 'الشقة' : 'المحل'} ${res ? 'متاحة' : 'متاح'} للإيجار.'),
+            _notes('${res ? 'الشقة' : 'الوحدة'} ${res ? 'متاحة' : 'متاحة'} للإيجار.'),
           ],
           if (u.loginCode.trim().isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -251,7 +251,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
           ],
           const SizedBox(height: 10),
           AppButton(
-            label: 'تعديل بيانات ${res ? 'الشقة' : 'المحل'}',
+            label: 'تعديل بيانات ${res ? 'الشقة' : 'الوحدة'}',
             variant: BtnVariant.outline,
             full: true,
             icon: 'edit',
@@ -373,7 +373,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 },
                 makeAccount
                     ? 'تمت إضافة ${f['name']!.trim()} وإنشاء حساب دخول'
-                    : 'تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'محل'} ${f['no']}',
+                    : 'تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'وحدة'} ${f['no']}',
               );
             },
           ),
@@ -415,7 +415,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Field(
-                      label: res ? 'رقم الشقة' : 'رقم المحل',
+                      label: res ? 'رقم الشقة' : 'رقم الوحدة',
                       icon: 'grid',
                       placeholder: res ? '101' : 'M-01',
                       ltr: true,
@@ -431,15 +431,14 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 suffix: currencySymbol(activeCurrency),
                 keyboardType: TextInputType.number,
                 onChanged: (v) => f['sub'] = v),
-            if (!backDebt)
-              Field(
-                  label: 'ذمم سابقة (اختياري)',
-                  icon: 'dollar',
-                  placeholder: '0',
-                  ltr: true,
-                  suffix: currencySymbol(activeCurrency),
-                  keyboardType: TextInputType.number,
-                  onChanged: (v) => f['prev'] = v),
+            Field(
+                label: 'ذمم سابقة (اختياري)',
+                icon: 'dollar',
+                placeholder: '0',
+                ltr: true,
+                suffix: currencySymbol(activeCurrency),
+                keyboardType: TextInputType.number,
+                onChanged: (v) => f['prev'] = v),
             DateField(
                 label: 'تاريخ بداية العقد',
                 value: start,
@@ -453,8 +452,9 @@ class _UnitsScreenState extends State<UnitsScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 4),
                 child: Text(
-                    'سيُحتسب الدين الافتتاحي = الدفعة الشهرية × عدد الأشهر منذ بداية العقد. '
-                    'بدون التفعيل يبدأ الحساب من الشهر الحالي.',
+                    'سيُحتسب الدين الافتتاحي = الدفعة الشهرية × عدد الأشهر منذ بداية العقد، '
+                    'بالإضافة إلى الذمم السابقة إن وُجدت. بدون التفعيل يبدأ الحساب من الشهر الحالي '
+                    '(مع احتساب الذمم السابقة).',
                     style: AppType.base(
                         size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
               ),
@@ -515,7 +515,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
       context,
       StatefulBuilder(
         builder: (sheetCtx, setS) => SheetShell(
-          title: 'تعديل ${res ? 'شقة' : 'محل'} ${u.no}',
+          title: 'تعديل ${res ? 'شقة' : 'وحدة'} ${u.no}',
           footer: AppButton(
             label: 'حفظ التعديلات',
             full: true,
@@ -537,7 +537,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   'status': status,
                 }),
                 status == 'vacant'
-                    ? 'تم تعيين ${res ? 'الشقة' : 'المحل'} كشاغر — مستبعَد من الحسابات والدفعات'
+                    ? 'تم تعيين ${res ? 'الشقة' : 'الوحدة'} كشاغر — مستبعَد من الحسابات والدفعات'
                     : 'تم حفظ التعديلات',
               );
             },
@@ -576,7 +576,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Field(
-                      label: res ? 'رقم الشقة' : 'رقم المحل',
+                      label: res ? 'رقم الشقة' : 'رقم الوحدة',
                       icon: 'grid',
                       value: f['no']!,
                       ltr: true,
@@ -632,17 +632,17 @@ class _UnitsScreenState extends State<UnitsScreen> {
               onChanged: (v) => setS(() => status = v as String),
             ),
             if (status == 'vacant')
-              _notes('عند جعل ${res ? 'الشقة' : 'المحل'} شاغراً يُستبعَد تلقائياً من الحسابات والدفعات والتقارير.'),
+              _notes('عند جعل ${res ? 'الشقة' : 'الوحدة'} شاغراً يُستبعَد تلقائياً من الحسابات والدفعات والتقارير.'),
             const SizedBox(height: 12),
             AppButton(
-              label: 'حذف ${res ? 'الشقة' : 'المحل'} نهائياً',
+              label: 'حذف ${res ? 'الشقة' : 'الوحدة'} نهائياً',
               variant: BtnVariant.danger,
               full: true,
               icon: 'trash',
               onTap: () {
                 Navigator.of(sheetCtx).pop();
                 _save(() => Api.I.deleteUnit(ctx.btype, u.dbId),
-                    'تم حذف ${res ? 'الشقة' : 'المحل'} ${u.no}');
+                    'تم حذف ${res ? 'الشقة' : 'الوحدة'} ${u.no}');
               },
             ),
           ],
@@ -696,7 +696,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
             iconColor: AppColors.navy700,
             icon: 'qr',
             title: 'إنشاء رمز QR',
-            sub: 'يمسح الساكن الرمز للانضمام ${res ? 'للشقة' : 'للمحل'}',
+            sub: 'يمسح الساكن الرمز للانضمام ${res ? 'للشقة' : 'للوحدة'}',
             onTap: () {
               Navigator.of(context).pop();
               _openInvite(ctx, res, qr: true);

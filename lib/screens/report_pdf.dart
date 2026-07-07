@@ -1,13 +1,26 @@
 // عمارتي — real PDF report export (#8). Builds an RTL, Cairo-font PDF from the
 // same row data used for Excel/CSV, then opens the system share/print sheet.
+// The header carries the app logo, the building name, and the report title.
 
+import 'dart:typed_data';
+
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-Future<void> exportReportPdf(String title, List<List<String>> rows) async {
+Future<void> exportReportPdf(String title, List<List<String>> rows, {String? buildingName}) async {
   final base = await PdfGoogleFonts.cairoRegular();
   final bold = await PdfGoogleFonts.cairoBold();
+
+  // Site logo, embedded in the header (optional — skip gracefully if missing).
+  Uint8List? logo;
+  try {
+    logo = (await rootBundle.load('assets/images/logo.png')).buffer.asUint8List();
+  } catch (_) {
+    logo = null;
+  }
+  final building = (buildingName ?? '').trim();
 
   final doc = pw.Document();
   doc.addPage(
@@ -21,9 +34,28 @@ Future<void> exportReportPdf(String title, List<List<String>> rows) async {
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text('عمارتي',
-                style: pw.TextStyle(font: bold, fontSize: 22, color: PdfColor.fromInt(0xFF232858))),
-            pw.SizedBox(height: 2),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                if (logo != null) ...[
+                  pw.Image(pw.MemoryImage(logo), width: 42, height: 42),
+                  pw.SizedBox(width: 10),
+                ],
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('عمارتي',
+                          style: pw.TextStyle(font: bold, fontSize: 20, color: PdfColor.fromInt(0xFF232858))),
+                      if (building.isNotEmpty)
+                        pw.Text(building,
+                            style: pw.TextStyle(font: bold, fontSize: 13, color: PdfColor.fromInt(0xFF232858))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 4),
             pw.Text(title, style: pw.TextStyle(font: base, fontSize: 12, color: PdfColors.grey600)),
             pw.Divider(color: PdfColor.fromInt(0xFFC2A24E), thickness: 1.2),
           ],

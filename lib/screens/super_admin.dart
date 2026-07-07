@@ -343,7 +343,7 @@ class _AdminsScreenState extends State<AdminsScreen> {
               onChanged: (v) => setS(() => building = v),
               options: const [
                 SegOption('residential', 'سكني (شقق)', icon: 'building'),
-                SegOption('commercial', 'تجاري (محلات)', icon: 'store'),
+                SegOption('commercial', 'تجاري (وحدات)', icon: 'store'),
               ],
             ),
           ],

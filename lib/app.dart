@@ -383,7 +383,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
               const NavTab(id: 'home', label: 'الرئيسية', icon: 'home', fillOnActive: true),
               NavTab(
                   id: 'units',
-                  label: btype == BType.residential ? 'الشقق' : 'محلات',
+                  label: btype == BType.residential ? 'الشقق' : 'وحدات',
                   icon: btype == BType.residential ? 'building' : 'store'),
               const NavTab(id: 'payments', label: 'الإيرادات', icon: 'wallet'),
               const NavTab(id: 'reports', label: 'التقارير', icon: 'pie'),
@@ -577,7 +577,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
                       },
                       options: const [
                         SegOption(BType.residential, 'سكنية (شقق)', icon: 'building'),
-                        SegOption(BType.commercial, 'تجارية (محلات)', icon: 'store'),
+                        SegOption(BType.commercial, 'تجارية (وحدات)', icon: 'store'),
                       ],
                     ),
                   ],

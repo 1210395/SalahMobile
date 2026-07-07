@@ -84,7 +84,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 ),
               ]),
               const SizedBox(height: 10),
-              Text('شقق ومحلات غير محدودة · تقارير · تنبيهات واتساب · نسخ احتياطي',
+              Text('شقق ووحدات غير محدودة · تقارير · تنبيهات واتساب · نسخ احتياطي',
                   style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.navy300, height: 1.6)),
             ],
           ),
@@ -347,13 +347,13 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
       case 'type':
         return (
           title: 'نوع المبنى؟',
-          hint: 'يحدّد ما إذا كانت الوحدات شققاً أو محلات.',
+          hint: 'يحدّد ما إذا كانت الوحدات شققاً أو وحدات.',
           input: Segmented(
             value: type,
             onChanged: (v) => setState(() => type = v as BType),
             options: const [
               SegOption(BType.residential, 'سكني (شقق)', icon: 'building'),
-              SegOption(BType.commercial, 'تجاري (محلات)', icon: 'store'),
+              SegOption(BType.commercial, 'تجاري (وحدات)', icon: 'store'),
             ],
           ),
         );
@@ -373,7 +373,7 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
         );
       case 'units':
         return (
-          title: _res ? 'كم عدد الشقق؟' : 'كم عدد المحلات؟',
+          title: _res ? 'كم عدد الشقق؟' : 'كم عدد الوحدات؟',
           hint: 'يمكنك إضافة الوحدات تفصيلياً لاحقاً.',
           input: Field(
               key: const ValueKey('s-units'),
@@ -595,7 +595,7 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
                         // Key on the scanned value so a QR scan remounts the
                         // field and shows the prefilled number.
                         key: ValueKey('unit-${f['no']}'),
-                        label: ctx.res ? 'رقم الشقة' : 'رقم المحل',
+                        label: ctx.res ? 'رقم الشقة' : 'رقم الوحدة',
                         icon: 'grid',
                         placeholder: '203',
                         value: f['no']!,
@@ -670,7 +670,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
   Future<void> _act(int id, bool approve, String name, String unit) async {
     final ctx = widget.ctx;
-    final noun = ctx.res ? 'شقة' : 'محل';
+    final noun = ctx.res ? 'شقة' : 'وحدة';
     try {
       if (approve) {
         await Api.I.approveJoinRequest(ctx.btype, id);
@@ -735,7 +735,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                           ],
                         ),
                       ),
-                      AppBadge(label: '${ctx.res ? 'شقة' : 'محل'} $unit', tone: 'navy', small: true),
+                      AppBadge(label: '${ctx.res ? 'شقة' : 'وحدة'} $unit', tone: 'navy', small: true),
                     ]),
                     const SizedBox(height: 12),
                     Row(children: [

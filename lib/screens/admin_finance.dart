@@ -115,7 +115,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       child: ListRow(
                         leading: const IconChip(icon: 'wallet', tone: 'ok', size: 42),
                         title: p.name,
-                        sub: 'وحدة ${p.unit} · ${_kindNoGuard(p.kind)} · ${p.method}',
+                        // Show which month the payment COVERS (not just the pay date).
+                        sub: '${ctx.res ? 'شقة' : 'وحدة'} ${p.unit} · عن ${monthLabelNum(p.month)} ${p.year} · ${p.method}',
                         dividerBelow: i < list.length - 1,
                         trailing: _amountTrailing('+${fmtUSD(p.amount)}', p.date, AppColors.ok700),
                       ),
@@ -189,7 +190,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   /// Open a read-only detail sheet for one payment with تعديل / حذف / سند قبض.
   void _openDetail(Ctx ctx, Payment p) {
     final u = _unitFor(ctx, p.unit);
-    final unitWord = ctx.res ? 'الشقة' : 'المحل';
+    final unitWord = ctx.res ? 'الشقة' : 'الوحدة';
     showAppSheet(
       context,
       SheetShell(
@@ -200,13 +201,13 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             DetailRow('building', unitWord, p.unit),
             DetailRow('wallet', 'المبلغ', fmtUSD(p.amount)),
             DetailRow('receipt', 'البند', _kindNoGuard(p.kind)),
-            DetailRow('calendar', 'الشهر', '${monthLabelNum(p.month)} ${p.year}'),
-            DetailRow('calendar', 'التاريخ', p.date, ltr: true),
+            DetailRow('calendar', 'الشهر المدفوع عنه', '${monthLabelNum(p.month)} ${p.year}'),
+            DetailRow('calendar', 'تاريخ الدفع', p.date, ltr: true),
             DetailRow('dollar', 'طريقة الدفع', p.method),
           ]),
           const SizedBox(height: 12),
           AppButton(
-            label: 'كل دفعات ${ctx.res ? 'هذه الشقة' : 'هذا المحل'}',
+            label: 'كل دفعات ${ctx.res ? 'هذه الشقة' : 'هذه الوحدة'}',
             full: true,
             size: BtnSize.lg,
             variant: BtnVariant.outline,
@@ -279,7 +280,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             decoration: BoxDecoration(
                 color: AppColors.surface2, borderRadius: BorderRadius.circular(12)),
             child: Text('${list.length} دفعة بإجمالي ${fmtUSD(total)} لـ '
-                '${ctx.res ? 'الشقة' : 'المحل'} $unitNo.',
+                '${ctx.res ? 'الشقة' : 'الوحدة'} $unitNo.',
                 style: AppType.base(
                     size: 13, weight: FontWeight.w600, color: AppColors.ink600, height: 1.5)),
           ),
@@ -332,7 +333,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
 
   /// Receipt (سند قبض): preview + share via WhatsApp / save as PDF.
   void _openReceipt(Ctx ctx, Payment p, Unit? u) {
-    final unitWord = ctx.res ? 'شقة' : 'محل';
+    final unitWord = ctx.res ? 'شقة' : 'وحدة';
     final text = _receiptText(p, unitWord);
     showAppSheet(
       context,
@@ -487,6 +488,9 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
   // Months this payment covers — multi-select (one payment row saved per month).
   // Defaults to the current calendar month.
   late final Set<int> payMonths = {DateTime.now().month - 1};
+  // Year the covered months belong to — lets the manager record payments for a
+  // PREVIOUS year (the months picker alone is year-agnostic).
+  int payYear = DateTime.now().year;
   // Per-type override prices captured via the zero-fee popup (id → amount), so a
   // بند whose stored fee is 0 can be priced inline without re-opening settings.
   final Map<String, int> priceOverride = {};
@@ -518,7 +522,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     final total = amountTouched ? (int.tryParse(amountStr.trim()) ?? 0) : itemsSum;
     final unitList = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
     final units = unitList.map((u) => SelectOption(u.no, '${u.no} — ${u.resident}')).toList();
-    final unitWord = ctx.res ? 'شقة' : 'محل';
+    final unitWord = ctx.res ? 'شقة' : 'وحدة';
 
     String payIcon(String id) =>
         {'sub': 'wallet', 'elev': 'elevator', 'guard': 'shield'}[id] ?? 'parking';
@@ -560,7 +564,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             value: target,
             onChanged: (v) => setState(() => target = v as String),
             options: [
-              SegOption('one', ctx.res ? 'شقة واحدة' : 'محل واحد'),
+              SegOption('one', ctx.res ? 'شقة واحدة' : 'وحدة واحدة'),
               const SegOption('all', 'الجميع'),
               const SegOption('group', 'مجموعة'),
             ],
@@ -578,12 +582,12 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: _infoNote(
-                'سيتم تسجيل الدفعة لجميع ${ctx.res ? 'الشقق' : 'المحلات'} الفعّالة (${unitList.length}).'),
+                'سيتم تسجيل الدفعة لجميع ${ctx.res ? 'الشقق' : 'الوحدات'} الفعّالة (${unitList.length}).'),
           ),
         if (target == 'group') ...[
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: Text('اختر ${ctx.res ? 'الشقق' : 'المحلات'} (${selUnits.length})',
+            child: Text('اختر ${ctx.res ? 'الشقق' : 'الوحدات'} (${selUnits.length})',
                 style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
           ),
           Padding(
@@ -763,6 +767,20 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                 '${fmtMoney((total * (double.tryParse(rateStr) ?? 0)).round(), activeCurrency)} '
                 '($activeCurrency) بعملة المبنى.'),
           ),
+        // Covered year — lets past-year months be paid (default: current year).
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: SelectField(
+            label: 'سنة الأشهر المدفوعة',
+            icon: 'calendar',
+            options: [
+              for (var y = DateTime.now().year; y >= DateTime.now().year - 6; y--)
+                SelectOption(y, '$y'),
+            ],
+            value: payYear,
+            onChanged: (v) => setState(() => payYear = v as int),
+          ),
+        ),
         // Months covered — a multi-select dropdown (a payment row is saved per
         // month, so choosing 3 months records the bill three times for the units).
         Padding(
@@ -894,15 +912,16 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     final kind = labels.isEmpty ? 'دفعة' : labels.join(' + ');
     final months = payMonths.isEmpty ? {DateTime.now().month - 1} : payMonths;
     final date = dateIso;
-    // Year follows the picked date so the payment lands in the right report year.
-    final year = int.tryParse(date.split('-').first) ?? DateTime.now().year;
+    // The covered year is chosen explicitly (so past-year months can be paid);
+    // the payment DATE stays the actual day money was received.
+    final year = payYear;
     final cur = currency as String;
     final sameCur = cur == activeCurrency;
     final rate = sameCur ? 1.0 : (double.tryParse(rateStr) ?? 1);
     // Base (building-currency) amount the row stores. Server is authoritative too,
     // but we send the converted value so the contract is explicit.
     final baseAmount = sameCur ? total : (total * rate).round();
-    final unitWord = ctx.res ? 'شقة' : 'محل';
+    final unitWord = ctx.res ? 'شقة' : 'وحدة';
     Navigator.of(context).pop();
     try {
       for (final no in targets) {
@@ -929,7 +948,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
       }
       await ctx.reload();
       final who = target == 'all'
-          ? (ctx.res ? 'جميع الشقق' : 'جميع المحلات')
+          ? (ctx.res ? 'جميع الشقق' : 'جميع الوحدات')
           : target == 'group'
               ? '${targets.length} $unitWord'
               : '$unitWord $unit';
@@ -1142,6 +1161,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             children: List.generate(list.length, (i) {
               final e = list[i];
               return GestureDetector(
+                onTap: () => _openEdit(ctx, e),
                 onLongPress: () => _openEdit(ctx, e),
                 child: ListRow(
                   leading: IconChip(icon: e.icon, tone: e.tone, size: 42),

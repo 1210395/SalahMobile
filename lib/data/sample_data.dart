@@ -76,9 +76,9 @@ List<String> get arMonthsNum =>
     [for (var i = 0; i < 12; i++) monthLabelNum(i)];
 
 /// Right-hand square label for a unit row: "طابق 1 شقة 1" (residential) /
-/// "طابق 1 محل 1" (commercial), derived from the unit's own floor + number.
+/// "طابق 1 وحدة 1" (commercial), derived from the unit's own floor + number.
 String floorUnitLabel(Unit u, bool residential) =>
-    'طابق ${u.floor} ${residential ? 'شقة' : 'محل'} ${u.no}';
+    'طابق ${u.floor} ${residential ? 'شقة' : 'وحدة'} ${u.no}';
 
 /// Years available for selectors: every year present in live payments, unioned
 /// with a sensible default window ending at the current year. Always sorted.

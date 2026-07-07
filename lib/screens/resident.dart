@@ -498,7 +498,7 @@ class MoreHub extends StatelessWidget {
     final groups = <(String, List<(String, String, String)>)>[
       ('الإدارة', [
         ('building', 'إدارة المبنى', 'building2'),
-        ('units', res ? 'الشقق السكنية' : 'المحلات التجارية', res ? 'building' : 'store'),
+        ('units', res ? 'الشقق السكنية' : 'الوحدات التجارية', res ? 'building' : 'store'),
         ('approvals', 'طلبات الانضمام', 'users'),
         ('subscribe', 'الاشتراك بالتطبيق', 'shield'),
         ('years', 'الترحيل السنوي', 'calendar'),

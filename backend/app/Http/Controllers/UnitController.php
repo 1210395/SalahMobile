@@ -94,7 +94,11 @@ class UnitController extends Controller
             // future start owes nothing yet — without this guard the month diff
             // goes negative and fabricates a phantom credit.
             $months = $start->isPast() ? (int) $start->diffInMonths(now()) : 0;
-            $balance = -1 * $sub * $months;
+            // Opening debt = rent × months since the contract start, ADDED to any
+            // previous dues the manager entered (ذمم سابقة, sent pre-negated in
+            // `balance`) — so back-debt accrues ON TOP of prior balance, not
+            // replacing it.
+            $balance = (-1 * $sub * $months) + $balance;
             // A very old contract × a large fee can exceed the INT column — reject
             // cleanly instead of a raw MySQL overflow 500.
             abort_if(abs($balance) > 2147483647, 422,

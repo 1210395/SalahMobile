@@ -85,7 +85,7 @@ void main() {
 
     final apt = Unit.fromJson({'no': '5', 'floor': 3, 'resident': 'ليان', 'kind': 'مالك'});
     expect(floorUnitLabel(apt, true), 'طابق 3 شقة 5');
-    expect(floorUnitLabel(apt, false), 'طابق 3 محل 5');
+    expect(floorUnitLabel(apt, false), 'طابق 3 وحدة 5');
   });
 
   test('kYears unions live payment years with the recent window', () {
