@@ -42,8 +42,6 @@ class ResidentHome extends StatelessWidget {
       accent: true,
       logo: true,
       right: Row(mainAxisSize: MainAxisSize.min, children: [
-        RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
-        const SizedBox(width: 8),
         RoundBtn(icon: 'bell', dark: true, badge: true, onTap: () => ctx.go('alerts')),
         const SizedBox(width: 8),
         RoundBtn(
@@ -557,13 +555,6 @@ class MoreHub extends StatelessWidget {
           pad: 6,
           child: Column(
             children: [
-              ListRow(
-                leading: const IconChip(icon: 'switch', tone: 'credit', size: 40),
-                title: 'تبديل الدور / الحساب',
-                chevron: true,
-                dividerBelow: true,
-                onTap: ctx.openRole,
-              ),
               ListRow(
                 leading: const IconChip(icon: 'logout', tone: 'late', size: 40),
                 title: 'تسجيل الخروج',

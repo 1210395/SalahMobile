@@ -10,12 +10,10 @@ class Ctx {
   const Ctx({
     required this.go,
     required this.role,
-    required this.setRole,
     required this.btype,
     required this.setBtype,
     required this.building,
     required this.toast,
-    required this.openRole,
     required this.adminNav,
     required this.resNav,
     required this.guestNav,
@@ -32,16 +30,12 @@ class Ctx {
   /// Navigate to a screen id.
   final void Function(String screen) go;
   final AppRole role;
-  final void Function(AppRole) setRole;
   final BType btype;
   final void Function(BType) setBtype;
   final Building building;
 
   /// Show a transient toast. tone: 'ok' | 'info' | 'late'.
   final void Function(String msg, {String tone}) toast;
-
-  /// Open the role / building-type switcher sheet.
-  final VoidCallback openRole;
 
   /// Pre-built bottom navigation bars for each role.
   final Widget adminNav;

@@ -433,12 +433,10 @@ class _AmaratiAppState extends State<AmaratiApp> {
     return Ctx(
       go: _go,
       role: role,
-      setRole: (r) => setState(() => role = r),
       btype: btype,
       setBtype: _setBtype,
       building: buildingFor(btype),
       toast: _toastMsg,
-      openRole: _openRoleSheet,
       adminNav: adminNav(),
       resNav: resNav(),
       guestNav: guestNav(),
@@ -512,101 +510,6 @@ class _AmaratiAppState extends State<AmaratiApp> {
       default:
         return SplashScreen(ctx: ctx);
     }
-  }
-
-  void _openRoleSheet() {
-    final roles = [
-      (AppRole.admin, 'مسؤول لجنة المبنى', 'صلاحية كاملة لكل الأدوات', 'shield', 'home'),
-      (AppRole.resident, 'ساكن', 'لوحة شخصية وعرض محدود', 'user', 'resHome'),
-      (AppRole.guest, 'زائر', 'تقارير عامة فقط', 'eye', 'guestHome'),
-    ];
-    showAppSheet(
-      context,
-      StatefulBuilder(
-        builder: (sheetContext, setSheet) => SheetShell(
-          title: 'تبديل الدور / العرض',
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text('اعرض التطبيق من منظور دور مختلف',
-                  style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.ink500)),
-            ),
-            ...roles.map((r) {
-              final on = role == r.$1;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      role = r.$1;
-                      screen = r.$5;
-                    });
-                    Navigator.of(sheetContext).pop();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(13),
-                    decoration: BoxDecoration(
-                      color: on ? AppColors.navy50 : AppColors.surface,
-                      border: Border.all(color: on ? AppColors.navy600 : AppColors.line2, width: 1.5),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Row(
-                      children: [
-                        IconChip(icon: r.$4, tone: 'navy', size: 44),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(r.$2, style: AppType.base(size: 14.5, weight: FontWeight.w800)),
-                              const SizedBox(height: 2),
-                              Text(r.$3,
-                                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        on
-                            ? const AppIcon('checkCircle', size: 22, color: AppColors.navy700)
-                            : const AppIcon('chevronL', size: 18, color: AppColors.ink300),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
-            // The residential/commercial switch only makes sense in GUEST preview.
-            // An authenticated user owns exactly one building (multi-building), so
-            // showing it would blank out their real building — hide it for them.
-            if (role == AppRole.guest)
-              Container(
-                padding: const EdgeInsets.only(top: 14),
-                decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.line))),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('نوع المبنى',
-                        style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-                    const SizedBox(height: 9),
-                    Segmented(
-                      value: btype,
-                      onChanged: (v) {
-                        _setBtype(v as BType);
-                        setSheet(() {});
-                      },
-                      options: const [
-                        SegOption(BType.residential, 'سكنية (شقق)', icon: 'building'),
-                        SegOption(BType.commercial, 'تجارية (وحدات)', icon: 'store'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override

@@ -57,7 +57,7 @@ class _DashboardState extends State<Dashboard> {
     final b = ctx.building;
     final tiles = [
       QuickTile(label: res ? 'الشقق السكنية' : 'الوحدات التجارية', sub: res ? 'الشقق والملاك' : 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
-      QuickTile(label: 'الإيرادات', sub: 'متابعة التحصيل', icon: 'wallet', tone: 'gold', onTap: () => ctx.go('payments')),
+      QuickTile(label: 'الإيرادات', sub: 'تسجيل ومتابعة دفعات السكان', icon: 'wallet', tone: 'gold', onTap: () => ctx.go('payments')),
       QuickTile(label: 'المصروفات', sub: 'إدارة المصروفات', icon: 'expense', tone: 'late', onTap: () => ctx.go('expenses')),
       QuickTile(label: 'التقارير', sub: 'تقارير شاملة', icon: 'pie', tone: 'credit', onTap: () => ctx.go('reports')),
       QuickTile(label: 'المصعد', sub: 'صلاحية الوصول', icon: 'elevator', tone: 'navy', onTap: () => ctx.go('elevator')),
@@ -69,8 +69,6 @@ class _DashboardState extends State<Dashboard> {
         accent: true,
         logo: true,
         right: Row(mainAxisSize: MainAxisSize.min, children: [
-          RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
-          const SizedBox(width: 8),
           RoundBtn(icon: 'bell', dark: true, badge: kAlerts.isNotEmpty, onTap: () => ctx.go('alerts')),
           const SizedBox(width: 8),
           RoundBtn(
@@ -138,7 +136,7 @@ class _DashboardState extends State<Dashboard> {
                         style: AppType.num(size: 22, weight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(height: 4),
                     // رصيد الصندوق = إجمالي الإيرادات ناقص المصروفات.
-                    Text('رصيد الصندوق = الإيرادات − المصروفات',
+                    Text('الإيرادات − المصروفات · للعام $selYear',
                         style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.navy300)),
                   ],
                 ),
@@ -356,11 +354,8 @@ class BuildingScreen extends StatelessWidget {
                   tone: 'ok'),
               row('elevator', 'رسوم المصعد',
                   Text(fmtUSD(b.elevatorFee),
-                      style: AppType.base(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700))),
-              row('refresh', 'سعر الصرف',
-                  NumText(groupNumber(b.exchangeRate, dec: true),
-                      style: AppType.num(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
-                  tone: 'credit', divider: false),
+                      style: AppType.base(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
+                  divider: false),
             ],
           ),
         ),
@@ -374,7 +369,7 @@ class BuildingScreen extends StatelessWidget {
           QuickTile(label: 'طلبات الانضمام', sub: 'الموافقة على السكان', icon: 'users', tone: 'gold', onTap: () => ctx.go('approvals')),
           QuickTile(label: 'الاشتراك بالتطبيق', sub: 'تفعيل الاشتراك بالتطبيق', icon: 'shield', tone: 'navy', onTap: () => ctx.go('subscribe')),
           QuickTile(label: 'مسؤول مساعد', sub: 'إضافة مسؤول للمبنى', icon: 'users', tone: 'credit', onTap: () => _openCoAdmin(context, ctx)),
-          QuickTile(label: 'الرسوم', sub: 'أنواع الدفعات وقيمها', icon: 'wallet', tone: 'gold', onTap: () => _openPayTypes(context, ctx)),
+          QuickTile(label: 'الرسوم', sub: 'تعريف بنود الرسوم وقيمها الافتراضية', icon: 'wallet', tone: 'gold', onTap: () => _openPayTypes(context, ctx)),
         ], n: 2),
       ],
     );
@@ -389,7 +384,6 @@ class BuildingScreen extends StatelessWidget {
       'units': '${b.units}',
       'sub': '${b.subscription}',
       'elevator': '${b.elevatorFee}',
-      'rate': '${b.exchangeRate}',
     };
     BType type = ctx.btype;
     Object currency = b.currency;
@@ -414,7 +408,6 @@ class BuildingScreen extends StatelessWidget {
                   'subscription': int.tryParse(f['sub']!.trim()) ?? b.subscription,
                   'currency': currency,
                   'elevator_fee': int.tryParse(f['elevator']!.trim()) ?? b.elevatorFee,
-                  'exchange_rate': double.tryParse(f['rate']!.trim()) ?? b.exchangeRate,
                 });
                 await ctx.reload();
                 ctx.toast('تم حفظ بيانات المبنى');
@@ -492,16 +485,6 @@ class BuildingScreen extends StatelessWidget {
                       suffix: currencySymbol(currency as String),
                       keyboardType: TextInputType.number,
                       onChanged: (v) => f['elevator'] = v),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Field(
-                      label: 'سعر الصرف',
-                      icon: 'refresh',
-                      value: f['rate']!,
-                      ltr: true,
-                      keyboardType: TextInputType.number,
-                      onChanged: (v) => f['rate'] = v),
                 ),
               ],
             ),
