@@ -405,7 +405,7 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $this->makeUnit(['no' => '101']);
         $code = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
-            'name' => 'ساكن جديد', 'phone' => '+966500009999', 'unit_no' => '101',
+            'name' => 'ساكن جديد', 'phone' => '+966500009999', 'unit_no' => '101', 'password' => 'secret6',
         ])->json('login_code');
 
         $this->assertSame(32, strlen($code));
@@ -478,10 +478,10 @@ class AmaratiOverhaulTest extends TestCase
         $this->makeUnit(['no' => '101']);
 
         $old = $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'قديم', 'phone' => '+966500000011', 'unit_no' => '101',
+            'name' => 'قديم', 'phone' => '+966500000011', 'unit_no' => '101', 'password' => 'secret6',
         ])->json();
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'جديد', 'phone' => '+966500000022', 'unit_no' => '101',
+            'name' => 'جديد', 'phone' => '+966500000022', 'unit_no' => '101', 'password' => 'secret6',
         ])->assertCreated();
 
         // The old resident is unlinked; only one account remains on unit 101.
@@ -519,10 +519,10 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $admin = $this->admin();
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'أول', 'phone' => '+966500001234',
+            'name' => 'أول', 'phone' => '+966500001234', 'password' => 'secret6',
         ])->assertCreated();
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'ثانٍ', 'phone' => '+966500001234',
+            'name' => 'ثانٍ', 'phone' => '+966500001234', 'password' => 'secret6',
         ])->assertStatus(422);
     }
 
@@ -927,7 +927,7 @@ class AmaratiOverhaulTest extends TestCase
     {
         $this->seedBuilding();
         $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
-            'name' => 'ساكن جديد', 'phone' => '+966500001111', 'unit_no' => '101',
+            'name' => 'ساكن جديد', 'phone' => '+966500001111', 'unit_no' => '101', 'password' => 'secret6',
         ]);
         $res->assertCreated();
         $this->assertNotEmpty($res->json('login_code'));
@@ -1392,5 +1392,47 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(700, (int) $all['revenueM']); // whole year = 7 × 100
         $jan = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026&month=0')->json();
         $this->assertSame(100, (int) $jan['revenueM']); // a single month is still 100
+    }
+
+    // ─────────────── Auth/session hardening (Phase 1) ───────────────
+
+    public function test_resident_creation_requires_a_password(): void
+    {
+        // #15: residents need a durable phone+password login, so /residents must
+        // reject a passwordless account.
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101']);
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
+            'name' => 'بلا كلمة', 'phone' => '+966500007777', 'unit_no' => '101',
+        ])->assertStatus(422);
+    }
+
+    public function test_resident_can_log_in_with_phone_and_password(): void
+    {
+        // #15 "test ساكن": a manager-created resident can sign in with phone+password.
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101']);
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
+            'name' => 'ساكن', 'phone' => '+966500008888', 'unit_no' => '101', 'password' => 'secret6',
+        ])->assertCreated();
+
+        $res = $this->postJson('/api/auth/login', ['phone' => '+966500008888', 'password' => 'secret6']);
+        $res->assertOk();
+        $this->assertNotEmpty($res->json('token'));
+        $this->assertSame('resident', $res->json('user.role'));
+    }
+
+    public function test_login_code_is_single_use_and_rotates_on_redeem(): void
+    {
+        // #1: the QR/login-code must not be a permanent multi-device credential.
+        // Redeeming rotates it, so the same code can't be reused on another device.
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101']);
+        $code = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
+            'name' => 'ساكن', 'phone' => '+966500006666', 'unit_no' => '101', 'password' => 'secret6',
+        ])->json('login_code');
+
+        $this->postJson('/api/auth/redeem-code', ['code' => $code])->assertOk();     // first use works
+        $this->postJson('/api/auth/redeem-code', ['code' => $code])->assertStatus(422); // reuse blocked
     }
 }

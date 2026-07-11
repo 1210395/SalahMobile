@@ -41,10 +41,12 @@ async function gotoApp(page) {
       async residentSession(unitNo) {
         const tok = await this.adminToken();
         const phone = '+9705' + Math.floor(Math.random() * 1e7);
-        const r = await this.req('POST', '/residents?btype=residential', tok, { name: 'E2E ' + phone, phone, unit_no: unitNo });
+        // Residents now require a password (durable phone+password login); the
+        // login-code is single-use and rotates on redeem.
+        const r = await this.req('POST', '/residents?btype=residential', tok, { name: 'E2E ' + phone, phone, unit_no: unitNo, password: 'secret6' });
         const code = r.body && r.body.login_code;
         const red = await this.req('POST', '/auth/redeem-code', null, { code });
-        return { token: red.body && red.body.token, code, unitNo, phone };
+        return { token: red.body && red.body.token, code, unitNo, phone, password: 'secret6' };
       },
     };
   }, API);

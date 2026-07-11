@@ -343,7 +343,10 @@ class _UnitsScreenState extends State<UnitsScreen> {
             icon: 'check',
             disabled: f['name']!.trim().isEmpty ||
                 f['no']!.trim().isEmpty ||
-                (makeAccount && f['phone']!.trim().isEmpty),
+                (makeAccount && f['phone']!.trim().isEmpty) ||
+                // A resident account now requires a real password (phone+password
+                // is their durable login; the QR code is single-use).
+                (makeAccount && f['password']!.trim().length < 6),
             onTap: () {
               Navigator.of(sheetCtx).pop();
               final prev = int.tryParse(f['prev']!.trim()) ?? 0;
@@ -479,15 +482,16 @@ class _UnitsScreenState extends State<UnitsScreen> {
             ),
             if (makeAccount) ...[
               const SizedBox(height: 8),
-              Text('اسم المستخدم هو رقم الموبايل. يسجّل الساكن الدخول برمز OTP، أو بكلمة المرور إن حُدِّدت.',
+              Text('اسم المستخدم هو رقم الموبايل. يسجّل الساكن الدخول برقم الموبايل وكلمة المرور. '
+                  'رمز الـ QR للدخول لمرة واحدة فقط.',
                   style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
               const SizedBox(height: 8),
               Field(
-                  label: 'كلمة المرور (اختياري)',
+                  label: 'كلمة المرور',
                   icon: 'lock',
                   placeholder: '6 أحرف على الأقل',
                   ltr: true,
-                  onChanged: (v) => f['password'] = v),
+                  onChanged: (v) => setS(() => f['password'] = v)),
             ],
           ],
         ),

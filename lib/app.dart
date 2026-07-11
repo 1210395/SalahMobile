@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'common.dart';
+import 'api/api_client.dart';
 import 'api/auth_store.dart';
 import 'api/repository.dart';
 import 'screens/auth.dart';
@@ -75,7 +76,21 @@ class _AmaratiAppState extends State<AmaratiApp> {
   @override
   void initState() {
     super.initState();
+    // When any request 401s (expired Sanctum token or a rotated single-use
+    // login-code), end the session locally and return to login so a stale
+    // identity can't persist across launches — the root of the wrong-user bug.
+    ApiClient.I.onUnauthorized = _onUnauthorized;
     _bootstrap();
+  }
+
+  void _onUnauthorized() {
+    if (!mounted) return;
+    AuthStore.I.logout();
+    DataStore.I.clear();
+    setState(() {
+      role = AppRole.guest;
+      screen = 'login';
+    });
   }
 
   @override
@@ -269,6 +284,11 @@ class _AmaratiAppState extends State<AmaratiApp> {
       {String? phone, String? whatsapp, String? emailCode}) async {
     setState(() => _busy = true);
     try {
+      // Start from a clean slate — a stale auto-restored session (e.g. a device
+      // still holding another resident's token) must not bleed into the new
+      // account. Fixes "after registering it's still the old user".
+      await AuthStore.I.logout();
+      DataStore.I.clear();
       await AuthStore.I.register(name, email, password,
           phone: phone, whatsapp: whatsapp, emailCode: emailCode);
       final u = AuthStore.I.user!;

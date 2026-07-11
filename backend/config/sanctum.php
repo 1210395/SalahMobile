@@ -50,12 +50,13 @@ return [
     |
     */
 
-    // Minutes until a token expires. Defaults to null (never) to preserve
-    // existing sessions; production should set SANCTUM_EXPIRATION_MINUTES (e.g.
-    // 129600 = 90 days) so a lost-device/leaked token can't live forever.
+    // Minutes until a token expires. Defaults to 90 days so a lost-device or
+    // leaked/reused token (incl. a scanned resident QR) can't live forever —
+    // this closes the "never-expiring auto-login" hole. Override with
+    // SANCTUM_EXPIRATION_MINUTES if a different window is needed.
     'expiration' => env('SANCTUM_EXPIRATION_MINUTES') !== null
         ? (int) env('SANCTUM_EXPIRATION_MINUTES')
-        : null,
+        : 129600,
 
     /*
     |--------------------------------------------------------------------------

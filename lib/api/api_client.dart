@@ -32,6 +32,17 @@ class ApiClient {
         }
         handler.next(options);
       },
+      onError: (e, handler) {
+        // A 401 means the token expired or was revoked (a lapsed Sanctum token,
+        // or a rotated single-use login-code) — drop the local token and let the
+        // app end the session so a stale identity can't linger. The `_token`
+        // guard makes this fire once (and avoids a loop on the logout call).
+        if (e.response?.statusCode == 401 && _token != null) {
+          _token = null;
+          onUnauthorized?.call();
+        }
+        handler.next(e);
+      },
     ));
   }
 
@@ -39,6 +50,9 @@ class ApiClient {
 
   late final Dio dio;
   String? _token;
+
+  /// Wired by the app to sign out + route to login when a request 401s.
+  void Function()? onUnauthorized;
 
   void setToken(String? token) => _token = token;
   bool get hasToken => _token != null;

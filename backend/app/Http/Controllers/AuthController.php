@@ -164,6 +164,10 @@ class AuthController extends Controller
     }
 
     /// QR / short-code resident login: the code is matched case-insensitively.
+    /// SINGLE-USE — the code is rotated on redeem so the same QR/link cannot mint
+    /// logins on unlimited devices forever (a scanned/reused code stops working
+    /// after first use). The resident's durable login is their password; the
+    /// admin can regenerate/see the new code any time.
     public function redeemCode(Request $r)
     {
         $data = $r->validate(['code' => 'required|string|max:64']);
@@ -172,7 +176,10 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['code' => ['رمز الدخول غير صحيح']]);
         }
 
-        return response()->json($this->payload($user));
+        $payload = $this->payload($user);       // mint the token BEFORE rotating
+        $user->update(['login_code' => $this->loginCode()]); // invalidate the used code
+
+        return response()->json($payload);
     }
 
     public function requestOtp(Request $r)

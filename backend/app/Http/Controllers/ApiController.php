@@ -199,7 +199,9 @@ class ApiController extends Controller
             'name' => 'required|string|max:120',
             'phone' => 'required|string|max:32|unique:users,phone',
             'email' => 'nullable|email|unique:users,email',
-            'password' => 'nullable|string|min:6',
+            // Password is REQUIRED so every resident has a durable phone+password
+            // login (the QR/login-code is single-use, not a standing credential).
+            'password' => 'required|string|min:6',
             'unit_no' => 'nullable|string|max:20',
         ]);
 
@@ -215,7 +217,7 @@ class ApiController extends Controller
             'name' => $data['name'],
             'phone' => $data['phone'],
             'email' => $data['email'] ?? null,
-            'password' => isset($data['password']) ? Hash::make($data['password']) : null,
+            'password' => Hash::make($data['password']),
             'role' => 'resident',
             'building_key' => $bk,
             'building_id' => $this->buildingId($r),
