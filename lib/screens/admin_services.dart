@@ -1,11 +1,16 @@
 // عمارتي — Admin: Guard, Elevator access, Craftsmen.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../common.dart';
 import '../api/repository.dart';
 
 const String kElevPhone = '+966 92 000 1234';
+
+/// Phone-friendly input filter: digits, a leading/inline '+', and spaces
+/// (e.g. "+966 5X XXX XXXX"). Rejects letters while keeping numbers usable.
+final phoneChars = [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]'))];
 
 // ───────────────────────────── Guard ─────────────────────────────
 
@@ -176,9 +181,9 @@ class GuardScreen extends StatelessWidget {
           ),
           children: [
             Field(label: 'اسم الحارس', icon: 'user', value: f['name']!, onChanged: (v) => f['name'] = v),
-            Field(label: 'رقم الجوال', icon: 'phone', value: f['phone']!, ltr: true, keyboardType: TextInputType.phone, onChanged: (v) => f['phone'] = v),
+            Field(label: 'رقم الجوال', icon: 'phone', value: f['phone']!, ltr: true, keyboardType: TextInputType.phone, inputFormatters: phoneChars, onChanged: (v) => f['phone'] = v),
             Field(label: 'العنوان', icon: 'pin', value: f['address']!, onChanged: (v) => f['address'] = v),
-            Field(label: 'الأجرة الشهرية', icon: 'wallet', value: f['fee']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['fee'] = v),
+            Field(label: 'الأجرة الشهرية', icon: 'wallet', value: f['fee']!, ltr: true, keyboardType: TextInputType.number, inputFormatters: digitsOnly, onChanged: (v) => f['fee'] = v),
           ],
         ),
       ),
@@ -455,6 +460,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
                 value: f['phone']!,
                 ltr: true,
                 placeholder: '+966 ...',
+                inputFormatters: phoneChars,
                 onChanged: (v) => f['phone'] = v),
             Row(children: [
               Expanded(
@@ -692,6 +698,7 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
                 placeholder: '5X XXX XXXX',
                 ltr: true,
                 keyboardType: TextInputType.phone,
+                inputFormatters: phoneChars,
                 onChanged: (v) => setS(() => f['phone'] = v)),
             AppTextArea(
                 label: 'ملاحظات',

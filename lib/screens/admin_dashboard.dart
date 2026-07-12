@@ -387,16 +387,25 @@ class BuildingScreen extends StatelessWidget {
     };
     BType type = ctx.btype;
     Object currency = b.currency;
+    // #45: you can't declare fewer units than the real (non-vacant) units on record.
+    final existingCount = (res ? kApartments : kShops).where((u) => u.status != 'vacant').length;
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+          final floorsVal = int.tryParse(f['floors']!.trim());
+          final unitsVal = int.tryParse(f['units']!.trim());
+          final unitsBelowExisting = unitsVal != null && unitsVal < existingCount;
+          return SheetShell(
           title: 'تعديل بيانات المبنى',
           footer: AppButton(
             label: 'حفظ التعديلات',
             full: true,
             size: BtnSize.lg,
             icon: 'check',
+            disabled: (floorsVal != null && floorsVal < 1) ||
+                (unitsVal != null && unitsVal < 1) ||
+                unitsBelowExisting,
             onTap: () async {
               Navigator.of(sheetCtx).pop();
               try {
@@ -442,8 +451,9 @@ class BuildingScreen extends StatelessWidget {
                       icon: 'layers',
                       value: f['floors']!,
                       ltr: true,
-                      keyboardType: const TextInputType.numberWithOptions(signed: true),
-                      onChanged: (v) => f['floors'] = v),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: digitsOnly,
+                      onChanged: (v) => setS(() => f['floors'] = v)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -453,10 +463,19 @@ class BuildingScreen extends StatelessWidget {
                       value: f['units']!,
                       ltr: true,
                       keyboardType: TextInputType.number,
-                      onChanged: (v) => f['units'] = v),
+                      inputFormatters: digitsOnly,
+                      onChanged: (v) => setS(() => f['units'] = v)),
                 ),
               ],
             ),
+            if (unitsBelowExisting)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 2),
+                child: Text(
+                  'عدد الوحدات لا يمكن أن يقل عن $existingCount وحدة مسجّلة',
+                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.late700),
+                ),
+              ),
             Field(
                 label: 'الاشتراك الشهري',
                 icon: 'wallet',
@@ -464,6 +483,7 @@ class BuildingScreen extends StatelessWidget {
                 ltr: true,
                 suffix: currencySymbol(currency as String),
                 keyboardType: TextInputType.number,
+                inputFormatters: digitsOnly,
                 onChanged: (v) => f['sub'] = v),
             SelectField(
               label: 'عملة المبنى',
@@ -484,12 +504,14 @@ class BuildingScreen extends StatelessWidget {
                       ltr: true,
                       suffix: currencySymbol(currency as String),
                       keyboardType: TextInputType.number,
+                      inputFormatters: digitsOnly,
                       onChanged: (v) => f['elevator'] = v),
                 ),
               ],
             ),
           ],
-        ),
+          );
+        },
       ),
     );
   }

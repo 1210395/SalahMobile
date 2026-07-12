@@ -497,4 +497,33 @@ void main() {
     expect(find.byWidgetPredicate((w) => w is RoundBtn && w.icon == 'home'), findsWidgets);
     expect(find.text('المصروفات'), findsWidgets); // the new nav tab
   });
+
+  // ─────────── Audit redesign — P3 (validation) ───────────
+
+  // #16: a digitsOnly Field strips letters at the keyboard (real input filtering,
+  // not the old tryParse-fallback that let letters become a number).
+  testWidgets('a digitsOnly Field rejects letters as you type', (tester) async {
+    await tester.pumpWidget(_wrap(Scaffold(body: Field(inputFormatters: digitsOnly, onChanged: (_) {}))));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), '12ab34');
+    await tester.pump();
+    expect(find.text('1234'), findsOneWidget);
+  });
+
+  // #18/#19: the edit-unit sheet no longer lets the admin hand-set the balance
+  // (dues are payment-derived) — the "الرصيد / الذمم" field is gone.
+  testWidgets('edit-unit sheet has no free balance field', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'units', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.text('أحمد علي').first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    final edit = find.text('تعديل');
+    if (edit.evaluate().isNotEmpty) {
+      await tester.tap(edit.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+      expect(find.text('الرصيد / الذمم'), findsNothing);
+    }
+  });
 }

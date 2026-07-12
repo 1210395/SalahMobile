@@ -269,11 +269,14 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
       case 'address':
         return f['address']!.trim().isNotEmpty;
       case 'floors':
-        return _i(f['floors']!) != null;
+        final n = _i(f['floors']!);
+        return n != null && n >= 1; // at least one floor
       case 'units':
-        return _i(f['units']!) != null;
+        final n = _i(f['units']!);
+        return n != null && n >= 1; // at least one unit
       case 'sub':
-        return _i(f['sub']!) != null; // last step → save
+        final n = _i(f['sub']!);
+        return n != null && n >= 0; // last step → save (fee may be 0)
       default:
         return true; // type + currency always have a value
     }
@@ -368,6 +371,7 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
               placeholder: '6',
               ltr: true,
               keyboardType: TextInputType.number,
+              inputFormatters: digitsOnly,
               marginBottom: 0,
               onChanged: (v) => setState(() => f['floors'] = v)),
         );
@@ -382,6 +386,7 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
               placeholder: '12',
               ltr: true,
               keyboardType: TextInputType.number,
+              inputFormatters: digitsOnly,
               marginBottom: 0,
               onChanged: (v) => setState(() => f['units'] = v)),
         );
@@ -408,6 +413,7 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
               ltr: true,
               suffix: currencySymbol(currency),
               keyboardType: TextInputType.number,
+              inputFormatters: digitsOnly,
               marginBottom: 0,
               onChanged: (v) => setState(() => f['sub'] = v)),
         );
@@ -500,7 +506,19 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
   bool _sending = false;
 
   bool get _valid =>
-      f['name']!.trim().isNotEmpty && f['phone']!.trim().isNotEmpty && f['no']!.trim().isNotEmpty;
+      f['name']!.trim().isNotEmpty &&
+      f['phone']!.trim().isNotEmpty &&
+      f['no']!.trim().isNotEmpty &&
+      _floorOk;
+
+  // #20 — the floor is optional, but if one is entered and the building's floor
+  // count is known (>= 1), it must not exceed the building's total floors.
+  bool get _floorOk {
+    final floor = _i(f['floor']!);
+    if (floor == null) return true; // optional — blank is fine
+    final total = widget.ctx.building.floors;
+    return total < 1 || floor <= total;
+  }
 
   // Scan the unit's QR (e.g. a sticker on the door) to prefill the unit number.
   // QRs in this app encode a raw short code; if it's a plain unit number we use
@@ -587,6 +605,7 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
                         placeholder: '2',
                         ltr: true,
                         keyboardType: TextInputType.number,
+                        inputFormatters: digitsOnly,
                         onChanged: (v) => setState(() => f['floor'] = v)),
                   ),
                   const SizedBox(width: 10),

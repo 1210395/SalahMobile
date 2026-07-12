@@ -334,7 +334,13 @@ class _UnitsScreenState extends State<UnitsScreen> {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+          // #20: the tenant floor must sit within the building's floors.
+          final floorNum = int.tryParse(f['floor']!.trim());
+          final floorBad = ctx.building.floors > 0 &&
+              floorNum != null &&
+              (floorNum < 0 || floorNum > ctx.building.floors);
+          return SheetShell(
           title: 'إضافة ${res ? 'ساكن' : 'مستأجر'} يدوياً',
           footer: AppButton(
             label: 'حفظ',
@@ -343,6 +349,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
             icon: 'check',
             disabled: f['name']!.trim().isEmpty ||
                 f['no']!.trim().isEmpty ||
+                floorBad ||
                 (makeAccount && f['phone']!.trim().isEmpty) ||
                 // A resident account now requires a real password (phone+password
                 // is their durable login; the QR code is single-use).
@@ -392,6 +399,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 placeholder: '5X XXX XXXX',
                 ltr: true,
                 keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]'))],
                 onChanged: (v) => setS(() => f['phone'] = v)),
             SelectField(
               label: 'نوع العقار',
@@ -413,6 +421,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                       placeholder: '0',
                       ltr: true,
                       keyboardType: const TextInputType.numberWithOptions(signed: true),
+                      inputFormatters: digitsOnly,
                       onChanged: (v) => setS(() => f['floor'] = v)),
                 ),
                 const SizedBox(width: 10),
@@ -426,6 +435,13 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ),
               ],
             ),
+            if (floorBad)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text('الطابق يجب أن يكون بين 0 و ${ctx.building.floors}',
+                    style: AppType.base(
+                        size: 11.5, weight: FontWeight.w500, color: AppColors.late700)),
+              ),
             Field(
                 label: 'الدفعة الشهرية',
                 icon: 'wallet',
@@ -433,6 +449,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ltr: true,
                 suffix: currencySymbol(activeCurrency),
                 keyboardType: TextInputType.number,
+                inputFormatters: digitsOnly,
                 onChanged: (v) => f['sub'] = v),
             Field(
                 label: 'ذمم سابقة (اختياري)',
@@ -441,6 +458,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ltr: true,
                 suffix: currencySymbol(activeCurrency),
                 keyboardType: TextInputType.number,
+                inputFormatters: digitsOnly,
                 onChanged: (v) => f['prev'] = v),
             DateField(
                 label: 'تاريخ بداية العقد',
@@ -494,7 +512,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   onChanged: (v) => setS(() => f['password'] = v)),
             ],
           ],
-        ),
+        );
+        },
       ),
     );
   }
@@ -508,23 +527,31 @@ class _UnitsScreenState extends State<UnitsScreen> {
       'floor': '${u.floor}',
       'no': u.no,
       'sub': '${u.sub}',
-      'balance': '${u.balance}',
     };
     String kind = u.kind == 'مالك' || u.kind == 'مستأجر' ? u.kind : 'مالك';
-    String status = u.status;
+    // #18: the only hand-settable status is "vacant" (excluded from accounts).
+    // ok/late/credit are derived server-side from the balance.
+    bool vacant = u.status == 'vacant';
     String start = u.contractStart;
     String end = u.contractEnd;
     bool ongoing = u.ongoing;
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+          // #20: keep the tenant floor within the building's floors.
+          final floorNum = int.tryParse(f['floor']!.trim());
+          final floorBad = ctx.building.floors > 0 &&
+              floorNum != null &&
+              (floorNum < 0 || floorNum > ctx.building.floors);
+          return SheetShell(
           title: 'تعديل ${res ? 'شقة' : 'وحدة'} ${u.no}',
           footer: AppButton(
             label: 'حفظ التعديلات',
             full: true,
             size: BtnSize.lg,
             icon: 'check',
+            disabled: floorBad,
             onTap: () {
               Navigator.of(sheetCtx).pop();
               _save(
@@ -535,12 +562,13 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   'phone': f['phone'],
                   'kind': kind,
                   'sub': int.tryParse(f['sub']!.trim()) ?? u.sub,
-                  'balance': int.tryParse(f['balance']!.trim()) ?? u.balance,
                   'contract_start': start,
                   'contract_end': ongoing ? '' : end,
-                  'status': status,
+                  // #18/#19: balance is set only via payments/back-debt; only the
+                  // vacant flag is hand-settable here (derived statuses aren't).
+                  if (vacant) 'status': 'vacant',
                 }),
-                status == 'vacant'
+                vacant
                     ? 'تم تعيين ${res ? 'الشقة' : 'الوحدة'} كشاغر — مستبعَد من الحسابات والدفعات'
                     : 'تم حفظ التعديلات',
               );
@@ -554,6 +582,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 value: f['phone']!,
                 ltr: true,
                 keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]'))],
                 onChanged: (v) => f['phone'] = v),
             SelectField(
               label: 'نوع العقار',
@@ -575,7 +604,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
                       value: f['floor']!,
                       ltr: true,
                       keyboardType: const TextInputType.numberWithOptions(signed: true),
-                      onChanged: (v) => f['floor'] = v),
+                      inputFormatters: digitsOnly,
+                      onChanged: (v) => setS(() => f['floor'] = v)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -588,6 +618,13 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ),
               ],
             ),
+            if (floorBad)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text('الطابق يجب أن يكون بين 0 و ${ctx.building.floors}',
+                    style: AppType.base(
+                        size: 11.5, weight: FontWeight.w500, color: AppColors.late700)),
+              ),
             Field(
                 label: 'الدفعة الشهرية',
                 icon: 'wallet',
@@ -595,16 +632,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ltr: true,
                 suffix: currencySymbol(activeCurrency),
                 keyboardType: TextInputType.number,
+                inputFormatters: digitsOnly,
                 onChanged: (v) => f['sub'] = v),
-            Field(
-                label: 'الرصيد / الذمم',
-                hint: 'سالب = على الساكن · موجب = رصيد دائن',
-                icon: 'dollar',
-                value: f['balance']!,
-                ltr: true,
-                suffix: currencySymbol(activeCurrency),
-                keyboardType: const TextInputType.numberWithOptions(signed: true),
-                onChanged: (v) => f['balance'] = v),
             DateField(
                 label: 'تاريخ بداية العقد',
                 value: start,
@@ -623,19 +652,12 @@ class _UnitsScreenState extends State<UnitsScreen> {
               }),
             ),
             const SizedBox(height: 12),
-            SelectField(
-              label: 'الحالة',
-              icon: 'filter',
-              options: const [
-                SelectOption('ok', 'مسدّد'),
-                SelectOption('late', 'متأخر'),
-                SelectOption('credit', 'رصيد دائن'),
-                SelectOption('vacant', 'شاغر'),
-              ],
-              value: status,
-              onChanged: (v) => setS(() => status = v as String),
+            _switchRow(
+              label: 'شاغر (مستبعد من الحسابات)',
+              checked: vacant,
+              onChanged: (v) => setS(() => vacant = v),
             ),
-            if (status == 'vacant')
+            if (vacant)
               _notes('عند جعل ${res ? 'الشقة' : 'الوحدة'} شاغراً يُستبعَد تلقائياً من الحسابات والدفعات والتقارير.'),
             const SizedBox(height: 12),
             AppButton(
@@ -650,7 +672,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
               },
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }
