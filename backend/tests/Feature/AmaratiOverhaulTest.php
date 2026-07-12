@@ -1488,4 +1488,49 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(0, (int) $fresh->balance); // 300 charges − 300 paid
         $this->assertSame('ok', $fresh->status);
     }
+
+    public function test_an_other_line_is_income_but_does_not_settle_dues(): void
+    {
+        // #28: choosing "أخرى" records income but must NOT reduce the resident's ذمم.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => 'OT1', 'sub' => 100, 'balance' => -500]); // owes 500
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => 'OT1', 'amount' => 200, 'kind' => 'أخرى',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+            'applies_to_dues' => false,
+        ])->assertCreated();
+
+        // Dues unchanged (still owes 500) …
+        $this->assertSame(-500, (int) Unit::where('no', 'OT1')->first()->balance);
+        // … but it IS counted as revenue.
+        $sum = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(200, (int) $sum['revenueM']);
+    }
+
+    public function test_a_cheque_payment_requires_a_future_date_and_number(): void
+    {
+        // #26: method شيك ⇒ cheque date (future only) + cheque number are required.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => 'CH1', 'sub' => 100]);
+        $base = [
+            'unit_no' => 'CH1', 'amount' => 100, 'kind' => 'الاشتراك الشهري',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'شيك',
+        ];
+
+        // Missing cheque details → rejected.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', $base)->assertStatus(422);
+        // A PAST cheque date → rejected.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', $base + [
+            'cheque_date' => now()->subDay()->toDateString(), 'cheque_number' => 'C-1',
+        ])->assertStatus(422);
+        // A future date + number → accepted.
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/payments', $base + [
+            'cheque_date' => now()->addMonth()->toDateString(), 'cheque_number' => 'C-1',
+        ]);
+        $res->assertCreated();
+        $this->assertSame('C-1', $res->json('cheque_number'));
+    }
 }

@@ -318,10 +318,13 @@ class ApiController extends Controller
             ->where('no', $payment->unit_no)->first();
     }
 
-    /// Payment totals per unit_no for a building (base currency), in one query.
+    /// Dues-settling payment totals per unit_no (base currency), in one query.
+    /// Only payments with applies_to_dues settle charges — an "أخرى" line is
+    /// income but must not clear the resident's dues (#28).
     private function paymentSums(?int $buildingId): array
     {
         return Payment::where('building_id', $buildingId)
+            ->where('applies_to_dues', true)
             ->selectRaw('unit_no, SUM(amount) as s')
             ->groupBy('unit_no')
             ->pluck('s', 'unit_no')
@@ -338,7 +341,7 @@ class ApiController extends Controller
             return;
         }
         $paid = (int) Payment::where('building_id', $unit->building_id)
-            ->where('unit_no', $unit->no)->sum('amount');
+            ->where('unit_no', $unit->no)->where('applies_to_dues', true)->sum('amount');
         $bal = $unit->derivedBalance($paid);
         $unit->update(['balance' => $bal, 'status' => Unit::statusForBalance($bal)]);
     }
@@ -559,10 +562,21 @@ class ApiController extends Controller
             'date' => 'required|date',
             'method' => 'required|string|max:40',
             'notes' => 'nullable|string|max:1000',
+            // #26: a cheque needs a (future) due date + its number.
+            'cheque_date' => 'nullable|date|after:today',
+            'cheque_number' => 'nullable|string|max:60',
+            // #28: an "أخرى" line is income but must NOT settle the resident's dues.
+            'applies_to_dues' => 'nullable|boolean',
         ]);
         $bk = $this->bk($r);
         $unit = Unit::where('building_id', $this->buildingId($r))->where('no', $data['unit_no'])->first();
         abort_unless($unit !== null, 422, 'الوحدة غير موجودة في هذا المبنى');
+
+        // A cheque payment must carry its future due-date + number.
+        if ($data['method'] === 'شيك') {
+            abort_if(empty($data['cheque_date']) || empty($data['cheque_number']), 422,
+                'دفعة الشيك تتطلب تاريخ الشيك (مستقبلي) ورقم الشيك');
+        }
 
         // Convert the entered amount to the building's base currency. `amount` is
         // always stored in the base currency so totals/reports sum cleanly.
@@ -590,6 +604,11 @@ class ApiController extends Controller
             'date' => $data['date'],
             'method' => $data['method'],
             'notes' => $data['notes'] ?? null,
+            'cheque_date' => $data['cheque_date'] ?? null,
+            'cheque_number' => $data['cheque_number'] ?? null,
+            // Defaults to true (a normal دفعة شهرية / ذمم settles dues); the client
+            // sends false for an "أخرى" line so it stays income only (#28).
+            'applies_to_dues' => $data['applies_to_dues'] ?? true,
         ]);
 
         // Balance is derived (opening − charges + payments) — recompute the cache.

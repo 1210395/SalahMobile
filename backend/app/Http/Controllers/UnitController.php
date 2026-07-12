@@ -192,8 +192,10 @@ class UnitController extends Controller
             if ($vacant) {
                 $unit->update(['status' => 'vacant', 'balance' => 0]);
             } else {
+                // Only dues-settling payments reduce charges (an "أخرى" line is
+                // income only — #28).
                 $paid = (int) Payment::where('building_id', $unit->building_id)
-                    ->where('unit_no', $unit->no)->sum('amount');
+                    ->where('unit_no', $unit->no)->where('applies_to_dues', true)->sum('amount');
                 $bal = $unit->derivedBalance($paid);
                 $unit->update(['balance' => $bal, 'status' => self::statusForBalance($bal)]);
             }
