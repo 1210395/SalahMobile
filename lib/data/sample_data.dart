@@ -71,6 +71,22 @@ const List<String> arMonths = [
 /// layer (Payment.month, report selectors, …).
 String monthLabelNum(int i) => 'شهر ${i + 1}';
 
+// ───────────── Derived ledger helpers (month settlement) ─────────────
+
+/// Dues-settling amount already paid for a unit's given month/year. An "أخرى"
+/// line is income only and never counts toward settling a month (#28).
+int paidForMonth(String unitNo, int month, int year) => kPayments
+    .where((p) => p.unit == unitNo && p.month == month && p.year == year && p.appliesToDues)
+    .fold<int>(0, (s, p) => s + p.amount);
+
+/// A month is SETTLED once its dues-settling payments cover the monthly fee.
+/// A settled month can't be paid again (#34).
+bool monthSettled(Unit u, int month, int year) =>
+    u.sub > 0 && paidForMonth(u.no, month, year) >= u.sub;
+
+/// What a unit currently owes (0 when settled or in credit).
+int duesOf(Unit u) => u.balance < 0 ? -u.balance : 0;
+
 /// All month labels as numbered "شهر N" strings (0-based index → label).
 List<String> get arMonthsNum =>
     [for (var i = 0; i < 12; i++) monthLabelNum(i)];
@@ -253,6 +269,9 @@ class Payment {
     required this.year,
     required this.date,
     required this.method,
+    this.appliesToDues = true,
+    this.chequeDate = '',
+    this.chequeNumber = '',
   });
   final int id;
   final String unit;
@@ -264,6 +283,11 @@ class Payment {
   final String date;
   final String method;
 
+  /// False for an "أخرى" line: recorded as income but does NOT settle dues (#28).
+  final bool appliesToDues;
+  final String chequeDate;   // future due-date when the method is شيك (#26)
+  final String chequeNumber;
+
   factory Payment.fromJson(Map<String, dynamic> j) => Payment(
         id: _int(j['id']),
         unit: '${j['unit_no'] ?? j['unit']}',
@@ -274,8 +298,23 @@ class Payment {
         year: _int(j['year']),
         date: '${j['date']}'.split('T').first,
         method: j['method'] ?? '',
+        appliesToDues: j['applies_to_dues'] == null
+            ? true
+            : (j['applies_to_dues'] == true || j['applies_to_dues'] == 1),
+        chequeDate: _dateStr(j['cheque_date']),
+        chequeNumber: '${j['cheque_number'] ?? ''}',
       );
 }
+
+/// The three payment بنود (#23). Fees (elevator/guard/parking) are folded into
+/// the monthly fee, so a resident's charge is a single monthly amount.
+enum PayItem { monthly, dues, other }
+
+String payItemLabel(PayItem i) => switch (i) {
+      PayItem.monthly => 'دفعة شهرية',
+      PayItem.dues => 'ذمم',
+      PayItem.other => 'أخرى',
+    };
 
 class PayType {
   const PayType({required this.id, required this.label, required this.amount, required this.on, required this.opt, this.dbId = 0});

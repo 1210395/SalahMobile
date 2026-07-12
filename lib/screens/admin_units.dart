@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../common.dart';
 import '../api/repository.dart';
+import 'admin_finance.dart' show AddPaymentSheet;
 
 class UnitsScreen extends StatefulWidget {
   const UnitsScreen({super.key, required this.ctx});
@@ -190,9 +191,15 @@ class _UnitsScreenState extends State<UnitsScreen> {
                     label: 'تسجيل دفعة',
                     full: true,
                     icon: 'wallet',
+                    // #22: open دفعة جديدة PRE-FILLED for this renter instead of
+                    // dumping the manager on the الإيرادات list. Show it only
+                    // after the detail sheet has finished closing.
                     onTap: () {
                       Navigator.of(context).pop();
-                      ctx.go('payments');
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        showAppSheet(context, AddPaymentSheet(ctx: ctx, initialUnit: u.no));
+                      });
                     },
                   ),
                 ),

@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:amarati/app.dart';
 import 'package:amarati/common.dart';
+import 'package:amarati/screens/admin_finance.dart' show AddPaymentSheet, PaymentsScreen;
 
 Widget _wrap(Widget child) => MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -525,5 +526,55 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('الرصيد / الذمم'), findsNothing);
     }
+  });
+
+  // ─────────── Audit redesign — P4b (payment sheet) ───────────
+
+  // #23: بنود are now دفعة شهرية / ذمم / أخرى — the per-fee toggles are gone
+  // (elevator/guard/parking are folded into the single monthly fee).
+  testWidgets('payment sheet uses the new بنود and drops the fee toggles', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.byType(AppFab).first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(tester.takeException(), isNull);
+    expect(find.text('بند الدفع'), findsOneWidget);
+    expect(find.text('دفعة شهرية'), findsWidgets);
+    expect(find.text('رسوم المصعد'), findsNothing); // folded into the monthly fee
+  });
+
+  // #22: a unit's detail exposes "تسجيل دفعة", which opens دفعة جديدة PRE-FILLED
+  // for that renter (AddPaymentSheet(initialUnit: u.no)) instead of navigating to
+  // the الإيرادات list. This guards the entry point; the full tap-through is
+  // covered end-to-end (the widget-test surface can't reach the button now that
+  // the sheet's action row scrolls with the form, #14).
+  testWidgets('unit detail exposes the تسجيل دفعة action', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'units', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.text('أحمد علي').first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.ancestor(of: find.text('تسجيل دفعة'), matching: find.byType(AppButton)),
+        findsOneWidget);
+  });
+
+  // #22 (prefill): AddPaymentSheet accepts an initialUnit and opens on that renter.
+  testWidgets('AddPaymentSheet prefills the renter from initialUnit', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final ctx = tester.widget<PaymentsScreen>(find.byType(PaymentsScreen)).ctx;
+
+    await tester.pumpWidget(_wrap(
+        Scaffold(body: AddPaymentSheet(ctx: ctx, initialUnit: '102'))));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    // The sheet opened on unit 102 (سارة محمد in the bundle) — prefilled.
+    expect(find.textContaining('102'), findsWidgets);
+    expect(find.text('بند الدفع'), findsOneWidget);
   });
 }
