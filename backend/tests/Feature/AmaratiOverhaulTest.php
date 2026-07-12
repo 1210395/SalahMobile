@@ -38,11 +38,17 @@ class AmaratiOverhaulTest extends TestCase
 
     private function makeUnit(array $attrs = []): Unit
     {
-        return Unit::create(array_merge([
+        $attrs = array_merge([
             'building_key' => 'residential', 'ext_id' => 'A1', 'no' => '101',
             'floor' => 1, 'resident' => 'ساكن', 'kind' => 'مالك', 'phone' => '—',
             'sub' => 40, 'status' => 'ok', 'balance' => 0, 'payer' => 'الساكن',
-        ], $attrs));
+        ], $attrs);
+        // Derived ledger: the intended `balance` is the opening; with no
+        // billing_start there is no monthly accrual, so derived balance = opening
+        // + payments (mirrors how a test unit is meant to behave).
+        $attrs['opening_balance'] ??= $attrs['balance'];
+
+        return Unit::create($attrs);
     }
 
     /// A commercial building + its own admin — for cross-tenant (IDOR) tests.
@@ -646,7 +652,8 @@ class AmaratiOverhaulTest extends TestCase
             'contract_start' => $past, 'back_debt' => true,
         ]);
         $res->assertCreated();
-        $this->assertSame(-300, (int) $res->json('balance'));
+        // 3 months ago → 4 billed months (start month through current, inclusive) × 100.
+        $this->assertSame(-400, (int) $res->json('balance'));
         $this->assertSame('late', $res->json('status')); // owes → late, despite status:ok input
     }
 
@@ -666,7 +673,7 @@ class AmaratiOverhaulTest extends TestCase
 
     public function test_back_debt_accrues_for_a_past_contract_start(): void
     {
-        // Sanity companion: a 6-months-ago start with sub 100 owes ~600.
+        // Sanity companion: a 6-months-ago start with sub 100 → 7 inclusive months.
         $this->seedBuilding();
         $past = now()->subMonths(6)->toDateString();
         $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
@@ -674,7 +681,7 @@ class AmaratiOverhaulTest extends TestCase
             'contract_start' => $past, 'back_debt' => true,
         ]);
         $res->assertCreated();
-        $this->assertSame(-600, (int) $res->json('balance'));
+        $this->assertSame(-700, (int) $res->json('balance'));
     }
 
     public function test_payment_with_zero_exchange_rate_is_rejected(): void
@@ -974,7 +981,9 @@ class AmaratiOverhaulTest extends TestCase
         $fresh = $unit->fresh();
         $this->assertSame('101', $fresh->no);
         $this->assertSame(75, (int) $fresh->sub);
-        $this->assertSame(-75, (int) $fresh->balance);
+        // Balance/status are DERIVED (#19): the sent 'balance'/'status' are ignored.
+        // With no opening/charges/payments here, the derived balance is 0.
+        $this->assertSame(0, (int) $fresh->balance);
     }
 
     public function test_admin_still_sees_a_units_overdue_alert(): void
@@ -1130,14 +1139,14 @@ class AmaratiOverhaulTest extends TestCase
     {
         $this->seedBuilding();
         $admin = $this->admin();
-        // 100/month, contract started 5 full months ago → balance −500.
+        // 100/month, contract started 5 months ago → 6 inclusive billed months.
         $start = now()->subMonthsNoOverflow(5)->toDateString();
         $res = $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
             'no' => '202', 'floor' => 2, 'resident' => 'بلال', 'kind' => 'مستأجر',
             'sub' => 100, 'contract_start' => $start, 'back_debt' => true,
         ]);
         $res->assertCreated();
-        $this->assertSame(-500, (int) $res->json('balance'));
+        $this->assertSame(-600, (int) $res->json('balance'));
     }
 
     public function test_open_ended_contract_stays_null_not_forced_end_date(): void
@@ -1347,9 +1356,12 @@ class AmaratiOverhaulTest extends TestCase
             'balance' => -250, // frontend pre-negates the ذمم سابقة
         ])->assertCreated();
 
-        $months = (int) \Illuminate\Support\Carbon::parse($start)->diffInMonths(now());
-        $this->assertGreaterThan(0, $months); // sanity: months actually accrued
-        // Opening debt = rent × months since contract start + previous dues (owed).
+        // Charges accrue from the contract-start month THROUGH the current month
+        // (inclusive) — a start N months ago bills N+1 months — plus the ذمم سابقة.
+        $s = \Illuminate\Support\Carbon::parse($start)->startOfMonth();
+        $nowM = now()->startOfMonth();
+        $months = ($nowM->year - $s->year) * 12 + ($nowM->month - $s->month) + 1;
+        $this->assertGreaterThan(0, $months);
         $this->assertSame(-(100 * $months) - 250, (int) Unit::where('no', '101')->first()->balance);
     }
 
@@ -1434,5 +1446,46 @@ class AmaratiOverhaulTest extends TestCase
 
         $this->postJson('/api/auth/redeem-code', ['code' => $code])->assertOk();     // first use works
         $this->postJson('/api/auth/redeem-code', ['code' => $code])->assertStatus(422); // reuse blocked
+    }
+
+    // ─────────────── Derived ledger (P4a) ───────────────
+
+    public function test_charges_start_from_the_current_month_when_back_debt_off(): void
+    {
+        // #21: without "احتساب من بداية العقد", billing starts THIS month — so a
+        // long-past contract still owes only the current month's fee (inclusive).
+        $this->seedBuilding();
+        $past = now()->subMonths(6)->toDateString();
+        $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
+            'no' => 'NB1', 'floor' => 1, 'sub' => 100, 'status' => 'ok',
+            'contract_start' => $past, 'back_debt' => false,
+        ]);
+        $res->assertCreated();
+        $this->assertSame(-100, (int) $res->json('balance')); // one month, not seven
+    }
+
+    public function test_a_payment_settles_derived_charges(): void
+    {
+        // A payment reduces the DERIVED balance (opening − charges + payments);
+        // it is not a free credit on a stored number.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $start = now()->subMonthsNoOverflow(2)->toDateString(); // 3 inclusive months
+        $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
+            'no' => 'PS1', 'floor' => 1, 'sub' => 100, 'status' => 'ok',
+            'contract_start' => $start, 'back_debt' => true,
+        ])->assertCreated();
+        // Owes 300 (3 × 100). Pay 300 → settled.
+        $unit = Unit::where('no', 'PS1')->first();
+        $this->assertSame(-300, (int) $unit->balance);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => 'PS1', 'amount' => 300, 'kind' => 'الاشتراك الشهري',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+        ])->assertCreated();
+
+        $fresh = Unit::where('no', 'PS1')->first();
+        $this->assertSame(0, (int) $fresh->balance); // 300 charges − 300 paid
+        $this->assertSame('ok', $fresh->status);
     }
 }

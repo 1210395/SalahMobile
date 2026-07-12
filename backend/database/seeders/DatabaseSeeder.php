@@ -331,6 +331,9 @@ class DatabaseSeeder extends Seeder
                 'building_key' => $bk, 'ext_id' => $r[0], 'no' => $r[1], 'floor' => $r[2],
                 'resident' => $r[3], 'kind' => $r[4], 'phone' => $r[5], 'sub' => $r[6],
                 'status' => $r[7], 'balance' => $r[8], 'payer' => $r[9],
+                // Derived ledger: seed the balance as the opening; billing_start
+                // null = no monthly accrual for the demo (payments still credit).
+                'opening_balance' => $r[7] === 'vacant' ? 0 : $r[8], 'billing_start' => null,
                 'contract_start' => $r[7] === 'vacant' ? null : '2026-01-01',
                 'contract_end' => $r[7] === 'vacant' ? null : '2026-12-31',
                 'notes' => $r[4] === 'شاغر' ? 'الوحدة متاحة للإيجار.' : 'يفضل التواصل عبر واتساب بعد الساعة 5 مساءً.',

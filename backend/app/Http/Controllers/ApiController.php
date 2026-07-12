@@ -117,7 +117,8 @@ class ApiController extends Controller
 
         $payments = Payment::where('building_id', $this->buildingId($r))->get(['amount', 'month', 'year']);
         $expenses = Expense::where('building_id', $this->buildingId($r))->get(['amount', 'cat', 'date']);
-        $units = Unit::where('building_id', $this->buildingId($r))->where('status', '!=', 'vacant')->get(['balance']);
+        $units = Unit::where('building_id', $this->buildingId($r))->where('status', '!=', 'vacant')->get();
+        $unitSums = $this->paymentSums($this->buildingId($r));
 
         $expYM = fn ($e) => Carbon::parse($e->date)->year === $year
             && ($month === null || (int) Carbon::parse($e->date)->month === $month + 1);
@@ -135,8 +136,12 @@ class ApiController extends Controller
         $opening = $this->openingBalance($this->buildingId($r), $year, $payments, $expenses);
         $balance = $opening + $yearRevenue - $yearExpense;
 
-        // Residents' net dues (live, period-independent): owed by residents.
-        $due = (int) $units->filter(fn ($u) => $u->balance < 0)->sum(fn ($u) => abs((int) $u->balance));
+        // Residents' net dues (live): sum of DERIVED negative balances.
+        $due = (int) $units->sum(function ($u) use ($unitSums) {
+            $bal = $u->derivedBalance((int) ($unitSums[$u->no] ?? 0));
+
+            return $bal < 0 ? -$bal : 0;
+        });
 
         $arShort = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
         $trend = [];
@@ -288,13 +293,8 @@ class ApiController extends Controller
         }
         $payment->update($clean);
 
-        // Carry-over: shift the unit's balance by the change in (base) amount.
-        $delta = (int) $payment->amount - $before;
-        if ($delta !== 0) {
-            $unit = $this->unitFor($payment);
-            $unit?->increment('balance', $delta);
-            $this->syncUnitStatus($unit);
-        }
+        // Balance is derived from payments now — just recompute the cached total.
+        $this->recomputeUnit($this->unitFor($payment));
 
         return response()->json($payment->fresh());
     }
@@ -303,11 +303,10 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         abort_unless($payment->building_id === $this->buildingId($r), 403);
-        // Carry-over: removing a payment reverts its credit to the unit balance.
+        // Balance is derived from payments — recompute after removing this one.
         $unit = $this->unitFor($payment);
-        $unit?->decrement('balance', (int) $payment->amount);
-        $this->syncUnitStatus($unit);
         $payment->delete();
+        $this->recomputeUnit($unit);
 
         return response()->json(['ok' => true]);
     }
@@ -319,19 +318,29 @@ class ApiController extends Controller
             ->where('no', $payment->unit_no)->first();
     }
 
-    /// Keep a unit's status label in sync with its (computed) balance so the
-    /// badge, late-count, and overdue alerts never contradict what the resident
-    /// actually owes. Vacant is a manual choice (excluded from dues) and is kept.
-    private function syncUnitStatus(?Unit $unit): void
+    /// Payment totals per unit_no for a building (base currency), in one query.
+    private function paymentSums(?int $buildingId): array
+    {
+        return Payment::where('building_id', $buildingId)
+            ->selectRaw('unit_no, SUM(amount) as s')
+            ->groupBy('unit_no')
+            ->pluck('s', 'unit_no')
+            ->map(fn ($v) => (int) $v)
+            ->toArray();
+    }
+
+    /// Recompute + persist a unit's DERIVED balance and status after a payment
+    /// write (balance = opening − charges + payments). Vacant stays 0/vacant.
+    /// The persisted value is a cache; reads recompute so month accrual stays live.
+    private function recomputeUnit(?Unit $unit): void
     {
         if (! $unit || $unit->status === 'vacant') {
             return;
         }
-        $bal = (int) $unit->fresh()->balance;
-        $status = $bal < 0 ? 'late' : ($bal > 0 ? 'credit' : 'ok');
-        if ($unit->status !== $status) {
-            $unit->update(['status' => $status]);
-        }
+        $paid = (int) Payment::where('building_id', $unit->building_id)
+            ->where('unit_no', $unit->no)->sum('amount');
+        $bal = $unit->derivedBalance($paid);
+        $unit->update(['balance' => $bal, 'status' => Unit::statusForBalance($bal)]);
     }
 
     // ─────────── Expenses edit / delete ───────────
@@ -482,30 +491,42 @@ class ApiController extends Controller
 
     public function units(Request $r)
     {
-        $bk = $this->bk($r);
+        $buildingId = $this->buildingId($r);
+        $sums = $this->paymentSums($buildingId);
+
+        // Return a unit's array with the LIVE derived balance + status (computed
+        // from opening − charges + payments, so month accrual is always current).
+        $withDerived = function (Unit $u) use ($sums): array {
+            $bal = $u->derivedBalance((int) ($sums[$u->no] ?? 0));
+            $arr = $u->toArray();
+            $arr['balance'] = $bal;
+            $arr['status'] = $u->status === 'vacant' ? 'vacant' : Unit::statusForBalance($bal);
+
+            return $arr;
+        };
 
         // A resident sees ONLY their own unit, and never any login code (which is
         // a login credential — exposing all of them would let any resident take
         // over any other resident's account).
         if (! $this->isAdmin($r)) {
-            return Unit::where('building_id', $this->buildingId($r))
+            return Unit::where('building_id', $buildingId)
                 ->where('no', optional($r->user())->unit_no ?? '__none__')
-                ->orderBy('no')->get();
+                ->orderBy('no')->get()->map($withDerived)->values();
         }
 
-        $units = Unit::where('building_id', $this->buildingId($r))
+        $units = Unit::where('building_id', $buildingId)
             ->orderBy('floor')->orderBy('no')->get();
 
         // Attach each unit's resident login code (matched by building + unit_no),
         // so the admin can show a QR / share the code. Null if no such user.
-        $codes = User::where('building_id', $this->buildingId($r))
+        $codes = User::where('building_id', $buildingId)
             ->whereNotNull('unit_no')->whereNotNull('login_code')
             ->pluck('login_code', 'unit_no');
 
         return $units->map(fn ($u) => array_merge(
-            $u->toArray(),
+            $withDerived($u),
             ['login_code' => $codes[$u->no] ?? null],
-        ));
+        ))->values();
     }
 
     public function payments(Request $r)
@@ -571,9 +592,8 @@ class ApiController extends Controller
             'notes' => $data['notes'] ?? null,
         ]);
 
-        // Carry-over: a payment credits the unit's balance (base currency).
-        $unit->increment('balance', $payment->amount);
-        $this->syncUnitStatus($unit);
+        // Balance is derived (opening − charges + payments) — recompute the cache.
+        $this->recomputeUnit($unit);
 
         return response()->json($payment, 201);
     }
