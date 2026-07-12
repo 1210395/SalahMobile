@@ -57,5 +57,5 @@ test('editing a foreign-currency payment amount resyncs its currency to base', a
   }, { no: 'CE' + rnd() });
   expect(r.amount).toBe(500);
   expect(r.original).toBe(500); // no stale 350
-  expect(r.currency).toBe('USD'); // base, not stale ILS
+  expect(r.currency).toBe('NIS'); // the building's base currency (#6), not stale ILS
 });

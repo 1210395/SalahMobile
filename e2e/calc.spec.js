@@ -6,16 +6,24 @@ test.beforeEach(async ({ page }) => { await gotoApp(page); });
 
 const rnd = () => Math.floor(Math.random() * 1e7);
 
-test('the ledger balance equals the sum of a unit\'s payments', async ({ page }) => {
-  const bal = await page.evaluate(async ({ no }) => {
+// Derived ledger: balance = opening − charges + payments. A brand-new unit is
+// already charged for the CURRENT month (accrual starts when a month starts, not
+// when it ends), so payments are measured as a DELTA off the post-creation
+// balance rather than against a bare zero.
+test('payments move the ledger balance by exactly their sum', async ({ page }) => {
+  const r = await page.evaluate(async ({ no }) => {
     const tok = await window.T.adminToken();
+    const bal = async () =>
+      (await (await window.T.req('GET', '/units?btype=residential', tok)).body).find((u) => u.no === no).balance;
     await window.T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'ok', balance: 0 });
+    const before = await bal();
     for (const a of [100, 50, 30]) {
       await window.T.req('POST', '/payments?btype=residential', tok, { unit_no: no, amount: a, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' });
     }
-    return (await (await window.T.req('GET', '/units?btype=residential', tok)).body).find((u) => u.no === no).balance;
+    return { before, after: await bal() };
   }, { no: 'L' + rnd() });
-  expect(bal).toBe(180);
+  expect(r.before).toBe(-100); // one month accrued the moment the unit exists
+  expect(r.after - r.before).toBe(180);
 });
 
 test('foreign-currency conversion rounds half-up to the base amount', async ({ page }) => {
@@ -67,15 +75,29 @@ test('a year\'s closing balance carries forward to the next year\'s opening', as
   expect(r.balance2027).toBe(r.expected2027); // 2027 opened at 2026's closing, not 0
 });
 
+// Dues count what non-vacant units OWE — a credit balance does not net against a
+// neighbour's debt, and a vacant unit contributes nothing. Measured as a delta so
+// the assertion doesn't depend on whatever else the suite has already created.
 test('dues sum only the negative balances of non-vacant units', async ({ page }) => {
-  const r = await page.evaluate(async () => {
+  const y = new Date().getFullYear();
+  const r = await page.evaluate(async ({ owes, credit, vacant, y }) => {
     const tok = await window.T.adminToken();
-    const units = await (await window.T.req('GET', '/units?btype=residential', tok)).body;
-    const sum = await (await window.T.req('GET', '/summary?btype=residential', tok)).body;
-    const expected = units.filter((u) => u.status !== 'vacant' && u.balance < 0).reduce((s, u) => s + Math.abs(u.balance), 0);
-    return { got: sum.due, expected };
-  });
-  expect(r.got).toBe(r.expected);
+    const due = async () =>
+      (await (await window.T.req('GET', `/summary?btype=residential&year=${y}`, tok)).body).due;
+    const before = await due();
+
+    // Owes: no payments, so its first month's fee stands as debt.
+    await window.T.req('POST', '/units?btype=residential', tok, { no: owes, floor: 1, sub: 100, status: 'ok', balance: 0 });
+    // In credit: overpays this month — a credit must NOT reduce the building's dues.
+    await window.T.req('POST', '/units?btype=residential', tok, { no: credit, floor: 1, sub: 100, status: 'ok', balance: 0 });
+    await window.T.req('POST', '/payments?btype=residential', tok, { unit_no: credit, amount: 500, kind: 'k', month: 0, year: y, date: `${y}-01-05`, method: 'x' });
+    // Vacant: excluded from dues entirely.
+    await window.T.req('POST', '/units?btype=residential', tok, { no: vacant, floor: 1, sub: 100, status: 'vacant', balance: 0 });
+
+    return { before, after: await due() };
+  }, { owes: 'D' + rnd(), credit: 'C' + rnd(), vacant: 'V' + rnd(), y });
+  // Only the owing unit moves the needle: +100 (one accrued month).
+  expect(r.after - r.before).toBe(100);
 });
 
 test('the year-transfer grid is live: 12 months reflecting real payments', async ({ page }) => {
@@ -124,7 +146,9 @@ test('back-debt accrues for a past contract but never for a future one', async (
     return { future: uf.balance, past: up.balance };
   }, { nf: 'F' + rnd(), np: 'P' + rnd() });
   expect(r.future).toBe(0); // a future lease owes nothing
-  expect(r.past).toBe(-600); // 6 months × 100
+  // 7 months × 100: the 6 back months PLUS the current one, which is billed the
+  // moment it starts (#21/#25) rather than when it ends.
+  expect(r.past).toBe(-700);
 });
 
 test('a zero or negative exchange rate is rejected; a valid one is accepted', async ({ page }) => {
@@ -141,8 +165,11 @@ test('a zero or negative exchange rate is rejected; a valid one is accepted', as
 test('a unit status stays consistent with its balance (paying off clears late)', async ({ page }) => {
   const r = await page.evaluate(async ({ no }) => {
     const tok = await window.T.adminToken();
+    // Opening debt of 100, plus the current month's 100 fee = 200 owed. Settling
+    // the full 200 must clear the debt AND the late status — status is derived,
+    // never set by hand (#18/#19).
     await window.T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'late', balance: -100 });
-    await window.T.req('POST', '/payments?btype=residential', tok, { unit_no: no, amount: 100, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' });
+    await window.T.req('POST', '/payments?btype=residential', tok, { unit_no: no, amount: 200, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' });
     const paid = (await (await window.T.req('GET', '/units?btype=residential', tok)).body).find((u) => u.no === no);
     // regenerate alerts — a paid-off unit must not produce an overdue alert
     await window.T.req('POST', '/alerts/regenerate?btype=residential', tok);
@@ -162,7 +189,7 @@ test('a back-debt unit is created as late (owes), not ok', async ({ page }) => {
     const u = (await window.T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'ok', contract_start: past.toISOString().slice(0, 10), back_debt: true })).body;
     return { balance: u.balance, status: u.status };
   }, { no: 'BD' + rnd() });
-  expect(r.balance).toBe(-300);
+  expect(r.balance).toBe(-400); // 3 back months + the current one, × 100
   expect(r.status).toBe('late'); // balance drives status, despite status:'ok' input
 });
 

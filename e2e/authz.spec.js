@@ -99,8 +99,8 @@ test('a unit has one resident: reassigning unlinks the previous tenant (no payme
   const r = await page.evaluate(async ({ no }) => {
     const T = window.T; const tok = await T.adminToken(); const rand = () => Math.floor(Math.random() * 1e7);
     await T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'ok' });
-    const a = (await T.req('POST', '/residents?btype=residential', tok, { name: 'A', phone: '+9705' + rand(), unit_no: no })).body;
-    const b = (await T.req('POST', '/residents?btype=residential', tok, { name: 'B', phone: '+9705' + rand(), unit_no: no })).body;
+    const a = (await T.req('POST', '/residents?btype=residential', tok, { name: 'A', phone: '+9705' + rand(), unit_no: no, password: 'secret6' })).body;
+    const b = (await T.req('POST', '/residents?btype=residential', tok, { name: 'B', phone: '+9705' + rand(), unit_no: no, password: 'secret6' })).body;
     await T.req('POST', '/payments?btype=residential', tok, { unit_no: no, amount: 500, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' });
     const tA = (await T.req('POST', '/auth/redeem-code', null, { code: a.login_code })).body.token;
     const tB = (await T.req('POST', '/auth/redeem-code', null, { code: b.login_code })).body.token;

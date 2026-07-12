@@ -59,7 +59,7 @@ test('FIX: per-unit overdue alerts are targeted (admin sees them; residents do n
     const adminSeesSubs = subs.length; // admin feed is unfiltered
     const noneBroadcast = subs.every((a) => a.target && a.target !== 'all');
     // A fresh resident on unit 101 must not see another unit's overdue alert.
-    const r = await (await fetch(API + '/residents?btype=residential', { method: 'POST', headers: H(tok), body: JSON.stringify({ name: 'E2E res', phone: '+9705' + Math.floor(Math.random() * 1e7), unit_no: '101' }) })).json();
+    const r = await (await fetch(API + '/residents?btype=residential', { method: 'POST', headers: H(tok), body: JSON.stringify({ name: 'E2E res', phone: '+9705' + Math.floor(Math.random() * 1e7), unit_no: '101', password: 'secret6' }) })).json();
     const rTok = (await (await fetch(API + '/auth/redeem-code', { method: 'POST', headers: H(), body: JSON.stringify({ code: r.login_code }) })).json()).token;
     const rAlerts = await (await fetch(API + '/alerts', { headers: H(rTok) })).json();
     const seesNeighbour = rAlerts.some((a) => a.type === 'subscription' && a.target && a.target !== '101' && a.target !== 'all');
@@ -69,17 +69,28 @@ test('FIX: per-unit overdue alerts are targeted (admin sees them; residents do n
   expect(res.seesNeighbour).toBe(false);
 });
 
-test('FIX: manager-created resident gets a 128-bit login code that redeems', async ({ page }) => {
+// #1's root cause: the QR/login code used to be a PERMANENT, unlimited, multi-device
+// credential, so a reused QR kept signing every device in as the same resident. The
+// code must now be single-use — redeeming it rotates it away.
+test('FIX: manager-created resident gets a 128-bit login code that redeems ONCE', async ({ page }) => {
   const res = await inPage(page, async ({ API, ADMIN }) => {
     const H = (t) => ({ Accept: 'application/json', 'Content-Type': 'application/json', ...(t ? { Authorization: 'Bearer ' + t } : {}) });
     const tok = (await (await fetch(API + '/auth/login', { method: 'POST', headers: H(), body: JSON.stringify(ADMIN) })).json()).token;
-    const r = await (await fetch(API + '/residents?btype=residential', { method: 'POST', headers: H(tok), body: JSON.stringify({ name: 'E2E code', phone: '+9705' + Math.floor(Math.random() * 1e7), unit_no: '101' }) })).json();
+    const r = await (await fetch(API + '/residents?btype=residential', { method: 'POST', headers: H(tok), body: JSON.stringify({ name: 'E2E code', phone: '+9705' + Math.floor(Math.random() * 1e7), unit_no: '101', password: 'secret6' }) })).json();
     const redeem = await (await fetch(API + '/auth/redeem-code', { method: 'POST', headers: H(), body: JSON.stringify({ code: r.login_code }) })).json();
-    return { len: (r.login_code || '').length, role: redeem.user && redeem.user.role, hasToken: !!redeem.token };
+    // The SAME code a second time must be refused — it was spent on the first redeem.
+    const again = await fetch(API + '/auth/redeem-code', { method: 'POST', headers: H(), body: JSON.stringify({ code: r.login_code }) });
+    return {
+      len: (r.login_code || '').length,
+      role: redeem.user && redeem.user.role,
+      hasToken: !!redeem.token,
+      replayStatus: again.status,
+    };
   });
   expect(res.len).toBe(32);
   expect(res.hasToken).toBe(true);
   expect(res.role).toBe('resident');
+  expect(res.replayStatus).toBe(422); // single-use: a replayed QR cannot sign anyone in
 });
 
 test('FIX: renaming a unit cascades its payments (no orphans)', async ({ page }) => {

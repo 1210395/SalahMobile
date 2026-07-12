@@ -84,19 +84,47 @@ test('email code: a wrong code then the right one is accepted (the reported bug)
   expect(r.right).toBe(200); // correct code still works after a wrong attempt
 });
 
-test('OTP login works for a password-less resident issued by the manager', async ({ page }) => {
+// #15 made a password MANDATORY on every manager-created resident, and verifyOtp
+// refuses any account that has one. So a resident signs in with their phone (or
+// email) + password — OTP is not a way around that, and cannot be used to bypass
+// a known credential. A password-less account can no longer exist.
+test('a manager-created resident is refused OTP and signs in with phone + password', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const tok = await window.T.adminToken();
     const phone = '+9705' + Math.floor(Math.random() * 1e7);
-    await window.T.req('POST', '/residents?btype=residential', tok, { name: 'ساكن OTP', phone, unit_no: '101' });
+    const created = await window.T.req('POST', '/residents?btype=residential', tok,
+      { name: 'ساكن OTP', phone, unit_no: '101', password: 'secret6' });
+
+    // OTP must refuse the account: it has a password, so it must be used.
     const req = await window.T.req('POST', '/auth/request-otp', null, { phone });
-    const code = req.body.dev_code;
-    const verify = await window.T.req('POST', '/auth/verify-otp', null, { phone, code });
-    return { hasDev: !!code, verify: verify.status, role: verify.body && verify.body.user && verify.body.user.role };
+    const verify = await window.T.req('POST', '/auth/verify-otp', null, { phone, code: req.body.dev_code || '123456' });
+
+    // The credential the manager set is what actually signs them in.
+    const login = await window.T.req('POST', '/auth/login', null, { phone, password: 'secret6' });
+    return {
+      created: created.status,
+      verify: verify.status,
+      login: login.status,
+      role: login.body && login.body.user && login.body.user.role,
+    };
   });
-  expect(r.hasDev).toBe(true);
-  expect(r.verify).toBe(200);
+  expect(r.created).toBe(201);
+  expect(r.verify).toBe(422); // OTP cannot sign in a password account
+  expect(r.login).toBe(200);
   expect(r.role).toBe('resident');
+});
+
+// #15: a resident created WITHOUT a password is rejected outright.
+test('creating a resident without a password is rejected', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tok = await window.T.adminToken();
+    const phone = '+9705' + Math.floor(Math.random() * 1e7);
+    const none = await window.T.req('POST', '/residents?btype=residential', tok, { name: 'بلا كلمة', phone, unit_no: '101' });
+    const short = await window.T.req('POST', '/residents?btype=residential', tok, { name: 'قصيرة', phone, unit_no: '101', password: '123' });
+    return { none: none.status, short: short.status };
+  });
+  expect(r.none).toBe(422);
+  expect(r.short).toBe(422); // min 6 characters
 });
 
 test('OTP for an unknown phone is rejected — renters cannot self-register', async ({ page }) => {
