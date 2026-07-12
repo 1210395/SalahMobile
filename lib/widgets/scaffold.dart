@@ -48,9 +48,11 @@ class ScreenScaffold extends StatelessWidget {
         header,
         Expanded(
           child: SingleChildScrollView(
+            // Add the keyboard height so the lowest fields on a full-screen form
+            // (e.g. register) can scroll above the keyboard (#4).
             padding: pad
-                ? const EdgeInsets.fromLTRB(16, 16, 16, 26)
-                : EdgeInsets.zero,
+                ? EdgeInsets.fromLTRB(16, 16, 16, 26 + MediaQuery.of(context).viewInsets.bottom)
+                : EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: children,
@@ -133,20 +135,21 @@ class SheetShell extends StatelessWidget {
               ),
             Flexible(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                padding: EdgeInsets.fromLTRB(18, 16, 18, 16 + bottomInset),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: children,
+                  children: [
+                    ...children,
+                    // #14: the save button is NOT sticky — it sits at the end of
+                    // the form, so the user scrolls down to reach it.
+                    if (footer != null) ...[
+                      const SizedBox(height: 18),
+                      footer!,
+                    ],
+                  ],
                 ),
               ),
             ),
-            if (footer != null)
-              Container(
-                padding: EdgeInsets.fromLTRB(18, 12, 18, 16 + bottomInset),
-                decoration: const BoxDecoration(
-                    border: Border(top: BorderSide(color: AppColors.line))),
-                child: footer,
-              ),
           ],
         ),
       ),

@@ -1,10 +1,17 @@
 // عمارتي — form controls + small widgets. Ported from ui2.jsx.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/tokens.dart';
 import 'app_icon.dart';
 import 'primitives.dart';
+
+/// Input formatters for numeric fields (real input filtering — the app had none,
+/// so letters silently became a fallback number). [digitsOnly] = non-negative
+/// integers; [decimal] = a non-negative decimal (e.g. an exchange rate).
+final digitsOnly = [FilteringTextInputFormatter.digitsOnly];
+final decimalOnly = [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))];
 
 /// Single-line labelled input.
 class Field extends StatefulWidget {
@@ -18,6 +25,7 @@ class Field extends StatefulWidget {
     this.hint,
     this.suffix,
     this.keyboardType,
+    this.inputFormatters,
     this.obscure = false,
     this.ltr = false,
     this.marginBottom = 14,
@@ -31,6 +39,9 @@ class Field extends StatefulWidget {
   final String? hint;
   final String? suffix;
   final TextInputType? keyboardType;
+
+  /// Real input filtering (e.g. [digitsOnly] / [decimalOnly]) — rejects letters.
+  final List<TextInputFormatter>? inputFormatters;
   final bool obscure;
   final bool ltr;
   final double marginBottom;
@@ -49,6 +60,17 @@ class _FieldState extends State<Field> {
   void initState() {
     super.initState();
     _f.addListener(() => setState(() => _foc = _f.hasFocus));
+  }
+
+  @override
+  void didUpdateWidget(Field old) {
+    super.didUpdateWidget(old);
+    // Keep the controller in sync when the caller changes `value` (e.g. a total
+    // recomputed from other inputs) WITHOUT losing focus/caret. Screens no
+    // longer need the ValueKey-remount hack that dismissed the keyboard (#24).
+    if (widget.value != old.value && widget.value != _c.text && !_f.hasFocus) {
+      _c.text = widget.value;
+    }
   }
 
   @override
@@ -98,6 +120,7 @@ class _FieldState extends State<Field> {
                     onChanged: widget.onChanged,
                     obscureText: widget.obscure,
                     keyboardType: widget.keyboardType,
+                    inputFormatters: widget.inputFormatters,
                     maxLength: widget.maxLength,
                     // Hide the built-in counter; the fixed-height field has no room.
                     buildCounter: widget.maxLength == null
