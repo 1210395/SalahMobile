@@ -687,6 +687,21 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertDatabaseMissing('alerts', ['type' => 'subscription']);
     }
 
+    // #6 — an alert body must quote money in the BUILDING's currency. These strings
+    // used to hardcode "$" while every other label rendered "₪".
+    public function test_alert_bodies_quote_money_in_the_buildings_currency(): void
+    {
+        $this->seedBuilding();
+        \App\Models\Building::where('key', 'residential')->update(['currency' => 'NIS']);
+        $this->makeUnit(['no' => '101', 'status' => 'late', 'balance' => -1200]);
+
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
+
+        $body = (string) \App\Models\Alert::where('type', 'subscription')->value('body');
+        $this->assertStringContainsString('1,200 ₪', $body);
+        $this->assertStringNotContainsString('$', $body);
+    }
+
     public function test_overpaying_makes_a_unit_credit_and_deleting_reverts_to_late(): void
     {
         $this->seedBuilding();
