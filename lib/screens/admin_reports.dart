@@ -377,7 +377,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       header: AppHeader(
         title: 'التقارير',
         subtitle: 'تحليل شامل للمبنى',
-        onBack: ctx.back,
+        onHome: ctx.role == AppRole.admin ? () => ctx.go('home') : null,
         right: Row(mainAxisSize: MainAxisSize.min, children: [
           RoundBtn(icon: 'excel', onTap: () => _shareComprehensive(ctx)),
           const SizedBox(width: 8),

@@ -21,7 +21,7 @@ import 'screens/super_admin.dart';
 
 const Map<String, String> _adminTabOf = {
   'home': 'home', 'units': 'units', 'payments': 'payments', 'reports': 'reports',
-  'more': 'more', 'building': 'more', 'expenses': 'more', 'workers': 'more',
+  'more': 'more', 'building': 'more', 'expenses': 'expenses', 'workers': 'more',
   'parking': 'more', 'guard': 'more', 'elevator': 'more', 'craftsmen': 'more',
   'alerts': 'more', 'years': 'more', 'approvals': 'more',
   'subscribe': 'more', 'buildingSetup': 'more', 'register': 'more',
@@ -420,12 +420,13 @@ class _AmaratiAppState extends State<AmaratiApp> {
             active: _adminTabOf[screen],
             onChange: _go,
             tabs: [
-              const NavTab(id: 'home', label: 'الرئيسية', icon: 'home', fillOnActive: true),
+              // #12: الرئيسية moved off the bottom nav to the topbar home button.
               NavTab(
                   id: 'units',
                   label: btype == BType.residential ? 'الشقق' : 'وحدات',
                   icon: btype == BType.residential ? 'building' : 'store'),
               const NavTab(id: 'payments', label: 'الإيرادات', icon: 'wallet'),
+              const NavTab(id: 'expenses', label: 'المصروفات', icon: 'expense'), // #11
               const NavTab(id: 'reports', label: 'التقارير', icon: 'pie'),
               const NavTab(id: 'more', label: 'المزيد', icon: 'grid'),
             ],

@@ -524,7 +524,7 @@ class MoreHub extends StatelessWidget {
     };
 
     return ScreenScaffold(
-      header: const AppHeader(accent: true, title: 'المزيد', subtitle: 'كل أدوات الإدارة'),
+      header: AppHeader(accent: true, title: 'المزيد', subtitle: 'كل أدوات الإدارة', onHome: () => ctx.go('home')),
       nav: ctx.adminNav,
       children: [
         ...groups.map((g) => Padding(

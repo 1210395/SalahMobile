@@ -475,4 +475,26 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('تسجيل الخروج'), findsWidgets);
   });
+
+  // ─────────── Audit redesign — P2 (nav) ───────────
+
+  // #13/#48: the role-switch button is gone from the admin home topbar.
+  testWidgets('admin home has no role-switch button', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'home', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.byWidgetPredicate((w) => w is RoundBtn && w.icon == 'switch'), findsNothing);
+  });
+
+  // #11/#12: the المصروفات tab is in the bottom nav, and a main screen exposes a
+  // home button in the topbar (home moved off the nav).
+  testWidgets('payments screen has expenses in nav + a home button in the header', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    expect(find.byWidgetPredicate((w) => w is RoundBtn && w.icon == 'home'), findsWidgets);
+    expect(find.text('المصروفات'), findsWidgets); // the new nav tab
+  });
 }

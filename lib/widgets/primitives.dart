@@ -204,6 +204,7 @@ class AppHeader extends StatelessWidget {
     this.title,
     this.subtitle,
     this.onBack,
+    this.onHome,
     this.right,
     this.accent = false,
     this.logo = false,
@@ -211,6 +212,10 @@ class AppHeader extends StatelessWidget {
   final String? title;
   final String? subtitle;
   final VoidCallback? onBack;
+
+  /// When set, a home button is shown in the header (home moved off the bottom
+  /// nav — #12). Wire to `() => ctx.go('home')` on admin content screens.
+  final VoidCallback? onHome;
   final Widget? right;
   final bool accent;
   final bool logo;
@@ -261,7 +266,12 @@ class AppHeader extends StatelessWidget {
                 ],
               ),
       ),
-      if (right != null) ...[const SizedBox(width: 10), right!],
+      if (onHome != null || right != null) ...[
+        const SizedBox(width: 10),
+        if (onHome != null) RoundBtn(icon: 'home', dark: accent, onTap: onHome),
+        if (onHome != null && right != null) const SizedBox(width: 8),
+        ?right,
+      ],
     ];
 
     final bar = Padding(

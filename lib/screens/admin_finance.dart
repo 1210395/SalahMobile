@@ -39,7 +39,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       header: AppHeader(
         title: 'الإيرادات',
         subtitle: 'الإيرادات والتحصيل',
-        onBack: ctx.back,
+        onHome: ctx.role == AppRole.admin ? () => ctx.go('home') : null,
         right: RoundBtn(icon: 'filter', onTap: () {}),
       ),
       nav: ctx.adminNav,
@@ -1088,7 +1088,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       header: AppHeader(
         title: 'إدارة المصروفات',
         subtitle: 'نفقات المبنى',
-        onBack: ctx.back,
+        onHome: ctx.role == AppRole.admin ? () => ctx.go('home') : null,
         right: RoundBtn(
           icon: 'pie',
           onTap: () {
