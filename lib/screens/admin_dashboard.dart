@@ -57,7 +57,7 @@ class _DashboardState extends State<Dashboard> {
     final b = ctx.building;
     final tiles = [
       QuickTile(label: res ? 'الشقق السكنية' : 'الوحدات التجارية', sub: res ? 'الشقق والملاك' : 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
-      QuickTile(label: 'الإيرادات', sub: 'متابعة التحصيل', icon: 'wallet', tone: 'gold', onTap: () => ctx.go('payments')),
+      QuickTile(label: 'الإيرادات', sub: 'تسجيل ومتابعة دفعات السكان', icon: 'wallet', tone: 'gold', onTap: () => ctx.go('payments')),
       QuickTile(label: 'المصروفات', sub: 'إدارة المصروفات', icon: 'expense', tone: 'late', onTap: () => ctx.go('expenses')),
       QuickTile(label: 'التقارير', sub: 'تقارير شاملة', icon: 'pie', tone: 'credit', onTap: () => ctx.go('reports')),
       QuickTile(label: 'المصعد', sub: 'صلاحية الوصول', icon: 'elevator', tone: 'navy', onTap: () => ctx.go('elevator')),
@@ -69,8 +69,6 @@ class _DashboardState extends State<Dashboard> {
         accent: true,
         logo: true,
         right: Row(mainAxisSize: MainAxisSize.min, children: [
-          RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
-          const SizedBox(width: 8),
           RoundBtn(icon: 'bell', dark: true, badge: kAlerts.isNotEmpty, onTap: () => ctx.go('alerts')),
           const SizedBox(width: 8),
           RoundBtn(
@@ -131,14 +129,14 @@ class _DashboardState extends State<Dashboard> {
                     Text('${res ? 'سكني' : 'تجاري'} · ${b.units} وحدة · ${b.currency}',
                         style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.navy300)),
                     const SizedBox(height: 12),
-                    Text('الرصيد الحالي',
+                    Text('رصيد الصندوق',
                         style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.navy300)),
                     const SizedBox(height: 6),
                     NumText(fmtUSD(Summary.balance),
                         style: AppType.num(size: 22, weight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(height: 4),
-                    // رصيد الصندوق = إجمالي الإيرادات ناقص المصروفات.
-                    Text('رصيد الصندوق = الإيرادات − المصروفات',
+                    // #8 — رصيد الصندوق = المرحّل + إيرادات العام − مصروفاته.
+                    Text('الإيرادات − المصروفات · للعام $selYear',
                         style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.navy300)),
                   ],
                 ),
@@ -169,7 +167,10 @@ class _DashboardState extends State<Dashboard> {
                       NumText(fmtUSD(Summary.due.abs()),
                           style: AppType.num(size: 22, weight: FontWeight.w800, color: tone)),
                       const SizedBox(height: 4),
-                      Text(credit ? 'رصيد دائن للسكان' : 'مطلوب من السكان (مدين)',
+                      // #9 — say WHICH year the figure closes on, like رصيد الصندوق does.
+                      Text(credit
+                          ? 'رصيد دائن للسكان · حتى نهاية $selYear'
+                          : 'مطلوب من السكان (مدين) · حتى نهاية $selYear',
                           style: AppType.base(size: 10, weight: FontWeight.w500, color: tone)),
                     ],
                   ),
@@ -179,6 +180,10 @@ class _DashboardState extends State<Dashboard> {
           ],
           ),
         ),
+        const SizedBox(height: 10),
+        // #10 — where the two hero figures come from: what this year added, and
+        // what was carried in from the years before it.
+        _CarryOverCard(year: selYear),
         const SizedBox(height: 14),
         gridRows(tiles, n: 3),
         const SizedBox(height: 16),
@@ -251,6 +256,57 @@ class _DashboardState extends State<Dashboard> {
   }
 }
 
+/// #10 — the carry-over breakdown. Both hero figures are cumulative, so this
+/// card says what the selected year itself added versus what it inherited:
+///   رصيد الصندوق = المرحّل + (إيرادات العام − مصروفات العام)
+///   الذمم        = ذمم السنوات السابقة + ذمم العام
+class _CarryOverCard extends StatelessWidget {
+  const _CarryOverCard({required this.year});
+  final int year;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(String label, int value, {Color? color, bool strong = false}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(label,
+                    style: AppType.base(
+                        size: 11.5,
+                        weight: strong ? FontWeight.w700 : FontWeight.w600,
+                        color: strong ? AppColors.ink900 : AppColors.ink600)),
+              ),
+              NumText(fmtUSD(value),
+                  style: AppType.num(
+                      size: 12.5,
+                      weight: strong ? FontWeight.w800 : FontWeight.w700,
+                      color: color ?? AppColors.ink900)),
+            ],
+          ),
+        );
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('تفصيل العام $year',
+              style: AppType.base(size: 12.5, weight: FontWeight.w800, color: AppColors.ink900)),
+          const SizedBox(height: 6),
+          row('رصيد مرحّل من السنوات السابقة', Summary.carried),
+          row('إيرادات العام $year', Summary.yearRevenue, color: AppColors.ok700),
+          row('مصروفات العام $year', Summary.yearExpense, color: AppColors.late700),
+          const Divider(height: 14, color: AppColors.line),
+          row('ذمم من السنوات السابقة', Summary.duePrev, color: AppColors.late700),
+          row('ذمم العام $year', Summary.dueYear, color: AppColors.late700),
+          row('إجمالي الذمم', Summary.due, color: AppColors.late700, strong: true),
+        ],
+      ),
+    );
+  }
+}
+
 class BuildingScreen extends StatelessWidget {
   const BuildingScreen({super.key, required this.ctx});
   final Ctx ctx;
@@ -272,8 +328,8 @@ class BuildingScreen extends StatelessWidget {
       header: AppHeader(
         title: 'إدارة المبنى',
         subtitle: 'الإعدادات العامة',
-        onBack: () => ctx.go('home'),
-        right: RoundBtn(icon: 'edit', onTap: () => _openEdit(context, ctx, b, res)),
+        onBack: ctx.back,
+        right: RoundBtn(icon: 'edit', label: 'تعديل', onTap: () => _openEdit(context, ctx, b, res)),
       ),
       children: [
         Container(
@@ -356,11 +412,8 @@ class BuildingScreen extends StatelessWidget {
                   tone: 'ok'),
               row('elevator', 'رسوم المصعد',
                   Text(fmtUSD(b.elevatorFee),
-                      style: AppType.base(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700))),
-              row('refresh', 'سعر الصرف',
-                  NumText(groupNumber(b.exchangeRate, dec: true),
-                      style: AppType.num(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
-                  tone: 'credit', divider: false),
+                      style: AppType.base(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
+                  divider: false),
             ],
           ),
         ),
@@ -374,7 +427,7 @@ class BuildingScreen extends StatelessWidget {
           QuickTile(label: 'طلبات الانضمام', sub: 'الموافقة على السكان', icon: 'users', tone: 'gold', onTap: () => ctx.go('approvals')),
           QuickTile(label: 'الاشتراك بالتطبيق', sub: 'تفعيل الاشتراك بالتطبيق', icon: 'shield', tone: 'navy', onTap: () => ctx.go('subscribe')),
           QuickTile(label: 'مسؤول مساعد', sub: 'إضافة مسؤول للمبنى', icon: 'users', tone: 'credit', onTap: () => _openCoAdmin(context, ctx)),
-          QuickTile(label: 'الرسوم', sub: 'أنواع الدفعات وقيمها', icon: 'wallet', tone: 'gold', onTap: () => _openPayTypes(context, ctx)),
+          QuickTile(label: 'الرسوم', sub: 'قيم المصعد والحارس والباركينج المضمّنة بالاشتراك', icon: 'wallet', tone: 'gold', onTap: () => _openPayTypes(context, ctx)),
         ], n: 2),
       ],
     );
@@ -389,20 +442,33 @@ class BuildingScreen extends StatelessWidget {
       'units': '${b.units}',
       'sub': '${b.subscription}',
       'elevator': '${b.elevatorFee}',
-      'rate': '${b.exchangeRate}',
     };
     BType type = ctx.btype;
     Object currency = b.currency;
+    // #45: the building can't be shrunk below what is already on record — neither
+    // fewer units than the occupied ones, nor fewer floors than the highest one in use.
+    final occupied = (res ? kApartments : kShops).where((u) => u.status != 'vacant');
+    final existingCount = occupied.length;
+    final topFloor = occupied.fold<int>(0, (m, u) => u.floor > m ? u.floor : m);
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+          final floorsVal = int.tryParse(f['floors']!.trim());
+          final unitsVal = int.tryParse(f['units']!.trim());
+          final unitsBelowExisting = unitsVal != null && unitsVal < existingCount;
+          final floorsBelowExisting = floorsVal != null && topFloor > 0 && floorsVal < topFloor;
+          return SheetShell(
           title: 'تعديل بيانات المبنى',
           footer: AppButton(
             label: 'حفظ التعديلات',
             full: true,
             size: BtnSize.lg,
             icon: 'check',
+            disabled: (floorsVal != null && floorsVal < 1) ||
+                (unitsVal != null && unitsVal < 1) ||
+                unitsBelowExisting ||
+                floorsBelowExisting,
             onTap: () async {
               Navigator.of(sheetCtx).pop();
               try {
@@ -414,7 +480,6 @@ class BuildingScreen extends StatelessWidget {
                   'subscription': int.tryParse(f['sub']!.trim()) ?? b.subscription,
                   'currency': currency,
                   'elevator_fee': int.tryParse(f['elevator']!.trim()) ?? b.elevatorFee,
-                  'exchange_rate': double.tryParse(f['rate']!.trim()) ?? b.exchangeRate,
                 });
                 await ctx.reload();
                 ctx.toast('تم حفظ بيانات المبنى');
@@ -449,8 +514,9 @@ class BuildingScreen extends StatelessWidget {
                       icon: 'layers',
                       value: f['floors']!,
                       ltr: true,
-                      keyboardType: const TextInputType.numberWithOptions(signed: true),
-                      onChanged: (v) => f['floors'] = v),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: digitsOnly,
+                      onChanged: (v) => setS(() => f['floors'] = v)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -460,10 +526,27 @@ class BuildingScreen extends StatelessWidget {
                       value: f['units']!,
                       ltr: true,
                       keyboardType: TextInputType.number,
-                      onChanged: (v) => f['units'] = v),
+                      inputFormatters: digitsOnly,
+                      onChanged: (v) => setS(() => f['units'] = v)),
                 ),
               ],
             ),
+            if (unitsBelowExisting)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 2),
+                child: Text(
+                  'عدد الوحدات لا يمكن أن يقل عن $existingCount وحدة مسجّلة',
+                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.late700),
+                ),
+              ),
+            if (floorsBelowExisting)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 2),
+                child: Text(
+                  'عدد الطوابق لا يمكن أن يقل عن $topFloor — يوجد ${res ? 'شقق' : 'وحدات'} في هذا الطابق',
+                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.late700),
+                ),
+              ),
             Field(
                 label: 'الاشتراك الشهري',
                 icon: 'wallet',
@@ -471,6 +554,7 @@ class BuildingScreen extends StatelessWidget {
                 ltr: true,
                 suffix: currencySymbol(currency as String),
                 keyboardType: TextInputType.number,
+                inputFormatters: digitsOnly,
                 onChanged: (v) => f['sub'] = v),
             SelectField(
               label: 'عملة المبنى',
@@ -491,22 +575,14 @@ class BuildingScreen extends StatelessWidget {
                       ltr: true,
                       suffix: currencySymbol(currency as String),
                       keyboardType: TextInputType.number,
+                      inputFormatters: digitsOnly,
                       onChanged: (v) => f['elevator'] = v),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Field(
-                      label: 'سعر الصرف',
-                      icon: 'refresh',
-                      value: f['rate']!,
-                      ltr: true,
-                      keyboardType: TextInputType.number,
-                      onChanged: (v) => f['rate'] = v),
                 ),
               ],
             ),
           ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -572,6 +648,22 @@ class BuildingScreen extends StatelessWidget {
       SheetShell(
         title: 'الرسوم وأنواع الدفعات',
         children: [
+          // #46 — spell out what this screen is for; the list of amounts alone
+          // did not say where these numbers end up.
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+                color: AppColors.surface2, borderRadius: BorderRadius.circular(12)),
+            child: Text(
+              'هذه هي بنود الرسوم الافتراضية للمبنى (المصعد، الحارس، الباركينج…). '
+              'قيمتها مضمّنة في الاشتراك الشهري لكل وحدة، وتُستخدم كقيمة مقترحة عند '
+              'تسجيل الوحدات. تعديلها هنا لا يغيّر الدفعات المسجّلة سابقاً.',
+              style: AppType.base(
+                  size: 12, weight: FontWeight.w600, color: AppColors.ink600, height: 1.6),
+            ),
+          ),
           for (final pt in kPayTypes)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -586,14 +678,14 @@ class BuildingScreen extends StatelessWidget {
                 NumText(fmtUSD(pt.amount),
                     style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.gold700)),
                 const SizedBox(width: 10),
-                RoundBtn(icon: 'edit', onTap: () {
+                RoundBtn(icon: 'edit', label: 'تعديل', onTap: () {
                   Navigator.of(context).pop();
                   _openEditPayType(context, ctx, pt);
                 }),
               ]),
             ),
           const SizedBox(height: 4),
-          Text('اضغط ✎ لتعديل قيمة أو تفعيل أي رسم.',
+          Text('اضغط «تعديل» لتغيير قيمة أي رسم أو تفعيله.',
               style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400)),
         ],
       ),

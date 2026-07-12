@@ -20,13 +20,17 @@ const Map<String, String> kCurrencySymbols = {
 // duplicates, which would confuse users and make the same currency compare as
 // "different" in the conversion path).
 const List<String> kCurrencyCodes = [
-  'USD', 'NIS', 'JOD', 'SAR', 'AED', 'EGP', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'EUR', 'GBP',
+  'NIS', 'JOD', 'USD', 'SAR', 'AED', 'EGP', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'EUR', 'GBP',
 ];
+
+/// #6 — the app's market is Palestine, so a new building starts in shekels.
+/// It stays a free choice: every currency picker still lists all of the above.
+const String kDefaultCurrency = 'NIS';
 
 String currencySymbol(String code) => kCurrencySymbols[code] ?? code;
 
-/// The active building's base currency (from live data, else USD).
-String get activeCurrency => DataStore.I.building?.currency ?? 'USD';
+/// The active building's base currency (from live data, else the default).
+String get activeCurrency => DataStore.I.building?.currency ?? kDefaultCurrency;
 
 /// Group digits with thousands separators (e.g. 25840 -> "25,840").
 String _grouped(num n, {bool dec = false}) {
@@ -70,6 +74,22 @@ const List<String> arMonths = [
 /// Arabic month names). [i] is the 0-based month index used across the data
 /// layer (Payment.month, report selectors, …).
 String monthLabelNum(int i) => 'شهر ${i + 1}';
+
+// ───────────── Derived ledger helpers (month settlement) ─────────────
+
+/// Dues-settling amount already paid for a unit's given month/year. An "أخرى"
+/// line is income only and never counts toward settling a month (#28).
+int paidForMonth(String unitNo, int month, int year) => kPayments
+    .where((p) => p.unit == unitNo && p.month == month && p.year == year && p.appliesToDues)
+    .fold<int>(0, (s, p) => s + p.amount);
+
+/// A month is SETTLED once its dues-settling payments cover the monthly fee.
+/// A settled month can't be paid again (#34).
+bool monthSettled(Unit u, int month, int year) =>
+    u.sub > 0 && paidForMonth(u.no, month, year) >= u.sub;
+
+/// What a unit currently owes (0 when settled or in credit).
+int duesOf(Unit u) => u.balance < 0 ? -u.balance : 0;
 
 /// All month labels as numbered "شهر N" strings (0-based index → label).
 List<String> get arMonthsNum =>
@@ -165,7 +185,7 @@ class Building {
         units: _int(j['units_count']),
         type: j['type'] ?? '',
         subscription: _int(j['subscription']),
-        currency: j['currency'] ?? 'USD',
+        currency: j['currency'] ?? kDefaultCurrency,
         floors: _int(j['floors']),
         exchangeRate: (j['exchange_rate'] is num)
             ? (j['exchange_rate'] as num).toDouble()
@@ -253,6 +273,9 @@ class Payment {
     required this.year,
     required this.date,
     required this.method,
+    this.appliesToDues = true,
+    this.chequeDate = '',
+    this.chequeNumber = '',
   });
   final int id;
   final String unit;
@@ -264,9 +287,16 @@ class Payment {
   final String date;
   final String method;
 
+  /// False for an "أخرى" line: recorded as income but does NOT settle dues (#28).
+  final bool appliesToDues;
+  final String chequeDate;   // future due-date when the method is شيك (#26)
+  final String chequeNumber;
+
   factory Payment.fromJson(Map<String, dynamic> j) => Payment(
         id: _int(j['id']),
-        unit: '${j['unit_no'] ?? j['unit']}',
+        // ايراد خاص rows carry no unit at all (unit_no is null) — keep it empty,
+        // never the literal string "null".
+        unit: '${j['unit_no'] ?? j['unit'] ?? ''}',
         name: j['name'] ?? '',
         amount: _int(j['amount']),
         kind: j['kind'] ?? '',
@@ -274,8 +304,23 @@ class Payment {
         year: _int(j['year']),
         date: '${j['date']}'.split('T').first,
         method: j['method'] ?? '',
+        appliesToDues: j['applies_to_dues'] == null
+            ? true
+            : (j['applies_to_dues'] == true || j['applies_to_dues'] == 1),
+        chequeDate: _dateStr(j['cheque_date']),
+        chequeNumber: '${j['cheque_number'] ?? ''}',
       );
 }
+
+/// The three payment بنود (#23). Fees (elevator/guard/parking) are folded into
+/// the monthly fee, so a resident's charge is a single monthly amount.
+enum PayItem { monthly, dues, other }
+
+String payItemLabel(PayItem i) => switch (i) {
+      PayItem.monthly => 'دفعة شهرية',
+      PayItem.dues => 'ذمم',
+      PayItem.other => 'أخرى',
+    };
 
 class PayType {
   const PayType({required this.id, required this.label, required this.amount, required this.on, required this.opt, this.dbId = 0});
@@ -542,13 +587,31 @@ class SummaryData {
   const SummaryData({
     required this.balance,
     required this.due,
+    required this.dueYear,
+    required this.duePrev,
+    required this.carried,
+    required this.yearRevenue,
+    required this.yearExpense,
     required this.revenueM,
     required this.expenseM,
     required this.bars,
     required this.trend,
   });
   final int balance;
+
+  /// Dues owed as of the end of the selected year …
   final int due;
+
+  /// … split into what the selected year itself added (#9) …
+  final int dueYear;
+
+  /// … and what was carried in from earlier years (#10).
+  final int duePrev;
+
+  /// Cash carried into the selected year from earlier years (#10).
+  final int carried;
+  final int yearRevenue;
+  final int yearExpense;
   final int revenueM;
   final int expenseM;
   final List<ChartDatum> bars;
@@ -561,6 +624,11 @@ class SummaryData {
     return SummaryData(
       balance: _int(j['balance']),
       due: _int(j['due']),
+      dueYear: _int(j['dueYear']),
+      duePrev: _int(j['duePrev']),
+      carried: _int(j['carried']),
+      yearRevenue: _int(j['yearRevenue']),
+      yearExpense: _int(j['yearExpense']),
       revenueM: _int(j['revenueM']),
       expenseM: _int(j['expenseM']),
       bars: list('bars'),
@@ -622,11 +690,21 @@ class DataStore {
 const List<String> kExpCats = ['مصعد', 'نظافة', 'كهرباء', 'صيانة', 'أخرى'];
 
 const Building _emptyBuilding = Building(
-    name: '', address: '', units: 0, type: '', subscription: 0, currency: 'USD', floors: 0);
+    name: '', address: '', units: 0, type: '', subscription: 0, currency: kDefaultCurrency, floors: 0);
 const Guard _emptyGuard =
     Guard(name: '', phone: '', address: '', fee: 0, last: '—', next: '—');
 const SummaryData _zeroSummary = SummaryData(
-    balance: 0, due: 0, revenueM: 0, expenseM: 0, bars: [], trend: []);
+    balance: 0,
+    due: 0,
+    dueYear: 0,
+    duePrev: 0,
+    carried: 0,
+    yearRevenue: 0,
+    yearExpense: 0,
+    revenueM: 0,
+    expenseM: 0,
+    bars: [],
+    trend: []);
 
 final DataStore _s = DataStore.I;
 bool get _resLoaded => _s.loaded && _s.loadedBtype == BType.residential;
@@ -659,6 +737,11 @@ class Summary {
   static SummaryData get _d => _s.summary ?? _zeroSummary;
   static int get balance => _d.balance;
   static int get due => _d.due;
+  static int get dueYear => _d.dueYear;
+  static int get duePrev => _d.duePrev;
+  static int get carried => _d.carried;
+  static int get yearRevenue => _d.yearRevenue;
+  static int get yearExpense => _d.yearExpense;
   static int get revenueM => _d.revenueM;
   static int get expenseM => _d.expenseM;
   static List<ChartDatum> get bars => _d.bars;

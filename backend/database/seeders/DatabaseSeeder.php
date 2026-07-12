@@ -72,7 +72,7 @@ class DatabaseSeeder extends Seeder
         Building::create([
             'key' => 'residential', 'name' => 'عمارة الياسمين',
             'address' => 'حي النرجس، شارع 12، الرياض', 'type' => 'سكني',
-            'subscription' => 40, 'currency' => 'USD', 'floors' => 6, 'units_count' => 12,
+            'subscription' => 40, 'currency' => 'NIS', 'floors' => 6, 'units_count' => 12,
             'exchange_rate' => 3.75, 'elevator_fee' => 15, 'summary' => $summary,
             'elevator_phone' => '+966 92 000 1234',
             'elevator_company' => 'شركة أوتيس للمصاعد',
@@ -83,7 +83,7 @@ class DatabaseSeeder extends Seeder
         Building::create([
             'key' => 'commercial', 'name' => 'مجمع التجارة الذهبي',
             'address' => 'طريق الملك فهد، الرياض', 'type' => 'تجاري',
-            'subscription' => 120, 'currency' => 'USD', 'floors' => 3, 'units_count' => 10,
+            'subscription' => 120, 'currency' => 'NIS', 'floors' => 3, 'units_count' => 10,
             'exchange_rate' => 3.75, 'elevator_fee' => 15, 'summary' => $summary,
             'elevator_phone' => '+966 92 000 1234',
             'elevator_company' => 'شركة أوتيس للمصاعد',
@@ -277,7 +277,7 @@ class DatabaseSeeder extends Seeder
         foreach ([['residential', 'سكني'], ['commercial', 'تجاري']] as [$key, $type]) {
             Building::create([
                 'key' => $key, 'name' => '', 'address' => '', 'type' => $type,
-                'subscription' => 0, 'currency' => 'USD', 'floors' => 0, 'units_count' => 0,
+                'subscription' => 0, 'currency' => 'NIS', 'floors' => 0, 'units_count' => 0,
                 'exchange_rate' => 3.75, 'elevator_fee' => 0, 'elevator_phone' => '',
                 'summary' => [],
             ]);
@@ -331,6 +331,9 @@ class DatabaseSeeder extends Seeder
                 'building_key' => $bk, 'ext_id' => $r[0], 'no' => $r[1], 'floor' => $r[2],
                 'resident' => $r[3], 'kind' => $r[4], 'phone' => $r[5], 'sub' => $r[6],
                 'status' => $r[7], 'balance' => $r[8], 'payer' => $r[9],
+                // Derived ledger: seed the balance as the opening; billing_start
+                // null = no monthly accrual for the demo (payments still credit).
+                'opening_balance' => $r[7] === 'vacant' ? 0 : $r[8], 'billing_start' => null,
                 'contract_start' => $r[7] === 'vacant' ? null : '2026-01-01',
                 'contract_end' => $r[7] === 'vacant' ? null : '2026-12-31',
                 'notes' => $r[4] === 'شاغر' ? 'الوحدة متاحة للإيجار.' : 'يفضل التواصل عبر واتساب بعد الساعة 5 مساءً.',

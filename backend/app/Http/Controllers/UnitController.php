@@ -84,23 +84,26 @@ class UnitController extends Controller
         $vacant = ($data['kind'] ?? null) === 'شاغر' || ($data['status'] ?? null) === 'vacant';
         $sub = (int) ($data['sub'] ?? 0);
         $contractStart = $vacant ? null : ($data['contract_start'] ?? now()->startOfYear()->toDateString());
-        $balance = $vacant ? 0 : (int) ($data['balance'] ?? 0);
 
-        // Auto opening debt from the contract start (− = owes). Unchecked → start
-        // from the current month (no back-debt, keep any provided balance).
-        if (! $vacant && ($data['back_debt'] ?? false) && $contractStart) {
-            $start = Carbon::parse($contractStart);
-            // Back-debt only accrues for a contract that has ALREADY started. A
-            // future start owes nothing yet — without this guard the month diff
-            // goes negative and fabricates a phantom credit.
-            $months = $start->isPast() ? (int) $start->diffInMonths(now()) : 0;
-            // Opening debt = rent × months since the contract start, ADDED to any
-            // previous dues the manager entered (ذمم سابقة, sent pre-negated in
-            // `balance`) — so back-debt accrues ON TOP of prior balance, not
-            // replacing it.
-            $balance = (-1 * $sub * $months) + $balance;
+        // Derived ledger: opening_balance = previous dues entered (ذمم سابقة, sent
+        // pre-negated in `balance`). Charges accrue monthly from billing_start =
+        // the contract-start month when "احتساب من بداية العقد" is on, otherwise
+        // the current month. The stored `balance` is a cache = opening − charges.
+        $openingBalance = $vacant ? 0 : (int) ($data['balance'] ?? 0);
+        $billingStart = $vacant
+            ? null
+            : ((($data['back_debt'] ?? false) && $contractStart) ? $contractStart : now()->startOfMonth()->toDateString());
+
+        $balance = 0;
+        if (! $vacant) {
+            $start = Carbon::parse($billingStart)->startOfMonth();
+            $nowM = now()->startOfMonth();
+            $months = $start->greaterThan($nowM)
+                ? 0
+                : ($nowM->year - $start->year) * 12 + ($nowM->month - $start->month) + 1;
+            $balance = $openingBalance - $sub * $months;
             // A very old contract × a large fee can exceed the INT column — reject
-            // cleanly instead of a raw MySQL overflow 500.
+            // cleanly instead of a raw overflow 500.
             abort_if(abs($balance) > 2147483647, 422,
                 'الرصيد المحتسب كبير جداً — تحقّق من الدفعة الشهرية وتاريخ بداية العقد');
         }
@@ -119,6 +122,8 @@ class UnitController extends Controller
             // 'ok') so the badge never contradicts what's owed. Vacant is manual.
             'status' => $vacant ? 'vacant' : self::statusForBalance($balance),
             'balance' => $balance,
+            'opening_balance' => $openingBalance,
+            'billing_start' => $billingStart,
             'payer' => $vacant ? '—' : ($data['payer'] ?? 'الساكن'),
             'contract_start' => $contractStart,
             // Empty/absent end date = open-ended ("مستمر") — do NOT force a
@@ -152,9 +157,7 @@ class UnitController extends Controller
             );
         }
 
-        $newBalance = $vacant ? 0 : (int) ($data['balance'] ?? $unit->balance);
-
-        DB::transaction(function () use ($unit, $vacant, $data, $renamed, $oldNo, $newNo, $newBalance) {
+        DB::transaction(function () use ($unit, $vacant, $data, $renamed, $oldNo, $newNo) {
             $unit->update([
                 'no' => $data['no'],
                 'floor' => $data['floor'],
@@ -162,10 +165,6 @@ class UnitController extends Controller
                 'kind' => $vacant ? 'شاغر' : ($data['kind'] ?? $unit->kind),
                 'phone' => $vacant ? '—' : ($data['phone'] ?? $unit->phone),
                 'sub' => $data['sub'] ?? $unit->sub,
-                // A vacant unit is excluded from dues (balance zeroed). Otherwise
-                // the status is derived from the balance so it can't contradict it.
-                'status' => $vacant ? 'vacant' : self::statusForBalance($newBalance),
-                'balance' => $newBalance,
                 'payer' => $vacant ? '—' : ($data['payer'] ?? $unit->payer),
                 'contract_start' => $vacant ? null : ($data['contract_start'] ?? $unit->contract_start),
                 // Sent null (empty "مستمر") clears the end date; only an ABSENT key
@@ -174,6 +173,8 @@ class UnitController extends Controller
                     ? null
                     : (array_key_exists('contract_end', $data) ? $data['contract_end'] : $unit->contract_end),
                 'notes' => $data['notes'] ?? $unit->notes,
+                // A vacant unit stops accruing charges (excluded from dues).
+                'billing_start' => $vacant ? null : $unit->billing_start,
             ]);
 
             // Cascade the rename so payment history and the resident's account
@@ -183,6 +184,20 @@ class UnitController extends Controller
                     ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
                 User::where('building_id', $unit->building_id)
                     ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
+            }
+
+            // Recompute the DERIVED balance + status cache — sub/vacant may have
+            // changed the charges. Balance is never free-set (#19).
+            $unit->refresh();
+            if ($vacant) {
+                $unit->update(['status' => 'vacant', 'balance' => 0]);
+            } else {
+                // Only dues-settling payments reduce charges (an "أخرى" line is
+                // income only — #28).
+                $paid = (int) Payment::where('building_id', $unit->building_id)
+                    ->where('unit_no', $unit->no)->where('applies_to_dues', true)->sum('amount');
+                $bal = $unit->derivedBalance($paid);
+                $unit->update(['balance' => $bal, 'status' => self::statusForBalance($bal)]);
             }
         });
 

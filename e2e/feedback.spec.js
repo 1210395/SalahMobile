@@ -46,7 +46,9 @@ test('a multi-month payment sums to the full total across the months', async ({ 
   }, { no: 'MM' + rnd() });
   expect(r.rows).toBe(7);       // one row per covered month
   expect(r.total).toBe(700);    // 7 × 100 — the full total, not one month's 100
-  expect(r.balance).toBe(700);  // the unit is credited the full total
+  // Credited the full 700, less the one month the unit accrued the instant it
+  // was created (derived ledger: balance = opening − charges + payments).
+  expect(r.balance).toBe(600);
   expect(r.oneMonth).toBe(100); // a single month remains 100
 });
 

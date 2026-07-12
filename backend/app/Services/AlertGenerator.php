@@ -29,6 +29,10 @@ class AlertGenerator
         // must not wipe them.
         Alert::where('building_id', $buildingId)->where('type', '!=', 'notice')->delete();
 
+        // Money in an alert body must read in the BUILDING's currency (#6) — these
+        // strings used to hardcode "$" while the rest of the app rendered "₪".
+        $money = fn (int $n) => $this->money($n, $building->currency);
+
         $created = [];
 
         // 1) Overdue subscriptions — derived from current unit balances.
@@ -38,7 +42,7 @@ class AlertGenerator
             $created[] = $this->make($buildingId, [
                 'type' => 'subscription', 'icon' => 'wallet', 'tone' => 'late',
                 'title' => 'اشتراك متأخر — وحدة '.$u->no,
-                'body' => $u->resident.' متأخر عن السداد بمبلغ $'.number_format(abs($u->balance)).'.',
+                'body' => $u->resident.' متأخر عن السداد بمبلغ '.$money((int) abs($u->balance)).'.',
                 'time_label' => 'الآن', 'channel' => 'whatsapp',
                 // Addressed to that unit only — a resident must never see a
                 // neighbour's name + debt in their own notifications.
@@ -74,17 +78,22 @@ class AlertGenerator
             }
         }
 
-        // 3) Latest received payment (positive confirmation).
+        // 3) Latest received payment (positive confirmation). An "ايراد خاص" row
+        // carries no unit at all (#38/#39), so it is announced without one.
         $pay = Payment::where('building_id', $buildingId)->orderByDesc('date')->first();
         if ($pay) {
+            $unitNo = (string) ($pay->unit_no ?? '');
             $created[] = $this->make($buildingId, [
                 'type' => 'paid', 'icon' => 'checkCircle', 'tone' => 'ok',
                 'title' => 'تم استلام دفعة',
-                'body' => $pay->name.' — وحدة '.$pay->unit_no.' سدّد $'.number_format($pay->amount).'.',
+                'body' => $unitNo === ''
+                    ? $pay->name.' — إيراد خاص بمبلغ '.$money((int) $pay->amount).'.'
+                    : $pay->name.' — وحدة '.$unitNo.' سدّد '.$money((int) $pay->amount).'.',
                 'time_label' => 'مؤخراً', 'channel' => 'internal',
                 // Payment confirmation is for that unit (+ the admin), not a
-                // building-wide broadcast of who paid what.
-                'target' => $pay->unit_no,
+                // building-wide broadcast of who paid what. Special income has no
+                // unit, so it stays admin-only.
+                'target' => $unitNo === '' ? null : $unitNo,
             ]);
         }
 
@@ -93,6 +102,23 @@ class AlertGenerator
         }
 
         return count($created);
+    }
+
+    /// Money rendered the way the app renders it: "$" prefixes, every other
+    /// symbol suffixes ("1,200 ₪"). Mirrors fmtMoney() on the Flutter side.
+    private function money(int $amount, ?string $currency): string
+    {
+        $symbols = [
+            'NIS' => '₪', 'ILS' => '₪', 'JOD' => 'د.أ', 'JD' => 'د.أ', 'USD' => '$',
+            'SAR' => 'ر.س', 'AED' => 'د.إ', 'EGP' => 'ج.م', 'KWD' => 'د.ك',
+            'QAR' => 'ر.ق', 'BHD' => 'د.ب', 'OMR' => 'ر.ع', 'TRY' => '₺',
+            'EUR' => '€', 'GBP' => '£',
+        ];
+        $code = $currency ?: 'NIS';
+        $sym = $symbols[$code] ?? $code;
+        $n = number_format($amount);
+
+        return $sym === '$' ? $sym.$n : $n.' '.$sym;
     }
 
     private function make(int $buildingId, array $attrs): Alert

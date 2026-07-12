@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:amarati/app.dart';
 import 'package:amarati/common.dart';
+import 'package:amarati/screens/admin_finance.dart' show AddPaymentSheet, PaymentsScreen;
 
 Widget _wrap(Widget child) => MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -313,6 +314,9 @@ void main() {
     await tester.pumpWidget(_wrap(AmaratiApp(
         initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
     await tester.pump(const Duration(milliseconds: 150));
+    // #33: the list opens grouped per renter — switch to the per-payment view.
+    await tester.tap(find.text('كل الدفعات'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
     final row = find.text('أحمد علي');
     if (row.evaluate().isNotEmpty) {
       await tester.longPress(row.first, warnIfMissed: false);
@@ -405,6 +409,9 @@ void main() {
     await tester.pumpWidget(_wrap(AmaratiApp(
         initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
     await tester.pump(const Duration(milliseconds: 150));
+    // #33: the list opens grouped per renter — switch to the per-payment view.
+    await tester.tap(find.text('كل الدفعات'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.text('أحمد علي').first, warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pump(const Duration(milliseconds: 300));
@@ -474,5 +481,240 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(tester.takeException(), isNull);
     expect(find.text('تسجيل الخروج'), findsWidgets);
+  });
+
+  // ─────────── Audit redesign — P2 (nav) ───────────
+
+  // #13/#48: the role-switch button is gone from the admin home topbar.
+  testWidgets('admin home has no role-switch button', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'home', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.byWidgetPredicate((w) => w is RoundBtn && w.icon == 'switch'), findsNothing);
+  });
+
+  // #11/#12: the المصروفات tab is in the bottom nav, and a main screen exposes a
+  // home button in the topbar (home moved off the nav).
+  testWidgets('payments screen has expenses in nav + a home button in the header', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    expect(find.byWidgetPredicate((w) => w is RoundBtn && w.icon == 'home'), findsWidgets);
+    expect(find.text('المصروفات'), findsWidgets); // the new nav tab
+  });
+
+  // ─────────── Audit redesign — P3 (validation) ───────────
+
+  // #16: a digitsOnly Field strips letters at the keyboard (real input filtering,
+  // not the old tryParse-fallback that let letters become a number).
+  testWidgets('a digitsOnly Field rejects letters as you type', (tester) async {
+    await tester.pumpWidget(_wrap(Scaffold(body: Field(inputFormatters: digitsOnly, onChanged: (_) {}))));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), '12ab34');
+    await tester.pump();
+    expect(find.text('1234'), findsOneWidget);
+  });
+
+  // #18/#19: the edit-unit sheet no longer lets the admin hand-set the balance
+  // (dues are payment-derived) — the "الرصيد / الذمم" field is gone.
+  testWidgets('edit-unit sheet has no free balance field', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'units', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.text('أحمد علي').first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    final edit = find.text('تعديل');
+    if (edit.evaluate().isNotEmpty) {
+      await tester.tap(edit.first, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+      expect(find.text('الرصيد / الذمم'), findsNothing);
+    }
+  });
+
+  // ─────────── Audit redesign — P4b (payment sheet) ───────────
+
+  // #23: بنود are now دفعة شهرية / ذمم / أخرى — the per-fee toggles are gone
+  // (elevator/guard/parking are folded into the single monthly fee).
+  testWidgets('payment sheet uses the new بنود and drops the fee toggles', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.byType(AppFab).first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(tester.takeException(), isNull);
+    expect(find.text('بند الدفع'), findsOneWidget);
+    expect(find.text('دفعة شهرية'), findsWidgets);
+    expect(find.text('رسوم المصعد'), findsNothing); // folded into the monthly fee
+  });
+
+  // #22: a unit's detail exposes "تسجيل دفعة", which opens دفعة جديدة PRE-FILLED
+  // for that renter (AddPaymentSheet(initialUnit: u.no)) instead of navigating to
+  // the الإيرادات list. This guards the entry point; the full tap-through is
+  // covered end-to-end (the widget-test surface can't reach the button now that
+  // the sheet's action row scrolls with the form, #14).
+  testWidgets('unit detail exposes the تسجيل دفعة action', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'units', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.text('أحمد علي').first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.ancestor(of: find.text('تسجيل دفعة'), matching: find.byType(AppButton)),
+        findsOneWidget);
+  });
+
+  // #22 (prefill): AddPaymentSheet accepts an initialUnit and opens on that renter.
+  testWidgets('AddPaymentSheet prefills the renter from initialUnit', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final ctx = tester.widget<PaymentsScreen>(find.byType(PaymentsScreen)).ctx;
+
+    await tester.pumpWidget(_wrap(
+        Scaffold(body: AddPaymentSheet(ctx: ctx, initialUnit: '102'))));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    // The sheet opened on unit 102 (سارة محمد in the bundle) — prefilled.
+    expect(find.textContaining('102'), findsWidgets);
+    expect(find.text('بند الدفع'), findsOneWidget);
+  });
+
+  // ─────────── Audit redesign — P4c (ايراد خاص + إيرادات views) ───────────
+
+  // #38/#39: a payment can be building income with no renter behind it
+  // ("دفعة برج جوال"). The sheet exposes an ايراد خاص target.
+  testWidgets('payment sheet offers an ايراد خاص target with no unit', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final ctx = tester.widget<PaymentsScreen>(find.byType(PaymentsScreen)).ctx;
+
+    await tester.pumpWidget(_wrap(Scaffold(body: AddPaymentSheet(ctx: ctx))));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('ايراد خاص'), findsOneWidget);
+
+    await tester.tap(find.text('ايراد خاص'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+    // Special income is not a renter's dues: no بند picker, no month picker.
+    expect(find.text('بند الدفع'), findsNothing);
+  });
+
+  // #38/#39: a unit-less payment must never render as the literal string "null".
+  test('Payment.fromJson maps a null unit_no to an empty unit', () {
+    final p = Payment.fromJson({
+      'id': 1,
+      'unit_no': null,
+      'name': 'دفعة برج جوال',
+      'amount': 1200,
+      'kind': 'ايراد خاص',
+      'month': 7,
+      'year': 2026,
+      'date': '2026-07-01',
+      'method': 'نقدي',
+      'applies_to_dues': false,
+    });
+    expect(p.unit, '');
+    expect(p.appliesToDues, isFalse);
+  });
+
+  // #33: الإيرادات can be read per-renter (default) or as individual payments.
+  testWidgets('الإيرادات toggles between per-renter and per-payment views', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+
+    expect(find.text('حسب الساكن'), findsOneWidget);
+    expect(find.text('كل الدفعات'), findsOneWidget);
+    // Renter mode is the default — rows are summarised as "N دفعة".
+    expect(find.textContaining('دفعة'), findsWidgets);
+
+    await tester.tap(find.text('كل الدفعات'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+    // Per-payment mode names the covered month on every row (Salah's #note).
+    expect(find.textContaining('عن '), findsWidgets);
+  });
+
+  // ─────────── Audit redesign — #8/#9/#10 (dashboard carry-over) ───────────
+
+  // #8/#9/#10: both hero figures are cumulative, so the dashboard must say what
+  // the selected year added versus what it inherited from earlier years.
+  testWidgets('dashboard breaks the year down into carried-over and this-year',
+      (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'home', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+
+    final y = DateTime.now().year;
+    // #8 — the cash box names itself and its year.
+    expect(find.text('رصيد الصندوق'), findsOneWidget);
+    expect(find.textContaining('للعام'), findsWidgets);
+    // #9 — the dues box says which year it closes on.
+    expect(find.textContaining('حتى نهاية'), findsOneWidget);
+    // #10 — the carry-over lines.
+    expect(find.textContaining('تفصيل العام'), findsOneWidget);
+    expect(find.text('رصيد مرحّل من السنوات السابقة'), findsOneWidget);
+    expect(find.text('ذمم من السنوات السابقة'), findsOneWidget);
+    expect(find.text('ذمم العام $y'), findsOneWidget);
+    expect(find.text('إجمالي الذمم'), findsOneWidget);
+  });
+
+  // ─────────── Audit redesign — P5 (reports, building, copy) ───────────
+
+  // #6: a new building starts in shekels — but every currency stays selectable.
+  test('the default currency is NIS and every currency stays selectable', () {
+    expect(kDefaultCurrency, 'NIS');
+    expect(kCurrencyCodes.first, 'NIS');
+    expect(kCurrencyCodes, contains('USD'));
+    expect(kCurrencyCodes.length, greaterThan(5));
+    expect(currencySymbol('NIS'), '₪');
+  });
+
+  // #44: the corner pen must say what it does, not just draw a glyph.
+  testWidgets('the edit pen is labelled تعديل', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'building', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+    expect(find.ancestor(of: find.text('تعديل'), matching: find.byType(RoundBtn)), findsOneWidget);
+  });
+
+  // #41: exports offered share only — a download/save mode must exist. The
+  // "تقرير شامل" button sits below the 600px test viewport, so scroll to it first.
+  testWidgets('the report export sheet offers a تنزيل mode', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'reports', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final btn = find.text('تقرير شامل (Excel)');
+    await tester.scrollUntilVisible(btn, 250, scrollable: find.byType(Scrollable).first);
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(btn.first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('تنزيل الملف على الجهاز'), findsOneWidget);
+    expect(find.text('مشاركة الملف'), findsOneWidget);
+  });
+
+  // #46: المزيد rows must explain themselves, not just name themselves.
+  testWidgets('the المزيد hub explains every entry', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'more', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+    expect(find.text('بيانات المبنى، الاشتراك الشهري الافتراضي، الرسوم، والعملة'), findsOneWidget);
+    expect(find.text('تسجيل دفعات السكان والإيرادات الخاصة'), findsOneWidget);
   });
 }

@@ -167,7 +167,7 @@ class _SuperReportScreenState extends State<SuperReportScreen> {
       );
 
   Widget _buildingCard(Map<String, dynamic> b) {
-    final cur = '${b['currency'] ?? 'USD'}';
+    final cur = '${b['currency'] ?? kDefaultCurrency}';
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: AppCard(
@@ -242,7 +242,7 @@ class _AdminsScreenState extends State<AdminsScreen> {
       header: AppHeader(
         title: 'المسؤولون',
         subtitle: _admins == null ? '...' : '${_admins!.length} مسؤول مبنى',
-        onBack: () => ctx.go('superReport'),
+        onBack: ctx.back,
       ),
       nav: ctx.adminNav,
       fab: AppFab(icon: 'plus', label: 'مسؤول جديد', onTap: () => _openCreate(ctx)),

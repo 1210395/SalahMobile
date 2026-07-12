@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'common.dart';
+import 'api/api_client.dart';
 import 'api/auth_store.dart';
 import 'api/repository.dart';
 import 'screens/auth.dart';
@@ -20,7 +21,7 @@ import 'screens/super_admin.dart';
 
 const Map<String, String> _adminTabOf = {
   'home': 'home', 'units': 'units', 'payments': 'payments', 'reports': 'reports',
-  'more': 'more', 'building': 'more', 'expenses': 'more', 'workers': 'more',
+  'more': 'more', 'building': 'more', 'expenses': 'expenses', 'workers': 'more',
   'parking': 'more', 'guard': 'more', 'elevator': 'more', 'craftsmen': 'more',
   'alerts': 'more', 'years': 'more', 'approvals': 'more',
   'subscribe': 'more', 'buildingSetup': 'more', 'register': 'more',
@@ -75,7 +76,21 @@ class _AmaratiAppState extends State<AmaratiApp> {
   @override
   void initState() {
     super.initState();
+    // When any request 401s (expired Sanctum token or a rotated single-use
+    // login-code), end the session locally and return to login so a stale
+    // identity can't persist across launches — the root of the wrong-user bug.
+    ApiClient.I.onUnauthorized = _onUnauthorized;
     _bootstrap();
+  }
+
+  void _onUnauthorized() {
+    if (!mounted) return;
+    AuthStore.I.logout();
+    DataStore.I.clear();
+    setState(() {
+      role = AppRole.guest;
+      screen = 'login';
+    });
   }
 
   @override
@@ -155,12 +170,32 @@ class _AmaratiAppState extends State<AmaratiApp> {
     return 'حدث خطأ، حاول مرة أخرى';
   }
 
-  void _go(String s) => setState(() => screen = s);
+  // Real navigation history so back returns to the PREVIOUS screen (#47), not
+  // always home. Forward moves (_go) push the current screen; _back pops.
+  final List<String> _history = [];
 
-  // Android hardware/gesture back: navigate WITHIN the app instead of exiting.
-  // sub-screen -> its parent tab -> role home -> (second press within 2s) exit.
+  void _setScreen(String s) => setState(() => screen = s);
+
+  void _go(String s) {
+    if (s == screen) return;
+    _history.add(screen);
+    if (_history.length > 40) _history.removeAt(0); // guard unbounded growth
+    _setScreen(s);
+  }
+
+  // In-app + Android hardware/gesture back: return to the previous screen in
+  // history; with no history, collapse toward the role home, then (second press
+  // within 2s) exit.
   DateTime? _lastBackAt;
-  void _handleBack() {
+  void _back() {
+    if (_history.isNotEmpty) {
+      _setScreen(_history.removeLast());
+      return;
+    }
+    _collapseBack();
+  }
+
+  void _collapseBack() {
     final maps = switch (role) {
       AppRole.superadmin => _superTabOf,
       AppRole.admin => _adminTabOf,
@@ -170,11 +205,11 @@ class _AmaratiAppState extends State<AmaratiApp> {
     final home = _homeFor(role);
     final tab = maps[screen];
     if (tab != null && tab != screen) {
-      _go(tab); // sub-screen -> its parent tab
+      _setScreen(tab); // sub-screen -> its parent tab
       return;
     }
     if (screen != home) {
-      _go(home); // a non-home tab -> role home
+      _setScreen(home); // a non-home tab -> role home
       return;
     }
     final now = DateTime.now(); // already on home -> confirm exit
@@ -269,6 +304,11 @@ class _AmaratiAppState extends State<AmaratiApp> {
       {String? phone, String? whatsapp, String? emailCode}) async {
     setState(() => _busy = true);
     try {
+      // Start from a clean slate — a stale auto-restored session (e.g. a device
+      // still holding another resident's token) must not bleed into the new
+      // account. Fixes "after registering it's still the old user".
+      await AuthStore.I.logout();
+      DataStore.I.clear();
       await AuthStore.I.register(name, email, password,
           phone: phone, whatsapp: whatsapp, emailCode: emailCode);
       final u = AuthStore.I.user!;
@@ -380,12 +420,13 @@ class _AmaratiAppState extends State<AmaratiApp> {
             active: _adminTabOf[screen],
             onChange: _go,
             tabs: [
-              const NavTab(id: 'home', label: 'الرئيسية', icon: 'home', fillOnActive: true),
+              // #12: الرئيسية moved off the bottom nav to the topbar home button.
               NavTab(
                   id: 'units',
                   label: btype == BType.residential ? 'الشقق' : 'وحدات',
                   icon: btype == BType.residential ? 'building' : 'store'),
               const NavTab(id: 'payments', label: 'الإيرادات', icon: 'wallet'),
+              const NavTab(id: 'expenses', label: 'المصروفات', icon: 'expense'), // #11
               const NavTab(id: 'reports', label: 'التقارير', icon: 'pie'),
               const NavTab(id: 'more', label: 'المزيد', icon: 'grid'),
             ],
@@ -412,13 +453,12 @@ class _AmaratiAppState extends State<AmaratiApp> {
 
     return Ctx(
       go: _go,
+      back: _back,
       role: role,
-      setRole: (r) => setState(() => role = r),
       btype: btype,
       setBtype: _setBtype,
       building: buildingFor(btype),
       toast: _toastMsg,
-      openRole: _openRoleSheet,
       adminNav: adminNav(),
       resNav: resNav(),
       guestNav: guestNav(),
@@ -494,101 +534,6 @@ class _AmaratiAppState extends State<AmaratiApp> {
     }
   }
 
-  void _openRoleSheet() {
-    final roles = [
-      (AppRole.admin, 'مسؤول لجنة المبنى', 'صلاحية كاملة لكل الأدوات', 'shield', 'home'),
-      (AppRole.resident, 'ساكن', 'لوحة شخصية وعرض محدود', 'user', 'resHome'),
-      (AppRole.guest, 'زائر', 'تقارير عامة فقط', 'eye', 'guestHome'),
-    ];
-    showAppSheet(
-      context,
-      StatefulBuilder(
-        builder: (sheetContext, setSheet) => SheetShell(
-          title: 'تبديل الدور / العرض',
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text('اعرض التطبيق من منظور دور مختلف',
-                  style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.ink500)),
-            ),
-            ...roles.map((r) {
-              final on = role == r.$1;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      role = r.$1;
-                      screen = r.$5;
-                    });
-                    Navigator.of(sheetContext).pop();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(13),
-                    decoration: BoxDecoration(
-                      color: on ? AppColors.navy50 : AppColors.surface,
-                      border: Border.all(color: on ? AppColors.navy600 : AppColors.line2, width: 1.5),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Row(
-                      children: [
-                        IconChip(icon: r.$4, tone: 'navy', size: 44),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(r.$2, style: AppType.base(size: 14.5, weight: FontWeight.w800)),
-                              const SizedBox(height: 2),
-                              Text(r.$3,
-                                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        on
-                            ? const AppIcon('checkCircle', size: 22, color: AppColors.navy700)
-                            : const AppIcon('chevronL', size: 18, color: AppColors.ink300),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
-            // The residential/commercial switch only makes sense in GUEST preview.
-            // An authenticated user owns exactly one building (multi-building), so
-            // showing it would blank out their real building — hide it for them.
-            if (role == AppRole.guest)
-              Container(
-                padding: const EdgeInsets.only(top: 14),
-                decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.line))),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('نوع المبنى',
-                        style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-                    const SizedBox(height: 9),
-                    Segmented(
-                      value: btype,
-                      onChanged: (v) {
-                        _setBtype(v as BType);
-                        setSheet(() {});
-                      },
-                      options: const [
-                        SegOption(BType.residential, 'سكنية (شقق)', icon: 'building'),
-                        SegOption(BType.commercial, 'تجارية (وحدات)', icon: 'store'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final ctx = _buildCtx();
@@ -596,7 +541,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) _handleBack();
+        if (!didPop) _back();
       },
       child: Scaffold(
       backgroundColor: AppColors.page,

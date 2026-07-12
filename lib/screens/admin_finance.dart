@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 
 import '../common.dart';
 import '../api/repository.dart';
+import '../data/file_save.dart';
 import 'admin_reports.dart' show pendingReportTab;
 
 // ───────────────────────────── Payments ─────────────────────────────
@@ -22,6 +23,10 @@ class PaymentsScreen extends StatefulWidget {
 class _PaymentsScreenState extends State<PaymentsScreen> {
   String month = 'all';
   late int year = kYears.isNotEmpty ? kYears.last : DateTime.now().year;
+
+  /// #33: group الإيرادات by renter (tap → their payments for the active filter)
+  /// instead of one row per individual payment.
+  bool byRenter = true;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +44,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       header: AppHeader(
         title: 'الإيرادات',
         subtitle: 'الإيرادات والتحصيل',
-        onBack: () => ctx.go('home'),
+        onHome: ctx.role == AppRole.admin ? () => ctx.go('home') : null,
         right: RoundBtn(icon: 'filter', onTap: () {}),
       ),
       nav: ctx.adminNav,
@@ -102,29 +107,77 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           ],
         ),
         const SizedBox(height: 12),
+        // #33: view the الإيرادات grouped by renter, or as individual payments.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Segmented(
+            small: true,
+            value: byRenter ? 'renter' : 'payment',
+            onChanged: (v) => setState(() => byRenter = v == 'renter'),
+            options: const [
+              SegOption('renter', 'حسب الساكن'),
+              SegOption('payment', 'كل الدفعات'),
+            ],
+          ),
+        ),
         AppCard(
           pad: 6,
           child: list.isEmpty
               ? const EmptyState(icon: 'wallet', title: 'لا توجد دفعات', sub: 'لا توجد دفعات في هذا الشهر')
-              : Column(
-                  children: List.generate(list.length, (i) {
-                    final p = list[i];
-                    return GestureDetector(
-                      onTap: () => _openDetail(ctx, p),
-                      onLongPress: () => _openEdit(ctx, p),
-                      child: ListRow(
-                        leading: const IconChip(icon: 'wallet', tone: 'ok', size: 42),
-                        title: p.name,
-                        // Show which month the payment COVERS (not just the pay date).
-                        sub: '${ctx.res ? 'شقة' : 'وحدة'} ${p.unit} · عن ${monthLabelNum(p.month)} ${p.year} · ${p.method}',
-                        dividerBelow: i < list.length - 1,
-                        trailing: _amountTrailing('+${fmtUSD(p.amount)}', p.date, AppColors.ok700),
-                      ),
-                    );
-                  }),
-                ),
+              : (byRenter ? _renterRows(ctx, list) : _paymentRows(ctx, list)),
         ),
       ],
+    );
+  }
+
+  /// One row per individual payment.
+  Widget _paymentRows(Ctx ctx, List<Payment> list) => Column(
+        children: List.generate(list.length, (i) {
+          final p = list[i];
+          return GestureDetector(
+            onTap: () => _openDetail(ctx, p),
+            onLongPress: () => _openEdit(ctx, p),
+            child: ListRow(
+              leading: const IconChip(icon: 'wallet', tone: 'ok', size: 42),
+              title: p.name,
+              // Show which month the payment COVERS (not just the pay date).
+              sub: '${p.unit.isEmpty ? 'إيراد خاص' : '${ctx.res ? 'شقة' : 'وحدة'} ${p.unit}'}'
+                  ' · عن ${monthLabelNum(p.month)} ${p.year} · ${p.method}',
+              dividerBelow: i < list.length - 1,
+              trailing: _amountTrailing('+${fmtUSD(p.amount)}', p.date, AppColors.ok700),
+            ),
+          );
+        }),
+      );
+
+  /// #33: one row per RENTER (count + total for the active filter); tapping one
+  /// opens all of that renter's payments within the same filter.
+  Widget _renterRows(Ctx ctx, List<Payment> list) {
+    final groups = <String, List<Payment>>{};
+    for (final p in list) {
+      groups.putIfAbsent(p.unit, () => []).add(p);
+    }
+    final keys = groups.keys.toList()..sort();
+    return Column(
+      children: List.generate(keys.length, (i) {
+        final no = keys[i];
+        final rows = groups[no]!;
+        final sum = rows.fold<int>(0, (s, p) => s + p.amount);
+        final name = rows.first.name;
+        final special = no.isEmpty;
+        return GestureDetector(
+          onTap: () => _openUnitPayments(ctx, no, name, only: rows),
+          child: ListRow(
+            leading: IconChip(icon: special ? 'receipt' : 'user', tone: 'ok', size: 42),
+            title: special ? 'إيرادات خاصة' : name,
+            sub: special
+                ? '${rows.length} إيراد'
+                : '${ctx.res ? 'شقة' : 'وحدة'} $no · ${rows.length} دفعة',
+            dividerBelow: i < keys.length - 1,
+            trailing: _amountTrailing('+${fmtUSD(sum)}', '', AppColors.ok700),
+          ),
+        );
+      }),
     );
   }
 
@@ -158,7 +211,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             },
           ),
           children: [
-            Text('${p.name} · وحدة ${p.unit}',
+            Text(p.unit.isEmpty ? '${p.name} · إيراد خاص' : '${p.name} · وحدة ${p.unit}',
                 style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink600)),
             const SizedBox(height: 12),
             Field(label: 'المبلغ', icon: 'wallet', value: f['amount']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['amount'] = v),
@@ -191,14 +244,17 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   void _openDetail(Ctx ctx, Payment p) {
     final u = _unitFor(ctx, p.unit);
     final unitWord = ctx.res ? 'الشقة' : 'الوحدة';
+    // ايراد خاص (#38/#39) has no renter and no unit — hide the unit-bound rows
+    // and the "all payments of this unit" shortcut.
+    final special = p.unit.isEmpty;
     showAppSheet(
       context,
       SheetShell(
-        title: 'تفاصيل الدفعة',
+        title: special ? 'تفاصيل الإيراد' : 'تفاصيل الدفعة',
         children: [
           DetailGrid(rows: [
-            DetailRow('user', 'الساكن', p.name),
-            DetailRow('building', unitWord, p.unit),
+            DetailRow('user', special ? 'المصدر' : 'الساكن', p.name),
+            if (!special) DetailRow('building', unitWord, p.unit),
             DetailRow('wallet', 'المبلغ', fmtUSD(p.amount)),
             DetailRow('receipt', 'البند', _kindNoGuard(p.kind)),
             DetailRow('calendar', 'الشهر المدفوع عنه', '${monthLabelNum(p.month)} ${p.year}'),
@@ -206,18 +262,20 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             DetailRow('dollar', 'طريقة الدفع', p.method),
           ]),
           const SizedBox(height: 12),
-          AppButton(
-            label: 'كل دفعات ${ctx.res ? 'هذه الشقة' : 'هذه الوحدة'}',
-            full: true,
-            size: BtnSize.lg,
-            variant: BtnVariant.outline,
-            icon: 'list',
-            onTap: () {
-              Navigator.of(context).pop();
-              _openUnitPayments(ctx, p.unit, p.name);
-            },
-          ),
-          const SizedBox(height: 8),
+          if (!special) ...[
+            AppButton(
+              label: 'كل دفعات ${ctx.res ? 'هذه الشقة' : 'هذه الوحدة'}',
+              full: true,
+              size: BtnSize.lg,
+              variant: BtnVariant.outline,
+              icon: 'list',
+              onTap: () {
+                Navigator.of(context).pop();
+                _openUnitPayments(ctx, p.unit, p.name);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
           AppButton(
             label: 'سند قبض',
             full: true,
@@ -262,25 +320,31 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }
 
   /// Every payment recorded for one unit (newest first) + a running total.
-  void _openUnitPayments(Ctx ctx, String unitNo, String name) {
-    final list = kPayments.where((x) => x.unit == unitNo).toList()
+  /// All payments for a unit. Pass [only] to scope the list to the caller's
+  /// active filter (#33 — a renter row shows just that filter's payments).
+  void _openUnitPayments(Ctx ctx, String unitNo, String name, {List<Payment>? only}) {
+    final list = (only ?? kPayments.where((x) => x.unit == unitNo).toList()).toList()
       ..sort((a, b) {
         final byYear = b.year.compareTo(a.year);
         return byYear != 0 ? byYear : b.month.compareTo(a.month);
       });
     final total = list.fold<int>(0, (s, x) => s + x.amount);
+    final special = unitNo.isEmpty;
     showAppSheet(
       context,
       SheetShell(
-        title: 'كل الدفعات — $name',
+        title: special ? 'الإيرادات الخاصة' : 'كل الدفعات — $name',
         children: [
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
                 color: AppColors.surface2, borderRadius: BorderRadius.circular(12)),
-            child: Text('${list.length} دفعة بإجمالي ${fmtUSD(total)} لـ '
-                '${ctx.res ? 'الشقة' : 'الوحدة'} $unitNo.',
+            child: Text(
+                special
+                    ? '${list.length} إيراد بإجمالي ${fmtUSD(total)} خارج ذمم السكان.'
+                    : '${list.length} دفعة بإجمالي ${fmtUSD(total)} لـ '
+                        '${ctx.res ? 'الشقة' : 'الوحدة'} $unitNo.',
                 style: AppType.base(
                     size: 13, weight: FontWeight.w600, color: AppColors.ink600, height: 1.5)),
           ),
@@ -296,33 +360,42 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             for (final x in list)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    border: Border.all(color: AppColors.line, width: 1.5),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: Row(
-                    children: [
-                      const AppIcon('wallet', size: 18, color: AppColors.navy600),
-                      const SizedBox(width: 11),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('${monthLabelNum(x.month)} ${x.year}',
-                                style: AppType.base(size: 13.5, weight: FontWeight.w700)),
-                            Text(_kindNoGuard(x.kind),
-                                style: AppType.base(
-                                    size: 11.5, weight: FontWeight.w600, color: AppColors.ink500)),
-                          ],
+                // Tapping a row drills into the payment (تعديل / حذف / سند قبض) —
+                // so the per-renter view (#33) is not a dead end.
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _openDetail(ctx, x);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      border: Border.all(color: AppColors.line, width: 1.5),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Row(
+                      children: [
+                        const AppIcon('wallet', size: 18, color: AppColors.navy600),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('${monthLabelNum(x.month)} ${x.year}',
+                                  style: AppType.base(size: 13.5, weight: FontWeight.w700)),
+                              Text(_kindNoGuard(x.kind),
+                                  style: AppType.base(
+                                      size: 11.5, weight: FontWeight.w600, color: AppColors.ink500)),
+                            ],
+                          ),
                         ),
-                      ),
-                      NumText(fmtUSD(x.amount),
-                          style: AppType.num(size: 13.5, weight: FontWeight.w800, color: AppColors.ok)),
-                    ],
+                        NumText(fmtUSD(x.amount),
+                            style:
+                                AppType.num(size: 13.5, weight: FontWeight.w800, color: AppColors.ok)),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -359,11 +432,27 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.ink700, height: 1.7)),
           ),
           const SizedBox(height: 12),
+          // #41 — downloading the سند was impossible: the only PDF path opened the
+          // system share sheet. Saving to the device is now its own action.
           AppButton(
-            label: 'حفظ / طباعة PDF',
-            variant: BtnVariant.outline,
+            label: 'تنزيل PDF على الجهاز',
             full: true,
             icon: 'download',
+            onTap: () async {
+              try {
+                final path = await _receiptPdf(p, unitWord, download: true);
+                ctx.toast('تم حفظ السند في: $path');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          const SizedBox(height: 8),
+          AppButton(
+            label: 'مشاركة / طباعة PDF',
+            variant: BtnVariant.outline,
+            full: true,
+            icon: 'send',
             onTap: () async {
               try {
                 await _receiptPdf(p, unitWord);
@@ -382,8 +471,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     return [
       'سند قبض — عمارتي',
       'التاريخ: ${p.date}',
-      'الساكن: ${p.name}',
-      'ال$unitWord: ${p.unit}',
+      p.unit.isEmpty ? 'المصدر: ${p.name}' : 'الساكن: ${p.name}',
+      // ايراد خاص carries no unit — omit the line entirely rather than print an empty one.
+      if (p.unit.isNotEmpty) 'ال$unitWord: ${p.unit}',
       'المبلغ: ${fmtUSD(p.amount)}',
       'البند: ${_kindNoGuard(p.kind)}',
       'الشهر: ${monthLabelNum(p.month)} ${p.year}',
@@ -392,8 +482,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     ].join('\n');
   }
 
-  // Printable RTL/Cairo سند قبض. Local to this file; opens the share/print sheet.
-  Future<void> _receiptPdf(Payment p, String unitWord) async {
+  // Printable RTL/Cairo سند قبض. Shares/prints by default; with download: true it
+  // saves to the device (#41) and returns the path it wrote to.
+  Future<String> _receiptPdf(Payment p, String unitWord, {bool download = false}) async {
     final base = await PdfGoogleFonts.cairoRegular();
     final bold = await PdfGoogleFonts.cairoBold();
     final doc = pw.Document();
@@ -423,8 +514,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             pw.Divider(color: PdfColor.fromInt(0xFFC2A24E), thickness: 1.2),
             pw.SizedBox(height: 10),
             row('التاريخ', p.date),
-            row('الساكن', p.name),
-            row('ال$unitWord', p.unit),
+            row(p.unit.isEmpty ? 'المصدر' : 'الساكن', p.name),
+            if (p.unit.isNotEmpty) row('ال$unitWord', p.unit),
             row('المبلغ', fmtUSD(p.amount)),
             row('البند', _kindNoGuard(p.kind)),
             row('الشهر', '${monthLabelNum(p.month)} ${p.year}'),
@@ -436,7 +527,13 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         ),
       ),
     );
-    await Printing.sharePdf(bytes: await doc.save(), filename: 'receipt.pdf');
+    final bytes = await doc.save();
+    final name = 'amarati-receipt-${p.id}.pdf';
+    if (download) {
+      return saveToDownloads(name, bytes);
+    }
+    await Printing.sharePdf(bytes: bytes, filename: name);
+    return name;
   }
 
   // The unit behind a payment (for the resident phone on receipts), if loaded.
@@ -470,85 +567,123 @@ Widget _amountTrailing(String amount, String date, Color color) => Column(
     );
 
 class AddPaymentSheet extends StatefulWidget {
-  const AddPaymentSheet({super.key, required this.ctx});
+  const AddPaymentSheet({super.key, required this.ctx, this.initialUnit});
   final Ctx ctx;
+
+  /// Pre-selected renter (#22 — "تسجيل دفعة" on a unit opens this prefilled).
+  final String? initialUnit;
 
   @override
   State<AddPaymentSheet> createState() => _AddPaymentSheetState();
 }
 
 class _AddPaymentSheetState extends State<AddPaymentSheet> {
-  // Default ONLY the monthly subscription ON; every other بند starts OFF.
-  late final Map<String, bool> types = {
-    for (final t in kPayTypes) t.id: _isSub(t),
-  };
-  static bool _isSub(PayType t) => t.id == 'sub' || t.label.contains('الاشتراك الشهري');
-  Object unit = '';
-  Object method = 'نقداً';
-  // Months this payment covers — multi-select (one payment row saved per month).
-  // Defaults to the current calendar month.
-  late final Set<int> payMonths = {DateTime.now().month - 1};
-  // Year the covered months belong to — lets the manager record payments for a
-  // PREVIOUS year (the months picker alone is year-agnostic).
+  // The بند being paid (#23). Elevator/guard/parking fees are folded into the
+  // single monthly fee, so a renter's charge is one monthly amount.
+  PayItem item = PayItem.monthly;
+
+  String target = 'one';
+  late Object unit = widget.initialUnit ?? '';
+  final Set<String> selUnits = {};
+
+  // Monthly بند only: the covered year + months.
   int payYear = DateTime.now().year;
-  // Per-type override prices captured via the zero-fee popup (id → amount), so a
-  // بند whose stored fee is 0 can be priced inline without re-opening settings.
-  final Map<String, int> priceOverride = {};
-  // Currency the amount is entered in + its rate to the building's base currency.
-  late Object currency = activeCurrency;
-  String rateStr = '';
-  String dateIso = todayIso();
-  // Editable total: seeded from the sum of ON items, manual override allowed.
+  late final Set<int> payMonths = {DateTime.now().month - 1};
+
+  // The amount charged. No 0 default (#24) — empty until derived or typed.
   String amountStr = '';
   bool amountTouched = false;
-  // Target: one unit / all units / a group of units.
-  String target = 'one';
-  final Set<String> selUnits = {};
-  // Custom "Other" payment line.
-  bool otherOn = false;
-  String otherLabel = '';
-  String otherAmount = '';
+
+  String otherLabel = ''; // "أخرى" description (#32)
+
+  Object method = 'نقداً';
+  String dateIso = todayIso();
+  String chequeDate = '';
+  String chequeNumber = '';
+
+  late Object currency = activeCurrency;
+  String rateStr = '';
+
+  Unit? _unitOf(Ctx ctx, String no) {
+    for (final u in (ctx.res ? kApartments : kShops)) {
+      if (u.no == no) return u;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
-    // Sum of the currently-ON بنود (+ the optional "أخرى" amount) — this seeds
-    // the editable total field unless the admin has overridden it manually.
-    int feeOf(PayType t) => priceOverride[t.id] ?? t.amount;
-    final itemsSum = kPayTypes.where((t) => types[t.id] == true).fold<int>(0, (s, t) => s + feeOf(t)) +
-        (otherOn ? (int.tryParse(otherAmount) ?? 0) : 0);
-    final defaultStr = '$itemsSum';
-    // The amount that actually gets saved (manual override wins).
-    final total = amountTouched ? (int.tryParse(amountStr.trim()) ?? 0) : itemsSum;
     final unitList = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
-    final units = unitList.map((u) => SelectOption(u.no, '${u.no} — ${u.resident}')).toList();
     final unitWord = ctx.res ? 'شقة' : 'وحدة';
 
-    String payIcon(String id) =>
-        {'sub': 'wallet', 'elev': 'elevator', 'guard': 'shield'}[id] ?? 'parking';
+    // #38/#39: "ايراد خاص" is building income with NO renter — label + amount only.
+    final special = target == 'special';
+
+    final sel = target == 'one' ? _unitOf(ctx, '$unit') : null;
+    final fee = sel?.sub ?? 0; // the all-in monthly charge
+    final dues = sel == null ? 0 : duesOf(sel);
+
+    // #29: ذمم is only selectable when the renter actually owes something.
+    final duesAvailable = sel != null && dues > 0;
+    if (item == PayItem.dues && !duesAvailable) item = PayItem.monthly;
+
+    // #34: a fully-settled month can't be paid again.
+    final settled = <int>{
+      if (sel != null)
+        for (var m = 0; m < 12; m++)
+          if (monthSettled(sel, m, payYear)) m,
+    };
+    payMonths.removeWhere(settled.contains);
+    final monthsCount = payMonths.isEmpty ? 1 : payMonths.length;
+
+    // Suggested amount per بند (seeds the field; the admin may override).
+    final suggested = special
+        ? 0
+        : switch (item) {
+            PayItem.monthly => fee * monthsCount,
+            PayItem.dues => dues,
+            PayItem.other => 0,
+          };
+    final total = amountTouched ? (int.tryParse(amountStr.trim()) ?? 0) : suggested;
 
     final sameCur = currency == activeCurrency;
     final rate = sameCur ? 1.0 : (double.tryParse(rateStr) ?? 0);
     final rateOk = sameCur || rate > 0;
-    // The total expressed in the building's base currency (exchange applied) —
-    // this is what reflects on the dashboard/reports, so the button shows it.
     final baseTotal = sameCur ? total : (total * rate).round();
-    // A payment row is saved per covered month, so the amount the manager
-    // actually commits is (per-month total × number of selected months). The
-    // button + a note below show this grand total, not just one month.
-    final monthsCount = payMonths.isEmpty ? 1 : payMonths.length;
-    final grandTotal = baseTotal * monthsCount;
-    final canSave = ((target == 'one' && unit != '') ||
-            (target == 'group' && selUnits.isNotEmpty) ||
-            target == 'all') &&
+
+    // #36: covering several months requires at least one month's fee for each.
+    final perMonth = total ~/ monthsCount;
+    final multiMonthOk = special ||
+        item != PayItem.monthly ||
+        monthsCount == 1 ||
+        (fee > 0 && perMonth >= fee);
+
+    // #26: a cheque needs a FUTURE date + a number.
+    final chequeWhen = DateTime.tryParse(chequeDate);
+    final chequeFuture = chequeWhen != null && chequeWhen.isAfter(DateTime.now());
+    final chequeOk = method != 'شيك' || (chequeFuture && chequeNumber.trim().isNotEmpty);
+
+    final targetOk = special ||
+        (target == 'one' && '$unit'.isNotEmpty) ||
+        (target == 'group' && selUnits.isNotEmpty) ||
+        target == 'all';
+
+    final canSave = targetOk &&
         rateOk &&
-        payMonths.isNotEmpty &&
-        total > 0;
+        chequeOk &&
+        multiMonthOk &&
+        total > 0 && // #30: never zero
+        // A special income line (or an "أخرى" بند) must be described.
+        (special ? otherLabel.trim().isNotEmpty : true) &&
+        (special || item != PayItem.other || otherLabel.trim().isNotEmpty) &&
+        (special || item != PayItem.dues || total <= dues) &&
+        (special || item != PayItem.monthly || payMonths.isNotEmpty);
 
     return SheetShell(
       title: 'تسجيل دفعة جديدة',
       footer: AppButton(
-        label: 'حفظ الدفعة · ${fmtMoney(grandTotal, activeCurrency)}',
+        label: 'حفظ الدفعة · ${fmtMoney(baseTotal, activeCurrency)}',
         full: true,
         size: BtnSize.lg,
         icon: 'check',
@@ -556,7 +691,6 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         onTap: () => _save(ctx, total, unitList),
       ),
       children: [
-        // Target selector — all / one / group.
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Segmented(
@@ -564,25 +698,23 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             value: target,
             onChanged: (v) => setState(() => target = v as String),
             options: [
-              SegOption('one', ctx.res ? 'شقة واحدة' : 'وحدة واحدة'),
+              SegOption('one', '$unitWord واحدة'),
               const SegOption('all', 'الجميع'),
               const SegOption('group', 'مجموعة'),
+              const SegOption('special', 'ايراد خاص'), // #39 — income with no renter
             ],
           ),
         ),
         if (target == 'one')
           SelectField(
-            label: '$unitWord / الساكن',
+            label: unitWord,
             icon: 'building',
-            options: units,
-            value: unit == '' ? null : unit,
-            onChanged: (v) => setState(() => unit = v),
-          ),
-        if (target == 'all')
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: _infoNote(
-                'سيتم تسجيل الدفعة لجميع ${ctx.res ? 'الشقق' : 'الوحدات'} الفعّالة (${unitList.length}).'),
+            options: [for (final u in unitList) SelectOption(u.no, '${u.no} — ${u.resident}')],
+            value: '$unit'.isEmpty ? null : unit,
+            onChanged: (v) => setState(() {
+              unit = v as String;
+              amountTouched = false;
+            }),
           ),
         if (target == 'group') ...[
           Padding(
@@ -595,182 +727,81 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: unitList.map((u) {
-                final on = selUnits.contains(u.no);
-                // Show the resident name (fallback to the unit number).
-                final label = u.resident.trim().isNotEmpty ? u.resident : u.no;
-                return GestureDetector(
-                  onTap: () => setState(() => on ? selUnits.remove(u.no) : selUnits.add(u.no)),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: on ? AppColors.navy700 : AppColors.surface,
-                      border: Border.all(color: on ? AppColors.navy700 : AppColors.line2, width: 1.5),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(label,
-                        style: AppType.base(
-                            size: 12.5, weight: FontWeight.w700, color: on ? Colors.white : AppColors.ink600)),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-        Padding(
-          padding: const EdgeInsets.only(bottom: 9),
-          child: Text('بنود الدفع',
-              style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-        ),
-        ...kPayTypes.map((t) {
-          final on = types[t.id] == true;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 9),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-              decoration: BoxDecoration(
-                color: on ? AppColors.navy50 : AppColors.surface,
-                border: Border.all(color: on ? AppColors.navy100 : AppColors.line, width: 1.5),
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: Row(
-                children: [
-                  AppIcon(payIcon(t.id), size: 20, color: on ? AppColors.navy700 : AppColors.ink400),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(children: [
-                          Text(t.label, style: AppType.base(size: 14, weight: FontWeight.w700)),
-                          if (t.opt)
-                            Text(' (اختياري)',
-                                style: AppType.base(size: 11, weight: FontWeight.w600, color: AppColors.ink400)),
-                        ]),
-                        NumText(fmtUSD(feeOf(t)),
-                            style: AppType.num(size: 12, weight: FontWeight.w600, color: AppColors.ink500)),
-                      ],
-                    ),
-                  ),
-                  AppSwitch(
-                      checked: on,
-                      onChanged: (v) async {
-                        // Turning ON a بند whose fee is 0 → ask for its price +
-                        // service description first, and persist it as the new
-                        // default (per client note: handle zero-fee checkboxes).
-                        if (v && feeOf(t) <= 0) {
-                          await _promptZeroFee(ctx, t);
-                          return;
-                        }
-                        setState(() => types[t.id] = v);
-                      }),
-                ],
-              ),
-            ),
-          );
-        }),
-        // Custom "Other" line — admin enters the type name and amount.
-        Padding(
-          padding: const EdgeInsets.only(bottom: 9),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-            decoration: BoxDecoration(
-              color: otherOn ? AppColors.navy50 : AppColors.surface,
-              border: Border.all(color: otherOn ? AppColors.navy100 : AppColors.line, width: 1.5),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Column(
               children: [
-                Row(children: [
-                  AppIcon('receipt', size: 20, color: otherOn ? AppColors.navy700 : AppColors.ink400),
-                  const SizedBox(width: 11),
-                  Expanded(child: Text('أخرى', style: AppType.base(size: 14, weight: FontWeight.w700))),
-                  AppSwitch(checked: otherOn, onChanged: (v) => setState(() => otherOn = v)),
-                ]),
-                if (otherOn) ...[
-                  const SizedBox(height: 10),
-                  Field(
-                      label: 'نوع الدفعة',
-                      placeholder: 'مثال: غرامة تأخير',
-                      marginBottom: 10,
-                      onChanged: (v) => setState(() => otherLabel = v)),
-                  Field(
-                      label: 'المبلغ',
-                      ltr: true,
-                      suffix: currencySymbol(currency as String),
-                      placeholder: '0',
-                      keyboardType: TextInputType.number,
-                      marginBottom: 0,
-                      onChanged: (v) => setState(() => otherAmount = v)),
-                ],
+                for (final u in unitList)
+                  GestureDetector(
+                    onTap: () => setState(() =>
+                        selUnits.contains(u.no) ? selUnits.remove(u.no) : selUnits.add(u.no)),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selUnits.contains(u.no) ? AppColors.navy700 : AppColors.surface,
+                        border: Border.all(
+                            color: selUnits.contains(u.no) ? AppColors.navy700 : AppColors.line2,
+                            width: 1.5),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(u.no,
+                          style: AppType.base(
+                              size: 12.5,
+                              weight: FontWeight.w700,
+                              color: selUnits.contains(u.no) ? Colors.white : AppColors.ink600)),
+                    ),
+                  ),
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 4),
-        // Editable total — defaults to the sum of the ON بنود, override allowed.
-        // The ValueKey re-seeds the field from the sum while it's untouched.
-        Field(
-          key: ValueKey(amountTouched ? 'manual' : defaultStr),
-          label: 'المبلغ الإجمالي',
-          icon: 'wallet',
-          value: amountTouched ? amountStr : defaultStr,
-          ltr: true,
-          keyboardType: TextInputType.number,
-          marginBottom: 8,
-          onChanged: (v) => setState(() {
-            amountTouched = true;
-            amountStr = v;
-          }),
-        ),
-        // Carry-over note — surplus rolls forward, shortfall stays due (#9).
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _infoNote(
-              'المبلغ الزائد عن الاشتراك الشهري يُرحَّل كرصيد للأشهر التالية، '
-              'والنقص يبقى مبلغاً مستحقاً.'),
-        ),
-        const SizedBox(height: 3),
-        // Currency + exchange rate (when paying in a currency other than the base).
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: SelectField(
-                label: 'العملة',
-                icon: 'dollar',
-                options: [for (final c in kCurrencyCodes) SelectOption(c, '$c (${currencySymbol(c)})')],
-                value: currency,
-                onChanged: (v) => setState(() => currency = v),
-              ),
-            ),
-            if (currency != activeCurrency) ...[
-              const SizedBox(width: 10),
-              Expanded(
-                child: Field(
-                    label: 'سعر الصرف → $activeCurrency',
-                    icon: 'refresh',
-                    placeholder: '3.75',
-                    ltr: true,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    onChanged: (v) => setState(() => rateStr = v)),
-              ),
-            ],
-          ],
-        ),
-        if (currency != activeCurrency)
+        ],
+        if (target == 'all')
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: _infoNote(
-                'المبلغ ${fmtMoney(total, currency as String)} يعادل '
-                '${fmtMoney((total * (double.tryParse(rateStr) ?? 0)).round(), activeCurrency)} '
-                '($activeCurrency) بعملة المبنى.'),
+                'ستُسجَّل الدفعة لجميع ${ctx.res ? 'الشقق' : 'الوحدات'} الفعّالة (${unitList.length}).'),
           ),
-        // Covered year — lets past-year months be paid (default: current year).
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: SelectField(
+
+        // #39: ايراد خاص — no renter, no بند; just a description + amount.
+        if (special)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _infoNote(
+                'إيراد للمبنى غير مرتبط بساكن (مثال: دفعة برج جوال). لا يُخصم من ذمم أحد.'),
+          ),
+
+        // بند الدفع (#23) — only the relevant fields show for each (#27).
+        if (!special)
+          SelectField(
+            label: 'بند الدفع',
+            icon: 'receipt',
+            options: [
+              SelectOption(PayItem.monthly, payItemLabel(PayItem.monthly)),
+              if (duesAvailable) SelectOption(PayItem.dues, payItemLabel(PayItem.dues)),
+              SelectOption(PayItem.other, payItemLabel(PayItem.other)),
+            ],
+            value: item,
+            onChanged: (v) => setState(() {
+              item = v as PayItem;
+              amountTouched = false;
+            }),
+          ),
+        if (sel != null && item == PayItem.monthly && fee > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _infoNote('الدفعة الشهرية: ${fmtMoney(fee, activeCurrency)} لكل شهر.'),
+          ),
+        if (sel != null && item == PayItem.dues)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _infoNote('الذمم المستحقة: ${fmtMoney(dues, activeCurrency)}.'),
+          ),
+        if (!special && item == PayItem.other)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _infoNote('الإيراد تحت بند "أخرى" لا يُخصم من ذمم الساكن.'),
+          ),
+
+        // #27/#31: year + months only for the monthly بند, admin only.
+        if (!special && item == PayItem.monthly && ctx.role == AppRole.admin) ...[
+          SelectField(
             label: 'سنة الأشهر المدفوعة',
             icon: 'calendar',
             options: [
@@ -778,28 +809,27 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                 SelectOption(y, '$y'),
             ],
             value: payYear,
-            onChanged: (v) => setState(() => payYear = v as int),
+            onChanged: (v) => setState(() {
+              payYear = v as int;
+              amountTouched = false;
+            }),
           ),
-        ),
-        // Months covered — a multi-select dropdown (a payment row is saved per
-        // month, so choosing 3 months records the bill three times for the units).
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Text('الأشهر المشمولة',
-              style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-        ),
-        GestureDetector(
-          onTap: _pickMonths,
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border.all(color: AppColors.line2, width: 1.5),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Row(
-              children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text('الأشهر المشمولة',
+                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
+          ),
+          GestureDetector(
+            onTap: () => _pickMonths(settled),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                border: Border.all(color: AppColors.line2, width: 1.5),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Row(children: [
                 const AppIcon('calendar', size: 20, color: AppColors.navy600),
                 const SizedBox(width: 11),
                 Expanded(
@@ -809,17 +839,81 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                       style: AppType.base(size: 14, weight: FontWeight.w700, color: AppColors.ink900)),
                 ),
                 const AppIcon('chevronDown', size: 18, color: AppColors.ink400),
-              ],
+              ]),
             ),
           ),
-        ),
-        if (payMonths.length > 1)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: _infoNote(
-                'الإجمالي ${fmtMoney(grandTotal, activeCurrency)} = '
-                '${fmtMoney(baseTotal, activeCurrency)} × ${payMonths.length} أشهر.'),
+          if (!multiMonthOk)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                  'لتغطية ${payMonths.length} أشهر يجب ألا يقل المبلغ عن '
+                  '${fmtMoney(fee * payMonths.length, activeCurrency)}.',
+                  style: AppType.base(
+                      size: 11.5, weight: FontWeight.w600, color: AppColors.late700, height: 1.5)),
+            ),
+        ],
+
+        if (special || item == PayItem.other)
+          Field(
+            label: special ? 'وصف الإيراد الخاص' : 'وصف الإيراد',
+            icon: 'receipt',
+            value: otherLabel,
+            placeholder: special ? 'مثال: دفعة برج جوال' : 'مثال: غرامة تأخير',
+            onChanged: (v) => setState(() => otherLabel = v),
           ),
+
+        // The amount — no 0 seed (#24), digits only (#16), never zero (#30).
+        Field(
+          key: ValueKey('amount-$item-$monthsCount-$unit-$payYear'),
+          label: 'المبلغ',
+          icon: 'wallet',
+          value: amountTouched ? amountStr : (suggested > 0 ? '$suggested' : ''),
+          placeholder: 'أدخل المبلغ',
+          ltr: true,
+          suffix: currencySymbol(currency as String),
+          keyboardType: TextInputType.number,
+          inputFormatters: digitsOnly,
+          onChanged: (v) => setState(() {
+            amountTouched = true;
+            amountStr = v;
+          }),
+        ),
+        if (item == PayItem.dues && total > dues)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('المبلغ يتجاوز الذمم المستحقة (${fmtMoney(dues, activeCurrency)}).',
+                style: AppType.base(size: 11.5, weight: FontWeight.w600, color: AppColors.late700)),
+          ),
+
+        SelectField(
+          label: 'عملة الدفع',
+          icon: 'dollar',
+          options: [for (final c in kCurrencyCodes) SelectOption(c, '$c (${currencySymbol(c)})')],
+          value: currency,
+          onChanged: (v) => setState(() {
+            currency = v as String;
+            rateStr = '';
+          }),
+        ),
+        if (!sameCur) ...[
+          Field(
+            label: 'سعر الصرف إلى $activeCurrency',
+            icon: 'refresh',
+            value: rateStr,
+            placeholder: '3.75',
+            ltr: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: decimalOnly,
+            onChanged: (v) => setState(() => rateStr = v),
+          ),
+          if (rateOk)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _infoNote('المبلغ ${fmtMoney(total, currency as String)} يعادل '
+                  '${fmtMoney(baseTotal, activeCurrency)} بعملة المبنى.'),
+            ),
+        ],
+
         DateField(
           label: 'تاريخ الدفع',
           value: dateIso,
@@ -827,143 +921,46 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         ),
         SelectField(
           label: 'طريقة الدفع',
-          icon: 'dollar',
+          icon: 'wallet',
           options: const [
             SelectOption('نقداً', 'نقداً'),
             SelectOption('تحويل بنكي', 'تحويل بنكي'),
-            SelectOption('محفظة رقمية', 'محفظة رقمية'),
             SelectOption('شيك', 'شيك'),
+            SelectOption('محفظة رقمية', 'محفظة رقمية'),
           ],
           value: method,
-          onChanged: (v) => setState(() => method = v),
+          onChanged: (v) => setState(() => method = v as String),
         ),
-        const Field(label: 'ملاحظات', placeholder: 'ملاحظة اختيارية…'),
+        // #26: cheque → a future due-date + the cheque number.
+        if (method == 'شيك') ...[
+          DateField(
+            label: 'تاريخ الشيك (مستقبلي)',
+            value: chequeDate,
+            onChanged: (v) => setState(() => chequeDate = v),
+          ),
+          if (chequeDate.isNotEmpty && !chequeFuture)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text('تاريخ الشيك يجب أن يكون في المستقبل.',
+                  style: AppType.base(size: 11.5, weight: FontWeight.w600, color: AppColors.late700)),
+            ),
+          Field(
+            label: 'رقم الشيك',
+            icon: 'receipt',
+            value: chequeNumber,
+            ltr: true,
+            placeholder: '123456',
+            onChanged: (v) => setState(() => chequeNumber = v),
+          ),
+        ],
       ],
     );
   }
 
-  /// A بند whose stored fee is 0 prompts for a price + service description when
-  /// switched on; the price is saved as the new default (server) and applied to
-  /// this payment immediately.
-  Future<void> _promptZeroFee(Ctx ctx, PayType t) async {
-    String priceStr = '';
-    String serviceDesc = '';
-    await showAppSheet(
-      context,
-      StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
-          title: 'تحديد سعر ${t.label}',
-          footer: AppButton(
-            label: 'حفظ كقيمة افتراضية',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            disabled: (int.tryParse(priceStr) ?? 0) <= 0,
-            onTap: () async {
-              final price = int.tryParse(priceStr) ?? 0;
-              Navigator.of(sheetCtx).pop();
-              setState(() {
-                priceOverride[t.id] = price;
-                types[t.id] = true;
-              });
-              if (t.dbId > 0) {
-                try {
-                  await Api.I.updatePayType(t.dbId, {'amount': price});
-                  await ctx.reload();
-                } catch (_) {}
-              }
-              final extra = serviceDesc.trim().isEmpty ? '' : ' — ${serviceDesc.trim()}';
-              ctx.toast('تم تحديد سعر ${t.label}: ${fmtUSD(price)}$extra');
-            },
-          ),
-          children: [
-            _infoNote('قيمة هذا البند 0 حالياً. حدّد سعره ووصف الخدمة؛ سيُحفظ '
-                'كقيمة افتراضية للمرات القادمة.'),
-            const SizedBox(height: 12),
-            Field(
-                label: 'السعر',
-                icon: 'wallet',
-                placeholder: '0',
-                ltr: true,
-                keyboardType: TextInputType.number,
-                onChanged: (v) => setS(() => priceStr = v)),
-            AppTextArea(
-                label: 'وصف الخدمة (اختياري)',
-                placeholder: 'مثال: صيانة شاملة شهرية للمصعد',
-                onChanged: (v) => serviceDesc = v),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// POST one payment per target unit, then refresh the bundle.
-  Future<void> _save(Ctx ctx, int total, List<Unit> unitList) async {
-    final targets = target == 'all'
-        ? unitList.map((u) => u.no).toList()
-        : target == 'group'
-            ? selUnits.toList()
-            : [unit as String];
-    final labels = [
-      for (final t in kPayTypes)
-        if (types[t.id] == true) t.label,
-      if (otherOn && otherLabel.trim().isNotEmpty) otherLabel.trim(),
-    ];
-    final kind = labels.isEmpty ? 'دفعة' : labels.join(' + ');
-    final months = payMonths.isEmpty ? {DateTime.now().month - 1} : payMonths;
-    final date = dateIso;
-    // The covered year is chosen explicitly (so past-year months can be paid);
-    // the payment DATE stays the actual day money was received.
-    final year = payYear;
-    final cur = currency as String;
-    final sameCur = cur == activeCurrency;
-    final rate = sameCur ? 1.0 : (double.tryParse(rateStr) ?? 1);
-    // Base (building-currency) amount the row stores. Server is authoritative too,
-    // but we send the converted value so the contract is explicit.
-    final baseAmount = sameCur ? total : (total * rate).round();
-    final unitWord = ctx.res ? 'شقة' : 'وحدة';
-    Navigator.of(context).pop();
-    try {
-      for (final no in targets) {
-        Unit? u;
-        for (final x in unitList) {
-          if (x.no == no) { u = x; break; }
-        }
-        // One row per covered month.
-        for (final m in months) {
-          await Api.I.createPayment(ctx.btype, {
-            'unit_no': no,
-            if (u != null && u.resident.trim().isNotEmpty) 'name': u.resident,
-            'amount': baseAmount,
-            'original_amount': total,
-            'currency': cur,
-            'exchange_rate': rate,
-            'kind': kind,
-            'month': m,
-            'year': year,
-            'date': date,
-            'method': method as String,
-          });
-        }
-      }
-      await ctx.reload();
-      final who = target == 'all'
-          ? (ctx.res ? 'جميع الشقق' : 'جميع الوحدات')
-          : target == 'group'
-              ? '${targets.length} $unitWord'
-              : '$unitWord $unit';
-      final mLabel = months.length == 1 ? 'شهر واحد' : '${months.length} أشهر';
-      ctx.toast('تم تسجيل دفعة بقيمة ${fmtMoney(total * months.length, cur)} لـ $who عن $mLabel');
-    } catch (_) {
-      ctx.toast('تعذّر حفظ الدفعة، تحقّق من الاتصال', tone: 'late');
-    }
-  }
-
-  /// Summary text for the months dropdown field.
+  /// Summary text for the months dropdown.
   String _monthsSummary() {
     if (payMonths.isEmpty) return 'اختر الأشهر';
     final cur = DateTime.now().month - 1;
-    if (payMonths.length == 12) return 'كل الأشهر (12)';
     if (payMonths.length == 1) {
       final m = payMonths.first;
       return m == cur ? 'الشهر الحالي (${monthLabelNum(m)})' : monthLabelNum(m);
@@ -972,9 +969,9 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     return sorted.map(monthLabelNum).join('، ');
   }
 
-  /// Multi-select months picker (opened from the dropdown field). A payment row
-  /// is saved per selected month, so the total scales with the count.
-  void _pickMonths() {
+  /// Multi-select months. A month already SETTLED for this unit/year shows as
+  /// paid and cannot be selected again (#34).
+  void _pickMonths(Set<int> settled) {
     final cur = DateTime.now().month - 1;
     showAppSheet(
       context,
@@ -989,69 +986,142 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             disabled: payMonths.isEmpty,
             onTap: () {
               Navigator.of(sheetCtx).pop();
-              setState(() {});
+              setState(() => amountTouched = false);
             },
           ),
           children: [
-            Row(children: [
-              Expanded(
-                child: AppButton(
-                  label: 'الشهر الحالي فقط',
-                  variant: BtnVariant.outline,
-                  size: BtnSize.sm,
-                  full: true,
-                  onTap: () => setS(() => payMonths
-                    ..clear()
-                    ..add(cur)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: AppButton(
-                  label: payMonths.length == 12 ? 'إلغاء الكل' : 'كل الأشهر',
-                  variant: BtnVariant.outline,
-                  size: BtnSize.sm,
-                  full: true,
-                  onTap: () => setS(() {
-                    if (payMonths.length == 12) {
-                      payMonths
-                        ..clear()
-                        ..add(cur);
-                    } else {
-                      payMonths
-                        ..clear()
-                        ..addAll([for (var i = 0; i < 12; i++) i]);
-                    }
-                  }),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 12),
             for (var i = 0; i < 12; i++)
               Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
                 decoration: BoxDecoration(
-                  color: payMonths.contains(i) ? AppColors.navy50 : AppColors.surface,
+                  color: settled.contains(i)
+                      ? AppColors.surface2
+                      : (payMonths.contains(i) ? AppColors.navy50 : AppColors.surface),
                   border: Border.all(
                       color: payMonths.contains(i) ? AppColors.navy100 : AppColors.line, width: 1.5),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(children: [
                   Expanded(
-                    child: Text('${monthLabelNum(i)}${i == cur ? ' — الحالي' : ''}',
-                        style: AppType.base(size: 14, weight: FontWeight.w700)),
+                    child: Text(
+                        '${monthLabelNum(i)}'
+                        '${i == cur ? ' — الحالي' : ''}'
+                        '${settled.contains(i) ? ' — مسدّد' : ''}',
+                        style: AppType.base(
+                            size: 14,
+                            weight: FontWeight.w700,
+                            color: settled.contains(i) ? AppColors.ink400 : AppColors.ink900)),
                   ),
-                  AppSwitch(
-                    checked: payMonths.contains(i),
-                    onChanged: (v) => setS(() => v ? payMonths.add(i) : payMonths.remove(i)),
-                  ),
+                  if (settled.contains(i))
+                    const AppIcon('checkCircle', size: 20, color: AppColors.ok700)
+                  else
+                    AppSwitch(
+                      checked: payMonths.contains(i),
+                      onChanged: (v) => setS(() => v ? payMonths.add(i) : payMonths.remove(i)),
+                    ),
                 ]),
               ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _save(Ctx ctx, int total, List<Unit> unitList) async {
+    final cur = currency as String;
+    final sameCur = cur == activeCurrency;
+    final rate = sameCur ? 1.0 : (double.tryParse(rateStr) ?? 1);
+
+    // #38/#39: "ايراد خاص" — one row, no renter, never settles dues (the backend
+    // forces applies_to_dues=false when unit_no is absent).
+    if (target == 'special') {
+      final base = sameCur ? total : (total * rate).round();
+      Navigator.of(context).pop();
+      try {
+        await Api.I.createPayment(ctx.btype, {
+          'name': otherLabel.trim(),
+          'amount': base,
+          'original_amount': total,
+          'currency': cur,
+          'exchange_rate': rate,
+          'kind': 'ايراد خاص',
+          'month': DateTime.now().month - 1,
+          'year': DateTime.now().year,
+          'date': dateIso,
+          'method': method as String,
+          if (method == 'شيك') 'cheque_date': chequeDate,
+          if (method == 'شيك') 'cheque_number': chequeNumber.trim(),
+        });
+        await ctx.reload();
+        ctx.toast('تم تسجيل إيراد خاص بقيمة ${fmtMoney(base, activeCurrency)}');
+      } catch (e) {
+        ctx.toast(apiErrorText(e), tone: 'late');
+      }
+      return;
+    }
+
+    final targets = target == 'all'
+        ? unitList.map((u) => u.no).toList()
+        : (target == 'group' ? selUnits.toList() : ['$unit']);
+
+    final kind = switch (item) {
+      PayItem.monthly => 'دفعة شهرية',
+      PayItem.dues => 'ذمم',
+      PayItem.other => 'أخرى — ${otherLabel.trim()}',
+    };
+    // #28: an "أخرى" line is income only and must not settle dues.
+    final appliesToDues = item != PayItem.other;
+
+    // The monthly بند settles the chosen months (one row each, sharing the
+    // total); ذمم/أخرى record a single row against the current month.
+    final months = item == PayItem.monthly
+        ? (payMonths.toList()..sort())
+        : [DateTime.now().month - 1];
+    final year = item == PayItem.monthly ? payYear : DateTime.now().year;
+
+    // Split the total across the covered months (remainder onto the first).
+    final n = months.isEmpty ? 1 : months.length;
+    final each = total ~/ n;
+    final first = each + (total - each * n);
+
+    Navigator.of(context).pop();
+    try {
+      for (final no in targets) {
+        Unit? u;
+        for (final x in unitList) {
+          if (x.no == no) {
+            u = x;
+            break;
+          }
+        }
+        for (var i = 0; i < months.length; i++) {
+          final amt = i == 0 ? first : each;
+          final base = sameCur ? amt : (amt * rate).round();
+          await Api.I.createPayment(ctx.btype, {
+            'unit_no': no,
+            if (u != null && u.resident.trim().isNotEmpty) 'name': u.resident,
+            'amount': base,
+            'original_amount': amt,
+            'currency': cur,
+            'exchange_rate': rate,
+            'kind': kind,
+            'month': months[i],
+            'year': year,
+            'date': dateIso,
+            'method': method as String,
+            'applies_to_dues': appliesToDues,
+            if (method == 'شيك') 'cheque_date': chequeDate,
+            if (method == 'شيك') 'cheque_number': chequeNumber.trim(),
+          });
+        }
+      }
+      await ctx.reload();
+      final baseTotal = sameCur ? total : (total * rate).round();
+      ctx.toast('تم تسجيل دفعة بقيمة ${fmtMoney(baseTotal, activeCurrency)}');
+    } catch (e) {
+      ctx.toast(apiErrorText(e), tone: 'late');
+    }
   }
 
   Widget _infoNote(String text) => Container(
@@ -1088,7 +1158,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       header: AppHeader(
         title: 'إدارة المصروفات',
         subtitle: 'نفقات المبنى',
-        onBack: () => ctx.go('home'),
+        onHome: ctx.role == AppRole.admin ? () => ctx.go('home') : null,
         right: RoundBtn(
           icon: 'pie',
           onTap: () {
@@ -1395,7 +1465,7 @@ class WorkersScreen extends StatelessWidget {
       header: AppHeader(
         title: 'العمال وشركات النظافة',
         subtitle: '${kWorkers.length} جهة مسجّلة',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
       ),
       nav: ctx.adminNav,
       fab: AppFab(icon: 'plus', label: 'إضافة', onTap: () => _openAdd(context, ctx)),
@@ -1676,7 +1746,7 @@ class ParkingScreen extends StatelessWidget {
       header: AppHeader(
         title: 'إدارة الباركينج',
         subtitle: '${kParking.length} موقف',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: RoundBtn(icon: 'plus', onTap: () => _openAdd(context, ctx)),
       ),
       nav: ctx.adminNav,

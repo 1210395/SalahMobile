@@ -117,7 +117,7 @@ class ApiController extends Controller
 
         $payments = Payment::where('building_id', $this->buildingId($r))->get(['amount', 'month', 'year']);
         $expenses = Expense::where('building_id', $this->buildingId($r))->get(['amount', 'cat', 'date']);
-        $units = Unit::where('building_id', $this->buildingId($r))->where('status', '!=', 'vacant')->get(['balance']);
+        $units = Unit::where('building_id', $this->buildingId($r))->where('status', '!=', 'vacant')->get();
 
         $expYM = fn ($e) => Carbon::parse($e->date)->year === $year
             && ($month === null || (int) Carbon::parse($e->date)->month === $month + 1);
@@ -135,8 +135,34 @@ class ApiController extends Controller
         $opening = $this->openingBalance($this->buildingId($r), $year, $payments, $expenses);
         $balance = $opening + $yearRevenue - $yearExpense;
 
-        // Residents' net dues (live, period-independent): owed by residents.
-        $due = (int) $units->filter(fn ($u) => $u->balance < 0)->sum(fn ($u) => abs((int) $u->balance));
+        // Residents' dues as of the END of the selected year, split into what was
+        // carried in from earlier years and what this year itself added (#9/#10).
+        // Payments settle the oldest debt first, so the carried slice is capped by
+        // what is still owed overall.
+        $sumsThroughYear = $this->paymentSums($this->buildingId($r), $year);
+        $sumsBeforeYear = $this->paymentSums($this->buildingId($r), $year - 1);
+        $endOfYear = Carbon::create($year, 12, 1)->startOfMonth();
+        $endOfPrevYear = Carbon::create($year - 1, 12, 1)->startOfMonth();
+
+        $due = $dueYear = $duePrev = 0;
+        foreach ($units as $u) {
+            $paidThrough = (int) ($sumsThroughYear[$u->no] ?? 0);
+            $paidBefore = (int) ($sumsBeforeYear[$u->no] ?? 0);
+
+            $bal = (int) $u->opening_balance - $u->chargesThrough($endOfYear) + $paidThrough;
+            $owed = $bal < 0 ? -$bal : 0;
+
+            // Debt standing at the start of the year, then this year's payments —
+            // which settle the OLDEST debt first, so whatever survives is this
+            // year's own charges.
+            $balPrev = (int) $u->opening_balance - $u->chargesThrough($endOfPrevYear) + $paidBefore;
+            $debtPrev = $balPrev < 0 ? -$balPrev : 0;
+            $owedPrev = min($owed, max(0, $debtPrev - ($paidThrough - $paidBefore)));
+
+            $due += $owed;
+            $duePrev += $owedPrev;
+            $dueYear += $owed - $owedPrev;
+        }
 
         $arShort = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
         $trend = [];
@@ -149,6 +175,13 @@ class ApiController extends Controller
         return response()->json([
             'balance' => $balance,
             'due' => $due,
+            // #9/#10 — the dashboard's carry-over breakdown for the selected year.
+            'dueYear' => $dueYear,          // dues this year added
+            'duePrev' => $duePrev,          // ذمم من السنوات السابقة
+            'carried' => $opening,          // رصيد مرحّل من السنوات السابقة (cash)
+            'yearRevenue' => $yearRevenue,
+            'yearExpense' => $yearExpense,
+            'year' => $year,
             'revenueM' => $revenueM,
             'expenseM' => $expenseM,
             'bars' => [
@@ -199,7 +232,9 @@ class ApiController extends Controller
             'name' => 'required|string|max:120',
             'phone' => 'required|string|max:32|unique:users,phone',
             'email' => 'nullable|email|unique:users,email',
-            'password' => 'nullable|string|min:6',
+            // Password is REQUIRED so every resident has a durable phone+password
+            // login (the QR/login-code is single-use, not a standing credential).
+            'password' => 'required|string|min:6',
             'unit_no' => 'nullable|string|max:20',
         ]);
 
@@ -215,7 +250,7 @@ class ApiController extends Controller
             'name' => $data['name'],
             'phone' => $data['phone'],
             'email' => $data['email'] ?? null,
-            'password' => isset($data['password']) ? Hash::make($data['password']) : null,
+            'password' => Hash::make($data['password']),
             'role' => 'resident',
             'building_key' => $bk,
             'building_id' => $this->buildingId($r),
@@ -279,20 +314,15 @@ class ApiController extends Controller
         // resync the original-currency fields so a receipt can't show a stale
         // "350 ILS" next to a freshly-edited base total.
         if (array_key_exists('amount', $clean) && (int) $clean['amount'] !== $before) {
-            $base = Building::where('key', $payment->building_key)->value('currency') ?: 'USD';
+            $base = Building::where('key', $payment->building_key)->value('currency') ?: 'NIS';
             $clean['original_amount'] = (int) $clean['amount'];
             $clean['currency'] = $base;
             $clean['exchange_rate'] = 1;
         }
         $payment->update($clean);
 
-        // Carry-over: shift the unit's balance by the change in (base) amount.
-        $delta = (int) $payment->amount - $before;
-        if ($delta !== 0) {
-            $unit = $this->unitFor($payment);
-            $unit?->increment('balance', $delta);
-            $this->syncUnitStatus($unit);
-        }
+        // Balance is derived from payments now — just recompute the cached total.
+        $this->recomputeUnit($this->unitFor($payment));
 
         return response()->json($payment->fresh());
     }
@@ -301,11 +331,10 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         abort_unless($payment->building_id === $this->buildingId($r), 403);
-        // Carry-over: removing a payment reverts its credit to the unit balance.
+        // Balance is derived from payments — recompute after removing this one.
         $unit = $this->unitFor($payment);
-        $unit?->decrement('balance', (int) $payment->amount);
-        $this->syncUnitStatus($unit);
         $payment->delete();
+        $this->recomputeUnit($unit);
 
         return response()->json(['ok' => true]);
     }
@@ -317,19 +346,35 @@ class ApiController extends Controller
             ->where('no', $payment->unit_no)->first();
     }
 
-    /// Keep a unit's status label in sync with its (computed) balance so the
-    /// badge, late-count, and overdue alerts never contradict what the resident
-    /// actually owes. Vacant is a manual choice (excluded from dues) and is kept.
-    private function syncUnitStatus(?Unit $unit): void
+    /// Dues-settling payment totals per unit_no (base currency), in one query.
+    /// Only payments with applies_to_dues settle charges — an "أخرى" line is
+    /// income but must not clear the resident's dues (#28).
+    private function paymentSums(?int $buildingId, ?int $throughYear = null): array
+    {
+        return Payment::where('building_id', $buildingId)
+            ->where('applies_to_dues', true)
+            // Cap the sum at payments recorded FOR $throughYear or earlier — this
+            // is how dues get split into "this year" vs "carried over" (#9/#10).
+            ->when($throughYear !== null, fn ($q) => $q->where('year', '<=', $throughYear))
+            ->selectRaw('unit_no, SUM(amount) as s')
+            ->groupBy('unit_no')
+            ->pluck('s', 'unit_no')
+            ->map(fn ($v) => (int) $v)
+            ->toArray();
+    }
+
+    /// Recompute + persist a unit's DERIVED balance and status after a payment
+    /// write (balance = opening − charges + payments). Vacant stays 0/vacant.
+    /// The persisted value is a cache; reads recompute so month accrual stays live.
+    private function recomputeUnit(?Unit $unit): void
     {
         if (! $unit || $unit->status === 'vacant') {
             return;
         }
-        $bal = (int) $unit->fresh()->balance;
-        $status = $bal < 0 ? 'late' : ($bal > 0 ? 'credit' : 'ok');
-        if ($unit->status !== $status) {
-            $unit->update(['status' => $status]);
-        }
+        $paid = (int) Payment::where('building_id', $unit->building_id)
+            ->where('unit_no', $unit->no)->where('applies_to_dues', true)->sum('amount');
+        $bal = $unit->derivedBalance($paid);
+        $unit->update(['balance' => $bal, 'status' => Unit::statusForBalance($bal)]);
     }
 
     // ─────────── Expenses edit / delete ───────────
@@ -352,7 +397,7 @@ class ApiController extends Controller
 
         // Re-convert if currency/original/rate were supplied (keep `amount` base).
         if (array_key_exists('currency', $data) || array_key_exists('original_amount', $data)) {
-            $base = Building::where('key', $expense->building_key)->value('currency') ?: 'USD';
+            $base = Building::where('key', $expense->building_key)->value('currency') ?: 'NIS';
             $currency = $data['currency'] ?? $expense->currency ?? $base;
             $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? $expense->exchange_rate ?? 1);
             $original = (int) ($data['original_amount'] ?? $expense->original_amount ?? $data['amount'] ?? $expense->amount);
@@ -480,30 +525,42 @@ class ApiController extends Controller
 
     public function units(Request $r)
     {
-        $bk = $this->bk($r);
+        $buildingId = $this->buildingId($r);
+        $sums = $this->paymentSums($buildingId);
+
+        // Return a unit's array with the LIVE derived balance + status (computed
+        // from opening − charges + payments, so month accrual is always current).
+        $withDerived = function (Unit $u) use ($sums): array {
+            $bal = $u->derivedBalance((int) ($sums[$u->no] ?? 0));
+            $arr = $u->toArray();
+            $arr['balance'] = $bal;
+            $arr['status'] = $u->status === 'vacant' ? 'vacant' : Unit::statusForBalance($bal);
+
+            return $arr;
+        };
 
         // A resident sees ONLY their own unit, and never any login code (which is
         // a login credential — exposing all of them would let any resident take
         // over any other resident's account).
         if (! $this->isAdmin($r)) {
-            return Unit::where('building_id', $this->buildingId($r))
+            return Unit::where('building_id', $buildingId)
                 ->where('no', optional($r->user())->unit_no ?? '__none__')
-                ->orderBy('no')->get();
+                ->orderBy('no')->get()->map($withDerived)->values();
         }
 
-        $units = Unit::where('building_id', $this->buildingId($r))
+        $units = Unit::where('building_id', $buildingId)
             ->orderBy('floor')->orderBy('no')->get();
 
         // Attach each unit's resident login code (matched by building + unit_no),
         // so the admin can show a QR / share the code. Null if no such user.
-        $codes = User::where('building_id', $this->buildingId($r))
+        $codes = User::where('building_id', $buildingId)
             ->whereNotNull('unit_no')->whereNotNull('login_code')
             ->pluck('login_code', 'unit_no');
 
         return $units->map(fn ($u) => array_merge(
-            $u->toArray(),
+            $withDerived($u),
             ['login_code' => $codes[$u->no] ?? null],
-        ));
+        ))->values();
     }
 
     public function payments(Request $r)
@@ -524,7 +581,8 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'unit_no' => 'required|string|max:20',
+            // Nullable: an "ايراد خاص" line is building income with no renter (#38).
+            'unit_no' => 'nullable|string|max:20',
             'name' => 'nullable|string|max:120',
             'amount' => 'nullable|integer|max:'.self::MONEY_MAX,   // base amount (legacy/optional)
             'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX, // amount as entered
@@ -536,14 +594,34 @@ class ApiController extends Controller
             'date' => 'required|date',
             'method' => 'required|string|max:40',
             'notes' => 'nullable|string|max:1000',
+            // #26: a cheque needs a (future) due date + its number.
+            'cheque_date' => 'nullable|date|after:today',
+            'cheque_number' => 'nullable|string|max:60',
+            // #28: an "أخرى" line is income but must NOT settle the resident's dues.
+            'applies_to_dues' => 'nullable|boolean',
         ]);
         $bk = $this->bk($r);
-        $unit = Unit::where('building_id', $this->buildingId($r))->where('no', $data['unit_no'])->first();
-        abort_unless($unit !== null, 422, 'الوحدة غير موجودة في هذا المبنى');
+        // "ايراد خاص" (#38): building income with no renter — it must be labelled
+        // and never settles anyone's dues.
+        $special = empty($data['unit_no']);
+        $unit = null;
+        if ($special) {
+            abort_if(empty($data['name']), 422, 'الإيراد الخاص يتطلب وصفاً');
+        } else {
+            $unit = Unit::where('building_id', $this->buildingId($r))
+                ->where('no', $data['unit_no'])->first();
+            abort_unless($unit !== null, 422, 'الوحدة غير موجودة في هذا المبنى');
+        }
+
+        // A cheque payment must carry its future due-date + number.
+        if ($data['method'] === 'شيك') {
+            abort_if(empty($data['cheque_date']) || empty($data['cheque_number']), 422,
+                'دفعة الشيك تتطلب تاريخ الشيك (مستقبلي) ورقم الشيك');
+        }
 
         // Convert the entered amount to the building's base currency. `amount` is
         // always stored in the base currency so totals/reports sum cleanly.
-        $base = Building::where('key', $bk)->value('currency') ?: 'USD';
+        $base = Building::where('key', $bk)->value('currency') ?: 'NIS';
         $currency = $data['currency'] ?? $base;
         $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
         $original = (int) ($data['original_amount'] ?? $data['amount'] ?? 0);
@@ -555,8 +633,8 @@ class ApiController extends Controller
         $payment = Payment::create([
             'building_key' => $bk,
             'building_id' => $this->buildingId($r),
-            'unit_no' => $data['unit_no'],
-            'name' => $data['name'] ?? $unit->resident,
+            'unit_no' => $special ? null : $data['unit_no'],
+            'name' => $data['name'] ?? ($unit?->resident ?? ''),
             'amount' => $baseAmount,  // base currency
             'currency' => $currency,
             'original_amount' => $original,
@@ -567,11 +645,16 @@ class ApiController extends Controller
             'date' => $data['date'],
             'method' => $data['method'],
             'notes' => $data['notes'] ?? null,
+            'cheque_date' => $data['cheque_date'] ?? null,
+            'cheque_number' => $data['cheque_number'] ?? null,
+            // Defaults to true (a normal دفعة شهرية / ذمم settles dues); the client
+            // sends false for an "أخرى" line so it stays income only (#28). A
+            // unit-less "ايراد خاص" never settles dues.
+            'applies_to_dues' => $special ? false : ($data['applies_to_dues'] ?? true),
         ]);
 
-        // Carry-over: a payment credits the unit's balance (base currency).
-        $unit->increment('balance', $payment->amount);
-        $this->syncUnitStatus($unit);
+        // Balance is derived (opening − charges + payments) — recompute the cache.
+        $this->recomputeUnit($unit);
 
         return response()->json($payment, 201);
     }
@@ -630,7 +713,7 @@ class ApiController extends Controller
 
         // Convert the entered amount to the building's base currency so reports
         // sum cleanly — mirrors payments. `amount` is always base currency.
-        $base = Building::where('key', $bk)->value('currency') ?: 'USD';
+        $base = Building::where('key', $bk)->value('currency') ?: 'NIS';
         $currency = $data['currency'] ?? $base;
         $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
         $original = (int) ($data['original_amount'] ?? $data['amount']);

@@ -38,11 +38,17 @@ class AmaratiOverhaulTest extends TestCase
 
     private function makeUnit(array $attrs = []): Unit
     {
-        return Unit::create(array_merge([
+        $attrs = array_merge([
             'building_key' => 'residential', 'ext_id' => 'A1', 'no' => '101',
             'floor' => 1, 'resident' => 'ساكن', 'kind' => 'مالك', 'phone' => '—',
             'sub' => 40, 'status' => 'ok', 'balance' => 0, 'payer' => 'الساكن',
-        ], $attrs));
+        ], $attrs);
+        // Derived ledger: the intended `balance` is the opening; with no
+        // billing_start there is no monthly accrual, so derived balance = opening
+        // + payments (mirrors how a test unit is meant to behave).
+        $attrs['opening_balance'] ??= $attrs['balance'];
+
+        return Unit::create($attrs);
     }
 
     /// A commercial building + its own admin — for cross-tenant (IDOR) tests.
@@ -398,6 +404,66 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(1200, (int) $sum['balance']); // 1000 + 500 - 300
     }
 
+    // ───────── #9/#10 — dues split into this year vs carried over ─────────
+
+    // A unit billed from Jan of LAST year owes 12 months of carry-over plus every
+    // month elapsed this year (inclusive accrual, #21/#25).
+    public function test_summary_splits_dues_into_carried_over_and_this_year(): void
+    {
+        $this->seedBuilding();
+        $year = (int) now()->year;
+        $this->makeUnit([
+            'no' => '101', 'sub' => 100, 'balance' => 0,
+            'billing_start' => ($year - 1).'-01-01',
+        ]);
+
+        $sum = $this->actingAs($this->admin(), 'sanctum')
+            ->getJson('/api/summary?year='.$year)->json();
+
+        $thisYear = (int) now()->month * 100;   // Jan…current month, inclusive
+        $this->assertSame(1200, (int) $sum['duePrev']);
+        $this->assertSame($thisYear, (int) $sum['dueYear']);
+        $this->assertSame(1200 + $thisYear, (int) $sum['due']);
+    }
+
+    // Payments settle the OLDEST debt first: clearing last year's 1200 leaves only
+    // this year's own charges standing.
+    public function test_a_payment_this_year_clears_the_carried_over_dues_first(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $year = (int) now()->year;
+        $this->makeUnit([
+            'no' => '101', 'sub' => 100, 'balance' => 0,
+            'billing_start' => ($year - 1).'-01-01',
+        ]);
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 1200, 'kind' => 'ذمم', 'month' => 0,
+            'year' => $year, 'date' => now()->toDateString(), 'method' => 'نقداً',
+        ])->assertCreated();
+
+        $sum = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year='.$year)->json();
+
+        $thisYear = (int) now()->month * 100;
+        $this->assertSame(0, (int) $sum['duePrev']);
+        $this->assertSame($thisYear, (int) $sum['dueYear']);
+        $this->assertSame($thisYear, (int) $sum['due']);
+    }
+
+    // The cash carried into the year is reported on its own (مرحل من السنوات السابقة).
+    public function test_summary_reports_the_cash_carried_over_from_previous_years(): void
+    {
+        $this->seedBuilding();
+        \App\Models\YearSummary::create([
+            'building_key' => 'residential', 'year' => 2026,
+            'opening_balance' => 800, 'months' => [],
+        ]);
+
+        $sum = $this->actingAs($this->admin(), 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(800, (int) $sum['carried']);
+        $this->assertSame(800, (int) $sum['balance']); // nothing else moved yet
+    }
+
     // ─────────────── Redeem code round-trip ───────────────
 
     public function test_manager_created_resident_can_redeem_their_code(): void
@@ -405,7 +471,7 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $this->makeUnit(['no' => '101']);
         $code = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
-            'name' => 'ساكن جديد', 'phone' => '+966500009999', 'unit_no' => '101',
+            'name' => 'ساكن جديد', 'phone' => '+966500009999', 'unit_no' => '101', 'password' => 'secret6',
         ])->json('login_code');
 
         $this->assertSame(32, strlen($code));
@@ -478,10 +544,10 @@ class AmaratiOverhaulTest extends TestCase
         $this->makeUnit(['no' => '101']);
 
         $old = $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'قديم', 'phone' => '+966500000011', 'unit_no' => '101',
+            'name' => 'قديم', 'phone' => '+966500000011', 'unit_no' => '101', 'password' => 'secret6',
         ])->json();
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'جديد', 'phone' => '+966500000022', 'unit_no' => '101',
+            'name' => 'جديد', 'phone' => '+966500000022', 'unit_no' => '101', 'password' => 'secret6',
         ])->assertCreated();
 
         // The old resident is unlinked; only one account remains on unit 101.
@@ -519,10 +585,10 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $admin = $this->admin();
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'أول', 'phone' => '+966500001234',
+            'name' => 'أول', 'phone' => '+966500001234', 'password' => 'secret6',
         ])->assertCreated();
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'ثانٍ', 'phone' => '+966500001234',
+            'name' => 'ثانٍ', 'phone' => '+966500001234', 'password' => 'secret6',
         ])->assertStatus(422);
     }
 
@@ -621,6 +687,21 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertDatabaseMissing('alerts', ['type' => 'subscription']);
     }
 
+    // #6 — an alert body must quote money in the BUILDING's currency. These strings
+    // used to hardcode "$" while every other label rendered "₪".
+    public function test_alert_bodies_quote_money_in_the_buildings_currency(): void
+    {
+        $this->seedBuilding();
+        \App\Models\Building::where('key', 'residential')->update(['currency' => 'NIS']);
+        $this->makeUnit(['no' => '101', 'status' => 'late', 'balance' => -1200]);
+
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/alerts/regenerate')->assertOk();
+
+        $body = (string) \App\Models\Alert::where('type', 'subscription')->value('body');
+        $this->assertStringContainsString('1,200 ₪', $body);
+        $this->assertStringNotContainsString('$', $body);
+    }
+
     public function test_overpaying_makes_a_unit_credit_and_deleting_reverts_to_late(): void
     {
         $this->seedBuilding();
@@ -646,7 +727,8 @@ class AmaratiOverhaulTest extends TestCase
             'contract_start' => $past, 'back_debt' => true,
         ]);
         $res->assertCreated();
-        $this->assertSame(-300, (int) $res->json('balance'));
+        // 3 months ago → 4 billed months (start month through current, inclusive) × 100.
+        $this->assertSame(-400, (int) $res->json('balance'));
         $this->assertSame('late', $res->json('status')); // owes → late, despite status:ok input
     }
 
@@ -666,7 +748,7 @@ class AmaratiOverhaulTest extends TestCase
 
     public function test_back_debt_accrues_for_a_past_contract_start(): void
     {
-        // Sanity companion: a 6-months-ago start with sub 100 owes ~600.
+        // Sanity companion: a 6-months-ago start with sub 100 → 7 inclusive months.
         $this->seedBuilding();
         $past = now()->subMonths(6)->toDateString();
         $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
@@ -674,7 +756,7 @@ class AmaratiOverhaulTest extends TestCase
             'contract_start' => $past, 'back_debt' => true,
         ]);
         $res->assertCreated();
-        $this->assertSame(-600, (int) $res->json('balance'));
+        $this->assertSame(-700, (int) $res->json('balance'));
     }
 
     public function test_payment_with_zero_exchange_rate_is_rejected(): void
@@ -927,7 +1009,7 @@ class AmaratiOverhaulTest extends TestCase
     {
         $this->seedBuilding();
         $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
-            'name' => 'ساكن جديد', 'phone' => '+966500001111', 'unit_no' => '101',
+            'name' => 'ساكن جديد', 'phone' => '+966500001111', 'unit_no' => '101', 'password' => 'secret6',
         ]);
         $res->assertCreated();
         $this->assertNotEmpty($res->json('login_code'));
@@ -974,7 +1056,9 @@ class AmaratiOverhaulTest extends TestCase
         $fresh = $unit->fresh();
         $this->assertSame('101', $fresh->no);
         $this->assertSame(75, (int) $fresh->sub);
-        $this->assertSame(-75, (int) $fresh->balance);
+        // Balance/status are DERIVED (#19): the sent 'balance'/'status' are ignored.
+        // With no opening/charges/payments here, the derived balance is 0.
+        $this->assertSame(0, (int) $fresh->balance);
     }
 
     public function test_admin_still_sees_a_units_overdue_alert(): void
@@ -1130,14 +1214,14 @@ class AmaratiOverhaulTest extends TestCase
     {
         $this->seedBuilding();
         $admin = $this->admin();
-        // 100/month, contract started 5 full months ago → balance −500.
+        // 100/month, contract started 5 months ago → 6 inclusive billed months.
         $start = now()->subMonthsNoOverflow(5)->toDateString();
         $res = $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
             'no' => '202', 'floor' => 2, 'resident' => 'بلال', 'kind' => 'مستأجر',
             'sub' => 100, 'contract_start' => $start, 'back_debt' => true,
         ]);
         $res->assertCreated();
-        $this->assertSame(-500, (int) $res->json('balance'));
+        $this->assertSame(-600, (int) $res->json('balance'));
     }
 
     public function test_open_ended_contract_stays_null_not_forced_end_date(): void
@@ -1347,9 +1431,12 @@ class AmaratiOverhaulTest extends TestCase
             'balance' => -250, // frontend pre-negates the ذمم سابقة
         ])->assertCreated();
 
-        $months = (int) \Illuminate\Support\Carbon::parse($start)->diffInMonths(now());
-        $this->assertGreaterThan(0, $months); // sanity: months actually accrued
-        // Opening debt = rent × months since contract start + previous dues (owed).
+        // Charges accrue from the contract-start month THROUGH the current month
+        // (inclusive) — a start N months ago bills N+1 months — plus the ذمم سابقة.
+        $s = \Illuminate\Support\Carbon::parse($start)->startOfMonth();
+        $nowM = now()->startOfMonth();
+        $months = ($nowM->year - $s->year) * 12 + ($nowM->month - $s->month) + 1;
+        $this->assertGreaterThan(0, $months);
         $this->assertSame(-(100 * $months) - 250, (int) Unit::where('no', '101')->first()->balance);
     }
 
@@ -1392,5 +1479,161 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(700, (int) $all['revenueM']); // whole year = 7 × 100
         $jan = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026&month=0')->json();
         $this->assertSame(100, (int) $jan['revenueM']); // a single month is still 100
+    }
+
+    // ─────────────── Auth/session hardening (Phase 1) ───────────────
+
+    public function test_resident_creation_requires_a_password(): void
+    {
+        // #15: residents need a durable phone+password login, so /residents must
+        // reject a passwordless account.
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101']);
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
+            'name' => 'بلا كلمة', 'phone' => '+966500007777', 'unit_no' => '101',
+        ])->assertStatus(422);
+    }
+
+    public function test_resident_can_log_in_with_phone_and_password(): void
+    {
+        // #15 "test ساكن": a manager-created resident can sign in with phone+password.
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101']);
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
+            'name' => 'ساكن', 'phone' => '+966500008888', 'unit_no' => '101', 'password' => 'secret6',
+        ])->assertCreated();
+
+        $res = $this->postJson('/api/auth/login', ['phone' => '+966500008888', 'password' => 'secret6']);
+        $res->assertOk();
+        $this->assertNotEmpty($res->json('token'));
+        $this->assertSame('resident', $res->json('user.role'));
+    }
+
+    public function test_login_code_is_single_use_and_rotates_on_redeem(): void
+    {
+        // #1: the QR/login-code must not be a permanent multi-device credential.
+        // Redeeming rotates it, so the same code can't be reused on another device.
+        $this->seedBuilding();
+        $this->makeUnit(['no' => '101']);
+        $code = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
+            'name' => 'ساكن', 'phone' => '+966500006666', 'unit_no' => '101', 'password' => 'secret6',
+        ])->json('login_code');
+
+        $this->postJson('/api/auth/redeem-code', ['code' => $code])->assertOk();     // first use works
+        $this->postJson('/api/auth/redeem-code', ['code' => $code])->assertStatus(422); // reuse blocked
+    }
+
+    // ─────────────── Derived ledger (P4a) ───────────────
+
+    public function test_charges_start_from_the_current_month_when_back_debt_off(): void
+    {
+        // #21: without "احتساب من بداية العقد", billing starts THIS month — so a
+        // long-past contract still owes only the current month's fee (inclusive).
+        $this->seedBuilding();
+        $past = now()->subMonths(6)->toDateString();
+        $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
+            'no' => 'NB1', 'floor' => 1, 'sub' => 100, 'status' => 'ok',
+            'contract_start' => $past, 'back_debt' => false,
+        ]);
+        $res->assertCreated();
+        $this->assertSame(-100, (int) $res->json('balance')); // one month, not seven
+    }
+
+    public function test_a_payment_settles_derived_charges(): void
+    {
+        // A payment reduces the DERIVED balance (opening − charges + payments);
+        // it is not a free credit on a stored number.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $start = now()->subMonthsNoOverflow(2)->toDateString(); // 3 inclusive months
+        $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
+            'no' => 'PS1', 'floor' => 1, 'sub' => 100, 'status' => 'ok',
+            'contract_start' => $start, 'back_debt' => true,
+        ])->assertCreated();
+        // Owes 300 (3 × 100). Pay 300 → settled.
+        $unit = Unit::where('no', 'PS1')->first();
+        $this->assertSame(-300, (int) $unit->balance);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => 'PS1', 'amount' => 300, 'kind' => 'الاشتراك الشهري',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+        ])->assertCreated();
+
+        $fresh = Unit::where('no', 'PS1')->first();
+        $this->assertSame(0, (int) $fresh->balance); // 300 charges − 300 paid
+        $this->assertSame('ok', $fresh->status);
+    }
+
+    public function test_an_other_line_is_income_but_does_not_settle_dues(): void
+    {
+        // #28: choosing "أخرى" records income but must NOT reduce the resident's ذمم.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => 'OT1', 'sub' => 100, 'balance' => -500]); // owes 500
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => 'OT1', 'amount' => 200, 'kind' => 'أخرى',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
+            'applies_to_dues' => false,
+        ])->assertCreated();
+
+        // Dues unchanged (still owes 500) …
+        $this->assertSame(-500, (int) Unit::where('no', 'OT1')->first()->balance);
+        // … but it IS counted as revenue.
+        $sum = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(200, (int) $sum['revenueM']);
+    }
+
+    public function test_a_cheque_payment_requires_a_future_date_and_number(): void
+    {
+        // #26: method شيك ⇒ cheque date (future only) + cheque number are required.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => 'CH1', 'sub' => 100]);
+        $base = [
+            'unit_no' => 'CH1', 'amount' => 100, 'kind' => 'الاشتراك الشهري',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-05', 'method' => 'شيك',
+        ];
+
+        // Missing cheque details → rejected.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', $base)->assertStatus(422);
+        // A PAST cheque date → rejected.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', $base + [
+            'cheque_date' => now()->subDay()->toDateString(), 'cheque_number' => 'C-1',
+        ])->assertStatus(422);
+        // A future date + number → accepted.
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/payments', $base + [
+            'cheque_date' => now()->addMonth()->toDateString(), 'cheque_number' => 'C-1',
+        ]);
+        $res->assertCreated();
+        $this->assertSame('C-1', $res->json('cheque_number'));
+    }
+
+    public function test_special_income_needs_no_unit_and_never_settles_dues(): void
+    {
+        // #38: "ايراد خاص" (e.g. دفعة برج جوال) is building income with NO renter.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => 'SI1', 'sub' => 100, 'balance' => -300]); // owes 300
+
+        // A unit-less line must be labelled.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'amount' => 500, 'kind' => 'ايراد خاص',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-10', 'method' => 'نقداً',
+        ])->assertStatus(422);
+
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'name' => 'دفعة برج جوال', 'amount' => 500, 'kind' => 'ايراد خاص',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-10', 'method' => 'نقداً',
+        ]);
+        $res->assertCreated();
+        $this->assertNull($res->json('unit_no'));
+        $this->assertFalse((bool) $res->json('applies_to_dues'));
+
+        // Counted as revenue, but nobody's dues change.
+        $sum = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(500, (int) $sum['revenueM']);
+        $this->assertSame(300, (int) $sum['due']);
+        $this->assertSame(-300, (int) Unit::where('no', 'SI1')->first()->balance);
     }
 }

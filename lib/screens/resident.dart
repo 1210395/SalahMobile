@@ -42,8 +42,6 @@ class ResidentHome extends StatelessWidget {
       accent: true,
       logo: true,
       right: Row(mainAxisSize: MainAxisSize.min, children: [
-        RoundBtn(icon: 'switch', dark: true, onTap: ctx.openRole),
-        const SizedBox(width: 8),
         RoundBtn(icon: 'bell', dark: true, badge: true, onTap: () => ctx.go('alerts')),
         const SizedBox(width: 8),
         RoundBtn(
@@ -191,7 +189,7 @@ class _ResidentReportState extends State<ResidentReport> {
       return ScreenScaffold(
         header: AppHeader(
           title: 'تقريري',
-          onBack: () => ctx.go('resHome'),
+          onBack: ctx.back,
         ),
         nav: ctx.resNav,
         children: const [
@@ -235,7 +233,7 @@ class _ResidentReportState extends State<ResidentReport> {
       header: AppHeader(
         title: 'تقريري',
         subtitle: floorUnitLabel(me, res),
-        onBack: () => ctx.go('resHome'),
+        onBack: ctx.back,
         right: RoundBtn(icon: 'download', onTap: () => ctx.toast('تصدير تقريري PDF')),
       ),
       nav: ctx.resNav,
@@ -400,7 +398,7 @@ class ResidentElevator extends StatelessWidget {
     // No occupied unit yet — nothing to gate the elevator number on.
     if (!_hasUnit(me)) {
       return ScreenScaffold(
-        header: AppHeader(title: 'المصعد', onBack: () => ctx.go('resHome')),
+        header: AppHeader(title: 'المصعد', onBack: ctx.back),
         nav: ctx.resNav,
         children: const [
           SizedBox(height: 40),
@@ -414,7 +412,7 @@ class ResidentElevator extends StatelessWidget {
     }
 
     return ScreenScaffold(
-      header: AppHeader(title: 'المصعد', onBack: () => ctx.go('resHome')),
+      header: AppHeader(title: 'المصعد', onBack: ctx.back),
       nav: ctx.resNav,
       children: [
         const SizedBox(height: 12),
@@ -495,26 +493,30 @@ class MoreHub extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final res = ctx.res;
-    final groups = <(String, List<(String, String, String)>)>[
+    // #46 — every row says what it actually does; a bare label ("الرسوم") left
+    // the manager guessing. (route, label, icon, explanation)
+    final groups = <(String, List<(String, String, String, String)>)>[
       ('الإدارة', [
-        ('building', 'إدارة المبنى', 'building2'),
-        ('units', res ? 'الشقق السكنية' : 'الوحدات التجارية', res ? 'building' : 'store'),
-        ('approvals', 'طلبات الانضمام', 'users'),
-        ('subscribe', 'الاشتراك بالتطبيق', 'shield'),
-        ('years', 'الترحيل السنوي', 'calendar'),
+        ('building', 'إدارة المبنى', 'building2',
+            'بيانات المبنى، الاشتراك الشهري الافتراضي، الرسوم، والعملة'),
+        ('units', res ? 'الشقق السكنية' : 'الوحدات التجارية', res ? 'building' : 'store',
+            res ? 'إضافة الشقق والسكان ومتابعة ذممهم' : 'إضافة الوحدات والمستأجرين ومتابعة ذممهم'),
+        ('approvals', 'طلبات الانضمام', 'users', 'الموافقة على السكان الذين سجّلوا عبر رمز المبنى'),
+        ('subscribe', 'الاشتراك بالتطبيق', 'shield', 'تفعيل اشتراك المبنى في التطبيق وتجديده'),
+        ('years', 'الترحيل السنوي', 'calendar', 'الرصيد الافتتاحي لكل سنة وترحيل أرصدة السنة السابقة'),
       ]),
       ('المالية', [
-        ('payments', 'الإيرادات', 'wallet'),
-        ('expenses', 'المصروفات', 'expense'),
-        ('reports', 'التقارير', 'pie'),
+        ('payments', 'الإيرادات', 'wallet', 'تسجيل دفعات السكان والإيرادات الخاصة'),
+        ('expenses', 'المصروفات', 'expense', 'مصاريف الصيانة والنظافة والكهرباء وغيرها'),
+        ('reports', 'التقارير', 'pie', 'تقارير شهرية وسنوية وتصدير PDF و Excel'),
       ]),
       ('الخدمات', [
-        ('workers', 'العمال والنظافة', 'broom'),
-        ('parking', 'الباركينج', 'parking'),
-        ('guard', 'الحارس', 'shield'),
-        ('elevator', 'المصعد', 'elevator'),
-        ('craftsmen', 'الصنايعية', 'wrench'),
-        ('alerts', 'التنبيهات', 'bell'),
+        ('workers', 'العمال والنظافة', 'broom', 'عمال النظافة، أجورهم، وسجل الزيارات'),
+        ('parking', 'الباركينج', 'parking', 'توزيع المواقف على الوحدات'),
+        ('guard', 'الحارس', 'shield', 'بيانات الحارس وراتبه'),
+        ('elevator', 'المصعد', 'elevator', 'عقد الصيانة، آخر فحص، ورسوم المصعد'),
+        ('craftsmen', 'الصنايعية', 'wrench', 'دليل أرقام الصنايعية (كهربائي، سبّاك، …)'),
+        ('alerts', 'التنبيهات', 'bell', 'تذكير السكان بالذمم والإعلانات العامة'),
       ]),
     ];
     const toneFor = {
@@ -526,7 +528,7 @@ class MoreHub extends StatelessWidget {
     };
 
     return ScreenScaffold(
-      header: const AppHeader(accent: true, title: 'المزيد', subtitle: 'كل أدوات الإدارة'),
+      header: AppHeader(accent: true, title: 'المزيد', subtitle: 'كل أدوات الإدارة', onHome: () => ctx.go('home')),
       nav: ctx.adminNav,
       children: [
         ...groups.map((g) => Padding(
@@ -543,6 +545,7 @@ class MoreHub extends StatelessWidget {
                         return ListRow(
                           leading: IconChip(icon: it.$3, tone: toneFor[it.$1] ?? 'navy', size: 40),
                           title: it.$2,
+                          sub: it.$4,
                           chevron: true,
                           dividerBelow: i < g.$2.length - 1,
                           onTap: () => ctx.go(it.$1),
@@ -557,13 +560,6 @@ class MoreHub extends StatelessWidget {
           pad: 6,
           child: Column(
             children: [
-              ListRow(
-                leading: const IconChip(icon: 'switch', tone: 'credit', size: 40),
-                title: 'تبديل الدور / الحساب',
-                chevron: true,
-                dividerBelow: true,
-                onTap: ctx.openRole,
-              ),
               ListRow(
                 leading: const IconChip(icon: 'logout', tone: 'late', size: 40),
                 title: 'تسجيل الخروج',

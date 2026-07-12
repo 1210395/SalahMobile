@@ -334,7 +334,7 @@ class _LoginScreenState extends State<LoginScreen> {
       header: AppHeader(
         title: 'تسجيل الدخول',
         subtitle: 'أهلاً بعودتك إلى عمارتي',
-        onBack: () => ctx.go('splash'),
+        onBack: ctx.back,
       ),
       children: [
         Segmented(
@@ -366,8 +366,10 @@ class _LoginScreenState extends State<LoginScreen> {
             onTap: _scanCode,
           ),
           const SizedBox(height: 14),
-          Text('كود الدخول خاص بالسكان — يزوّده مسؤول العمارة عبر رمز QR أو رسالة واتساب. '
-              'لا يوجد تسجيل عام للسكان.',
+          // #2 — say the other half out loud: a resident may already have an
+          // account because the manager entered them by hand.
+          Text('كود الدخول خاص بالسكان — يزوّده مسؤول العمارة عبر رمز QR أو رسالة واتساب، '
+              'أو يتم إدخالهم يدوياً من قِبل الإدارة. لا يوجد تسجيل عام للسكان.',
               style: AppType.base(
                   size: 12.5, weight: FontWeight.w600, color: AppColors.ink500, height: 1.6)),
         ] else ...[
@@ -454,10 +456,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _saving = false;
   String? _devCode; // shown in a prominent card when the API returns it
 
+  // A phone/WhatsApp number is valid once it carries at least 7 digits
+  // (ignoring '+', spaces, and other formatting).
+  static bool _phoneValid(String s) =>
+      s.replaceAll(RegExp(r'[^0-9]'), '').length >= 7;
+
   // The base fields must be valid before a confirmation code can be requested.
+  // WhatsApp is optional here (it defaults to the phone on submit), but if the
+  // user typed one it must itself be a valid phone number.
   bool get _fieldsValid =>
       f['name']!.trim().isNotEmpty &&
-      f['phone']!.trim().isNotEmpty &&
+      _phoneValid(f['phone']!) &&
+      (f['whatsapp']!.trim().isEmpty || _phoneValid(f['whatsapp']!)) &&
       f['email']!.trim().contains('@') &&
       f['password']!.length >= 6 &&
       f['password'] == f['confirm'];
@@ -508,7 +518,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       f['email']!.trim(),
       f['password']!,
       phone: f['phone']!.trim(),
-      whatsapp: f['whatsapp']!.trim().isEmpty ? null : f['whatsapp']!.trim(),
+      // Empty WhatsApp defaults to the phone number (common case); a non-empty
+      // value may differ from the phone and is sent as-is.
+      whatsapp: f['whatsapp']!.trim().isEmpty ? f['phone']!.trim() : f['whatsapp']!.trim(),
       emailCode: f['code']!.trim().isEmpty ? null : f['code']!.trim(),
     );
     if (!mounted) return;
@@ -528,7 +540,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       header: AppHeader(
         title: 'إنشاء حساب جديد',
         subtitle: 'انضم إلى عمارتي',
-        onBack: () => ctx.go('login'),
+        onBack: ctx.back,
       ),
       children: [
         AppCard(
@@ -560,6 +572,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   placeholder: '5X XXX XXXX',
                   ltr: true,
                   keyboardType: TextInputType.phone,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]'))],
                   onChanged: (v) => setState(() => f['phone'] = v)),
               Field(
                   label: 'رقم الواتساب',
@@ -567,6 +580,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   placeholder: '5X XXX XXXX',
                   ltr: true,
                   keyboardType: TextInputType.phone,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]'))],
                   onChanged: (v) => setState(() => f['whatsapp'] = v)),
               Field(
                   label: 'البريد الإلكتروني',
