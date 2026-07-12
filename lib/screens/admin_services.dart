@@ -19,7 +19,7 @@ class GuardScreen extends StatelessWidget {
     return ScreenScaffold(
       header: AppHeader(
         title: 'إدارة الحارس',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: RoundBtn(icon: 'edit', onTap: () => _openEdit(context, ctx, g)),
       ),
       nav: ctx.adminNav,
@@ -229,7 +229,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
       header: AppHeader(
         title: 'إدارة المصعد',
         subtitle: '$allowed من ${base.length} مصرّح لهم',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: RoundBtn(icon: 'edit', onTap: () => _editContract(ctx, b)),
       ),
       nav: ctx.adminNav,
@@ -551,7 +551,7 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
       header: AppHeader(
         title: 'قائمة الصنايعية',
         subtitle: 'أرقام موثوقة للصيانة',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: isAdmin ? RoundBtn(icon: 'plus', onTap: () => _openAdd(ctx)) : null,
       ),
       nav: isAdmin ? ctx.adminNav : ctx.resNav,

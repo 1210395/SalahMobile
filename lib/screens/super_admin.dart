@@ -242,7 +242,7 @@ class _AdminsScreenState extends State<AdminsScreen> {
       header: AppHeader(
         title: 'المسؤولون',
         subtitle: _admins == null ? '...' : '${_admins!.length} مسؤول مبنى',
-        onBack: () => ctx.go('superReport'),
+        onBack: ctx.back,
       ),
       nav: ctx.adminNav,
       fab: AppFab(icon: 'plus', label: 'مسؤول جديد', onTap: () => _openCreate(ctx)),

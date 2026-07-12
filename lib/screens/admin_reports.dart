@@ -377,7 +377,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       header: AppHeader(
         title: 'التقارير',
         subtitle: 'تحليل شامل للمبنى',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: Row(mainAxisSize: MainAxisSize.min, children: [
           RoundBtn(icon: 'excel', onTap: () => _shareComprehensive(ctx)),
           const SizedBox(width: 8),
@@ -1081,7 +1081,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     return ScreenScaffold(
       header: AppHeader(
         title: 'التنبيهات والرسائل',
-        onBack: () => ctx.go(isAdmin ? 'home' : 'resHome'),
+        onBack: ctx.back,
         right: Row(mainAxisSize: MainAxisSize.min, children: [
           if (isAdmin) ...[
             RoundBtn(icon: 'refresh', onTap: () => _regenerate(ctx)),
@@ -1347,7 +1347,7 @@ class _YearsScreenState extends State<YearsScreen> {
       header: AppHeader(
         title: 'الترحيل السنوي',
         subtitle: 'متابعة الدفع شهرياً',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: RoundBtn(
             icon: 'refresh',
             // Years are derived automatically from recorded payments — don't

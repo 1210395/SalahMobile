@@ -49,7 +49,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
             ? ctx.building.name
             : (res ? 'إدارة الشقق' : 'إدارة الوحدات'),
         subtitle: '${all.length} ${res ? 'شقة' : 'وحدة'} · $lateCount متأخرة',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: RoundBtn(icon: 'qr', onTap: () => _openAdd(ctx)),
       ),
       nav: ctx.adminNav,

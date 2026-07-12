@@ -270,7 +270,7 @@ class BuildingScreen extends StatelessWidget {
       header: AppHeader(
         title: 'إدارة المبنى',
         subtitle: 'الإعدادات العامة',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: RoundBtn(icon: 'edit', onTap: () => _openEdit(context, ctx, b, res)),
       ),
       children: [

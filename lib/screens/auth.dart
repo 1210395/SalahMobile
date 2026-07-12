@@ -334,7 +334,7 @@ class _LoginScreenState extends State<LoginScreen> {
       header: AppHeader(
         title: 'تسجيل الدخول',
         subtitle: 'أهلاً بعودتك إلى عمارتي',
-        onBack: () => ctx.go('splash'),
+        onBack: ctx.back,
       ),
       children: [
         Segmented(
@@ -528,7 +528,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       header: AppHeader(
         title: 'إنشاء حساب جديد',
         subtitle: 'انضم إلى عمارتي',
-        onBack: () => ctx.go('login'),
+        onBack: ctx.back,
       ),
       children: [
         AppCard(

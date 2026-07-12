@@ -189,7 +189,7 @@ class _ResidentReportState extends State<ResidentReport> {
       return ScreenScaffold(
         header: AppHeader(
           title: 'تقريري',
-          onBack: () => ctx.go('resHome'),
+          onBack: ctx.back,
         ),
         nav: ctx.resNav,
         children: const [
@@ -233,7 +233,7 @@ class _ResidentReportState extends State<ResidentReport> {
       header: AppHeader(
         title: 'تقريري',
         subtitle: floorUnitLabel(me, res),
-        onBack: () => ctx.go('resHome'),
+        onBack: ctx.back,
         right: RoundBtn(icon: 'download', onTap: () => ctx.toast('تصدير تقريري PDF')),
       ),
       nav: ctx.resNav,
@@ -398,7 +398,7 @@ class ResidentElevator extends StatelessWidget {
     // No occupied unit yet — nothing to gate the elevator number on.
     if (!_hasUnit(me)) {
       return ScreenScaffold(
-        header: AppHeader(title: 'المصعد', onBack: () => ctx.go('resHome')),
+        header: AppHeader(title: 'المصعد', onBack: ctx.back),
         nav: ctx.resNav,
         children: const [
           SizedBox(height: 40),
@@ -412,7 +412,7 @@ class ResidentElevator extends StatelessWidget {
     }
 
     return ScreenScaffold(
-      header: AppHeader(title: 'المصعد', onBack: () => ctx.go('resHome')),
+      header: AppHeader(title: 'المصعد', onBack: ctx.back),
       nav: ctx.resNav,
       children: [
         const SizedBox(height: 12),

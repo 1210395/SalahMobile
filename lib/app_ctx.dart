@@ -9,6 +9,7 @@ enum AppRole { superadmin, admin, resident, guest }
 class Ctx {
   const Ctx({
     required this.go,
+    required this.back,
     required this.role,
     required this.btype,
     required this.setBtype,
@@ -29,6 +30,9 @@ class Ctx {
 
   /// Navigate to a screen id.
   final void Function(String screen) go;
+
+  /// Go back to the previous screen (history-aware); use for header back buttons.
+  final VoidCallback back;
   final AppRole role;
   final BType btype;
   final void Function(BType) setBtype;

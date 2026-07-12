@@ -39,7 +39,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       header: AppHeader(
         title: 'الإيرادات',
         subtitle: 'الإيرادات والتحصيل',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: RoundBtn(icon: 'filter', onTap: () {}),
       ),
       nav: ctx.adminNav,
@@ -1088,7 +1088,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       header: AppHeader(
         title: 'إدارة المصروفات',
         subtitle: 'نفقات المبنى',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: RoundBtn(
           icon: 'pie',
           onTap: () {
@@ -1395,7 +1395,7 @@ class WorkersScreen extends StatelessWidget {
       header: AppHeader(
         title: 'العمال وشركات النظافة',
         subtitle: '${kWorkers.length} جهة مسجّلة',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
       ),
       nav: ctx.adminNav,
       fab: AppFab(icon: 'plus', label: 'إضافة', onTap: () => _openAdd(context, ctx)),
@@ -1676,7 +1676,7 @@ class ParkingScreen extends StatelessWidget {
       header: AppHeader(
         title: 'إدارة الباركينج',
         subtitle: '${kParking.length} موقف',
-        onBack: () => ctx.go('home'),
+        onBack: ctx.back,
         right: RoundBtn(icon: 'plus', onTap: () => _openAdd(context, ctx)),
       ),
       nav: ctx.adminNav,

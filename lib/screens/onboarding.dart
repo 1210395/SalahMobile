@@ -61,7 +61,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
       header: AppHeader(
         title: 'تفعيل الاشتراك',
         subtitle: 'اشتراك إدارة المبنى',
-        onBack: () => ctx.go(ctx.role == AppRole.admin ? 'home' : 'guestHome'),
+        onBack: ctx.back,
       ),
       children: [
         HeroBanner(
@@ -543,7 +543,7 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
       header: AppHeader(
         title: 'الانضمام إلى العمارة',
         subtitle: ctx.building.name,
-        onBack: () => ctx.go(ctx.role == AppRole.resident ? 'resHome' : 'guestHome'),
+        onBack: ctx.back,
       ),
       children: [
         AppCard(
@@ -696,7 +696,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
         subtitle: _requests == null
             ? '...'
             : '${pending.length} طلب بانتظار الموافقة',
-        onBack: () => ctx.go('more'),
+        onBack: ctx.back,
       ),
       nav: ctx.adminNav,
       children: [

@@ -170,12 +170,32 @@ class _AmaratiAppState extends State<AmaratiApp> {
     return 'حدث خطأ، حاول مرة أخرى';
   }
 
-  void _go(String s) => setState(() => screen = s);
+  // Real navigation history so back returns to the PREVIOUS screen (#47), not
+  // always home. Forward moves (_go) push the current screen; _back pops.
+  final List<String> _history = [];
 
-  // Android hardware/gesture back: navigate WITHIN the app instead of exiting.
-  // sub-screen -> its parent tab -> role home -> (second press within 2s) exit.
+  void _setScreen(String s) => setState(() => screen = s);
+
+  void _go(String s) {
+    if (s == screen) return;
+    _history.add(screen);
+    if (_history.length > 40) _history.removeAt(0); // guard unbounded growth
+    _setScreen(s);
+  }
+
+  // In-app + Android hardware/gesture back: return to the previous screen in
+  // history; with no history, collapse toward the role home, then (second press
+  // within 2s) exit.
   DateTime? _lastBackAt;
-  void _handleBack() {
+  void _back() {
+    if (_history.isNotEmpty) {
+      _setScreen(_history.removeLast());
+      return;
+    }
+    _collapseBack();
+  }
+
+  void _collapseBack() {
     final maps = switch (role) {
       AppRole.superadmin => _superTabOf,
       AppRole.admin => _adminTabOf,
@@ -185,11 +205,11 @@ class _AmaratiAppState extends State<AmaratiApp> {
     final home = _homeFor(role);
     final tab = maps[screen];
     if (tab != null && tab != screen) {
-      _go(tab); // sub-screen -> its parent tab
+      _setScreen(tab); // sub-screen -> its parent tab
       return;
     }
     if (screen != home) {
-      _go(home); // a non-home tab -> role home
+      _setScreen(home); // a non-home tab -> role home
       return;
     }
     final now = DateTime.now(); // already on home -> confirm exit
@@ -432,6 +452,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
 
     return Ctx(
       go: _go,
+      back: _back,
       role: role,
       btype: btype,
       setBtype: _setBtype,
@@ -519,7 +540,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) _handleBack();
+        if (!didPop) _back();
       },
       child: Scaffold(
       backgroundColor: AppColors.page,
