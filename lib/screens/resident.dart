@@ -493,26 +493,30 @@ class MoreHub extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final res = ctx.res;
-    final groups = <(String, List<(String, String, String)>)>[
+    // #46 — every row says what it actually does; a bare label ("الرسوم") left
+    // the manager guessing. (route, label, icon, explanation)
+    final groups = <(String, List<(String, String, String, String)>)>[
       ('الإدارة', [
-        ('building', 'إدارة المبنى', 'building2'),
-        ('units', res ? 'الشقق السكنية' : 'الوحدات التجارية', res ? 'building' : 'store'),
-        ('approvals', 'طلبات الانضمام', 'users'),
-        ('subscribe', 'الاشتراك بالتطبيق', 'shield'),
-        ('years', 'الترحيل السنوي', 'calendar'),
+        ('building', 'إدارة المبنى', 'building2',
+            'بيانات المبنى، الاشتراك الشهري الافتراضي، الرسوم، والعملة'),
+        ('units', res ? 'الشقق السكنية' : 'الوحدات التجارية', res ? 'building' : 'store',
+            res ? 'إضافة الشقق والسكان ومتابعة ذممهم' : 'إضافة الوحدات والمستأجرين ومتابعة ذممهم'),
+        ('approvals', 'طلبات الانضمام', 'users', 'الموافقة على السكان الذين سجّلوا عبر رمز المبنى'),
+        ('subscribe', 'الاشتراك بالتطبيق', 'shield', 'تفعيل اشتراك المبنى في التطبيق وتجديده'),
+        ('years', 'الترحيل السنوي', 'calendar', 'الرصيد الافتتاحي لكل سنة وترحيل أرصدة السنة السابقة'),
       ]),
       ('المالية', [
-        ('payments', 'الإيرادات', 'wallet'),
-        ('expenses', 'المصروفات', 'expense'),
-        ('reports', 'التقارير', 'pie'),
+        ('payments', 'الإيرادات', 'wallet', 'تسجيل دفعات السكان والإيرادات الخاصة'),
+        ('expenses', 'المصروفات', 'expense', 'مصاريف الصيانة والنظافة والكهرباء وغيرها'),
+        ('reports', 'التقارير', 'pie', 'تقارير شهرية وسنوية وتصدير PDF و Excel'),
       ]),
       ('الخدمات', [
-        ('workers', 'العمال والنظافة', 'broom'),
-        ('parking', 'الباركينج', 'parking'),
-        ('guard', 'الحارس', 'shield'),
-        ('elevator', 'المصعد', 'elevator'),
-        ('craftsmen', 'الصنايعية', 'wrench'),
-        ('alerts', 'التنبيهات', 'bell'),
+        ('workers', 'العمال والنظافة', 'broom', 'عمال النظافة، أجورهم، وسجل الزيارات'),
+        ('parking', 'الباركينج', 'parking', 'توزيع المواقف على الوحدات'),
+        ('guard', 'الحارس', 'shield', 'بيانات الحارس وراتبه'),
+        ('elevator', 'المصعد', 'elevator', 'عقد الصيانة، آخر فحص، ورسوم المصعد'),
+        ('craftsmen', 'الصنايعية', 'wrench', 'دليل أرقام الصنايعية (كهربائي، سبّاك، …)'),
+        ('alerts', 'التنبيهات', 'bell', 'تذكير السكان بالذمم والإعلانات العامة'),
       ]),
     ];
     const toneFor = {
@@ -541,6 +545,7 @@ class MoreHub extends StatelessWidget {
                         return ListRow(
                           leading: IconChip(icon: it.$3, tone: toneFor[it.$1] ?? 'navy', size: 40),
                           title: it.$2,
+                          sub: it.$4,
                           chevron: true,
                           dividerBelow: i < g.$2.length - 1,
                           onTap: () => ctx.go(it.$1),

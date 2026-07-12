@@ -314,7 +314,7 @@ class ApiController extends Controller
         // resync the original-currency fields so a receipt can't show a stale
         // "350 ILS" next to a freshly-edited base total.
         if (array_key_exists('amount', $clean) && (int) $clean['amount'] !== $before) {
-            $base = Building::where('key', $payment->building_key)->value('currency') ?: 'USD';
+            $base = Building::where('key', $payment->building_key)->value('currency') ?: 'NIS';
             $clean['original_amount'] = (int) $clean['amount'];
             $clean['currency'] = $base;
             $clean['exchange_rate'] = 1;
@@ -397,7 +397,7 @@ class ApiController extends Controller
 
         // Re-convert if currency/original/rate were supplied (keep `amount` base).
         if (array_key_exists('currency', $data) || array_key_exists('original_amount', $data)) {
-            $base = Building::where('key', $expense->building_key)->value('currency') ?: 'USD';
+            $base = Building::where('key', $expense->building_key)->value('currency') ?: 'NIS';
             $currency = $data['currency'] ?? $expense->currency ?? $base;
             $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? $expense->exchange_rate ?? 1);
             $original = (int) ($data['original_amount'] ?? $expense->original_amount ?? $data['amount'] ?? $expense->amount);
@@ -621,7 +621,7 @@ class ApiController extends Controller
 
         // Convert the entered amount to the building's base currency. `amount` is
         // always stored in the base currency so totals/reports sum cleanly.
-        $base = Building::where('key', $bk)->value('currency') ?: 'USD';
+        $base = Building::where('key', $bk)->value('currency') ?: 'NIS';
         $currency = $data['currency'] ?? $base;
         $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
         $original = (int) ($data['original_amount'] ?? $data['amount'] ?? 0);
@@ -713,7 +713,7 @@ class ApiController extends Controller
 
         // Convert the entered amount to the building's base currency so reports
         // sum cleanly — mirrors payments. `amount` is always base currency.
-        $base = Building::where('key', $bk)->value('currency') ?: 'USD';
+        $base = Building::where('key', $bk)->value('currency') ?: 'NIS';
         $currency = $data['currency'] ?? $base;
         $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
         $original = (int) ($data['original_amount'] ?? $data['amount']);

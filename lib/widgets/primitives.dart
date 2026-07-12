@@ -153,14 +153,43 @@ class RoundBtn extends StatelessWidget {
     this.onTap,
     this.dark = false,
     this.badge = false,
+    this.label,
   });
   final String icon;
   final VoidCallback? onTap;
   final bool dark;
   final bool badge;
 
+  /// #44 — a bare glyph doesn't say what it does. When set, the button widens
+  /// into a pill and spells the action out next to the icon ("تعديل").
+  final String? label;
+
   @override
   Widget build(BuildContext context) {
+    final fg = dark ? Colors.white : AppColors.navy700;
+    if (label != null) {
+      return Pressable(
+        onTap: onTap,
+        scale: 0.92,
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: dark ? Colors.white.withValues(alpha: 0.12) : AppColors.navy50,
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(icon, size: 18, color: fg),
+              const SizedBox(width: 6),
+              Text(label!,
+                  style: AppType.base(size: 13, weight: FontWeight.w700, color: fg)),
+            ],
+          ),
+        ),
+      );
+    }
     return Pressable(
       onTap: onTap,
       scale: 0.92,

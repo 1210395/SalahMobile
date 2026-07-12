@@ -118,7 +118,7 @@ class OnboardingController extends Controller
                 'address' => $data['address'],
                 'type' => $type === 'residential' ? 'سكني' : 'تجاري',
                 'subscription' => 0,
-                'currency' => 'USD',
+                'currency' => 'NIS',
                 'floors' => $data['floors'],
                 'units_count' => $data['units_count'],
                 'exchange_rate' => 3.75,

@@ -366,8 +366,10 @@ class _LoginScreenState extends State<LoginScreen> {
             onTap: _scanCode,
           ),
           const SizedBox(height: 14),
-          Text('كود الدخول خاص بالسكان — يزوّده مسؤول العمارة عبر رمز QR أو رسالة واتساب. '
-              'لا يوجد تسجيل عام للسكان.',
+          // #2 — say the other half out loud: a resident may already have an
+          // account because the manager entered them by hand.
+          Text('كود الدخول خاص بالسكان — يزوّده مسؤول العمارة عبر رمز QR أو رسالة واتساب، '
+              'أو يتم إدخالهم يدوياً من قِبل الإدارة. لا يوجد تسجيل عام للسكان.',
               style: AppType.base(
                   size: 12.5, weight: FontWeight.w600, color: AppColors.ink500, height: 1.6)),
         ] else ...[

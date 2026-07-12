@@ -329,7 +329,7 @@ class BuildingScreen extends StatelessWidget {
         title: 'إدارة المبنى',
         subtitle: 'الإعدادات العامة',
         onBack: ctx.back,
-        right: RoundBtn(icon: 'edit', onTap: () => _openEdit(context, ctx, b, res)),
+        right: RoundBtn(icon: 'edit', label: 'تعديل', onTap: () => _openEdit(context, ctx, b, res)),
       ),
       children: [
         Container(
@@ -427,7 +427,7 @@ class BuildingScreen extends StatelessWidget {
           QuickTile(label: 'طلبات الانضمام', sub: 'الموافقة على السكان', icon: 'users', tone: 'gold', onTap: () => ctx.go('approvals')),
           QuickTile(label: 'الاشتراك بالتطبيق', sub: 'تفعيل الاشتراك بالتطبيق', icon: 'shield', tone: 'navy', onTap: () => ctx.go('subscribe')),
           QuickTile(label: 'مسؤول مساعد', sub: 'إضافة مسؤول للمبنى', icon: 'users', tone: 'credit', onTap: () => _openCoAdmin(context, ctx)),
-          QuickTile(label: 'الرسوم', sub: 'تعريف بنود الرسوم وقيمها الافتراضية', icon: 'wallet', tone: 'gold', onTap: () => _openPayTypes(context, ctx)),
+          QuickTile(label: 'الرسوم', sub: 'قيم المصعد والحارس والباركينج المضمّنة بالاشتراك', icon: 'wallet', tone: 'gold', onTap: () => _openPayTypes(context, ctx)),
         ], n: 2),
       ],
     );
@@ -445,8 +445,11 @@ class BuildingScreen extends StatelessWidget {
     };
     BType type = ctx.btype;
     Object currency = b.currency;
-    // #45: you can't declare fewer units than the real (non-vacant) units on record.
-    final existingCount = (res ? kApartments : kShops).where((u) => u.status != 'vacant').length;
+    // #45: the building can't be shrunk below what is already on record — neither
+    // fewer units than the occupied ones, nor fewer floors than the highest one in use.
+    final occupied = (res ? kApartments : kShops).where((u) => u.status != 'vacant');
+    final existingCount = occupied.length;
+    final topFloor = occupied.fold<int>(0, (m, u) => u.floor > m ? u.floor : m);
     showAppSheet(
       context,
       StatefulBuilder(
@@ -454,6 +457,7 @@ class BuildingScreen extends StatelessWidget {
           final floorsVal = int.tryParse(f['floors']!.trim());
           final unitsVal = int.tryParse(f['units']!.trim());
           final unitsBelowExisting = unitsVal != null && unitsVal < existingCount;
+          final floorsBelowExisting = floorsVal != null && topFloor > 0 && floorsVal < topFloor;
           return SheetShell(
           title: 'تعديل بيانات المبنى',
           footer: AppButton(
@@ -463,7 +467,8 @@ class BuildingScreen extends StatelessWidget {
             icon: 'check',
             disabled: (floorsVal != null && floorsVal < 1) ||
                 (unitsVal != null && unitsVal < 1) ||
-                unitsBelowExisting,
+                unitsBelowExisting ||
+                floorsBelowExisting,
             onTap: () async {
               Navigator.of(sheetCtx).pop();
               try {
@@ -531,6 +536,14 @@ class BuildingScreen extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 6, bottom: 2),
                 child: Text(
                   'عدد الوحدات لا يمكن أن يقل عن $existingCount وحدة مسجّلة',
+                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.late700),
+                ),
+              ),
+            if (floorsBelowExisting)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 2),
+                child: Text(
+                  'عدد الطوابق لا يمكن أن يقل عن $topFloor — يوجد ${res ? 'شقق' : 'وحدات'} في هذا الطابق',
                   style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.late700),
                 ),
               ),
@@ -635,6 +648,22 @@ class BuildingScreen extends StatelessWidget {
       SheetShell(
         title: 'الرسوم وأنواع الدفعات',
         children: [
+          // #46 — spell out what this screen is for; the list of amounts alone
+          // did not say where these numbers end up.
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+                color: AppColors.surface2, borderRadius: BorderRadius.circular(12)),
+            child: Text(
+              'هذه هي بنود الرسوم الافتراضية للمبنى (المصعد، الحارس، الباركينج…). '
+              'قيمتها مضمّنة في الاشتراك الشهري لكل وحدة، وتُستخدم كقيمة مقترحة عند '
+              'تسجيل الوحدات. تعديلها هنا لا يغيّر الدفعات المسجّلة سابقاً.',
+              style: AppType.base(
+                  size: 12, weight: FontWeight.w600, color: AppColors.ink600, height: 1.6),
+            ),
+          ),
           for (final pt in kPayTypes)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -649,14 +678,14 @@ class BuildingScreen extends StatelessWidget {
                 NumText(fmtUSD(pt.amount),
                     style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.gold700)),
                 const SizedBox(width: 10),
-                RoundBtn(icon: 'edit', onTap: () {
+                RoundBtn(icon: 'edit', label: 'تعديل', onTap: () {
                   Navigator.of(context).pop();
                   _openEditPayType(context, ctx, pt);
                 }),
               ]),
             ),
           const SizedBox(height: 4),
-          Text('اضغط ✎ لتعديل قيمة أو تفعيل أي رسم.',
+          Text('اضغط «تعديل» لتغيير قيمة أي رسم أو تفعيله.',
               style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400)),
         ],
       ),

@@ -167,7 +167,7 @@ class _SuperReportScreenState extends State<SuperReportScreen> {
       );
 
   Widget _buildingCard(Map<String, dynamic> b) {
-    final cur = '${b['currency'] ?? 'USD'}';
+    final cur = '${b['currency'] ?? kDefaultCurrency}';
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: AppCard(

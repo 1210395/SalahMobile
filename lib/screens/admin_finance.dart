@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 
 import '../common.dart';
 import '../api/repository.dart';
+import '../data/file_save.dart';
 import 'admin_reports.dart' show pendingReportTab;
 
 // ───────────────────────────── Payments ─────────────────────────────
@@ -431,11 +432,27 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.ink700, height: 1.7)),
           ),
           const SizedBox(height: 12),
+          // #41 — downloading the سند was impossible: the only PDF path opened the
+          // system share sheet. Saving to the device is now its own action.
           AppButton(
-            label: 'حفظ / طباعة PDF',
-            variant: BtnVariant.outline,
+            label: 'تنزيل PDF على الجهاز',
             full: true,
             icon: 'download',
+            onTap: () async {
+              try {
+                final path = await _receiptPdf(p, unitWord, download: true);
+                ctx.toast('تم حفظ السند في: $path');
+              } catch (e) {
+                ctx.toast(apiErrorText(e), tone: 'late');
+              }
+            },
+          ),
+          const SizedBox(height: 8),
+          AppButton(
+            label: 'مشاركة / طباعة PDF',
+            variant: BtnVariant.outline,
+            full: true,
+            icon: 'send',
             onTap: () async {
               try {
                 await _receiptPdf(p, unitWord);
@@ -465,8 +482,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     ].join('\n');
   }
 
-  // Printable RTL/Cairo سند قبض. Local to this file; opens the share/print sheet.
-  Future<void> _receiptPdf(Payment p, String unitWord) async {
+  // Printable RTL/Cairo سند قبض. Shares/prints by default; with download: true it
+  // saves to the device (#41) and returns the path it wrote to.
+  Future<String> _receiptPdf(Payment p, String unitWord, {bool download = false}) async {
     final base = await PdfGoogleFonts.cairoRegular();
     final bold = await PdfGoogleFonts.cairoBold();
     final doc = pw.Document();
@@ -509,7 +527,13 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         ),
       ),
     );
-    await Printing.sharePdf(bytes: await doc.save(), filename: 'receipt.pdf');
+    final bytes = await doc.save();
+    final name = 'amarati-receipt-${p.id}.pdf';
+    if (download) {
+      return saveToDownloads(name, bytes);
+    }
+    await Printing.sharePdf(bytes: bytes, filename: name);
+    return name;
   }
 
   // The unit behind a payment (for the resident phone on receipts), if loaded.

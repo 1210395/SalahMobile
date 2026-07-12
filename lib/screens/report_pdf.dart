@@ -1,6 +1,7 @@
 // عمارتي — real PDF report export (#8). Builds an RTL, Cairo-font PDF from the
-// same row data used for Excel/CSV, then opens the system share/print sheet.
-// The header carries the app logo, the building name, and the report title.
+// same row data used for Excel/CSV, then either opens the system share sheet or
+// saves it to the device (#41). The header carries the app logo, the building
+// name, and the report title.
 
 import 'dart:typed_data';
 
@@ -9,7 +10,24 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-Future<void> exportReportPdf(String title, List<List<String>> rows, {String? buildingName}) async {
+import '../data/file_save.dart';
+
+/// Share the report through the system sheet (WhatsApp, mail, print…).
+Future<void> exportReportPdf(String title, List<List<String>> rows,
+    {String? buildingName}) async {
+  final bytes = await buildReportPdf(title, rows, buildingName: buildingName);
+  await Printing.sharePdf(bytes: bytes, filename: 'amarati-report.pdf');
+}
+
+/// #41 — save the report to the device instead; returns the saved path.
+Future<String> saveReportPdf(String title, List<List<String>> rows,
+    {String? buildingName, String fileName = 'amarati-report.pdf'}) async {
+  final bytes = await buildReportPdf(title, rows, buildingName: buildingName);
+  return saveToDownloads(fileName, bytes);
+}
+
+Future<Uint8List> buildReportPdf(String title, List<List<String>> rows,
+    {String? buildingName}) async {
   final base = await PdfGoogleFonts.cairoRegular();
   final bold = await PdfGoogleFonts.cairoBold();
 
@@ -86,5 +104,5 @@ Future<void> exportReportPdf(String title, List<List<String>> rows, {String? bui
     ),
   );
 
-  await Printing.sharePdf(bytes: await doc.save(), filename: 'amarati-report.pdf');
+  return doc.save();
 }

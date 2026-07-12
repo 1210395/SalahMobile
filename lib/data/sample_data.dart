@@ -20,13 +20,17 @@ const Map<String, String> kCurrencySymbols = {
 // duplicates, which would confuse users and make the same currency compare as
 // "different" in the conversion path).
 const List<String> kCurrencyCodes = [
-  'USD', 'NIS', 'JOD', 'SAR', 'AED', 'EGP', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'EUR', 'GBP',
+  'NIS', 'JOD', 'USD', 'SAR', 'AED', 'EGP', 'KWD', 'QAR', 'BHD', 'OMR', 'TRY', 'EUR', 'GBP',
 ];
+
+/// #6 — the app's market is Palestine, so a new building starts in shekels.
+/// It stays a free choice: every currency picker still lists all of the above.
+const String kDefaultCurrency = 'NIS';
 
 String currencySymbol(String code) => kCurrencySymbols[code] ?? code;
 
-/// The active building's base currency (from live data, else USD).
-String get activeCurrency => DataStore.I.building?.currency ?? 'USD';
+/// The active building's base currency (from live data, else the default).
+String get activeCurrency => DataStore.I.building?.currency ?? kDefaultCurrency;
 
 /// Group digits with thousands separators (e.g. 25840 -> "25,840").
 String _grouped(num n, {bool dec = false}) {
@@ -181,7 +185,7 @@ class Building {
         units: _int(j['units_count']),
         type: j['type'] ?? '',
         subscription: _int(j['subscription']),
-        currency: j['currency'] ?? 'USD',
+        currency: j['currency'] ?? kDefaultCurrency,
         floors: _int(j['floors']),
         exchangeRate: (j['exchange_rate'] is num)
             ? (j['exchange_rate'] as num).toDouble()
@@ -686,7 +690,7 @@ class DataStore {
 const List<String> kExpCats = ['مصعد', 'نظافة', 'كهرباء', 'صيانة', 'أخرى'];
 
 const Building _emptyBuilding = Building(
-    name: '', address: '', units: 0, type: '', subscription: 0, currency: 'USD', floors: 0);
+    name: '', address: '', units: 0, type: '', subscription: 0, currency: kDefaultCurrency, floors: 0);
 const Guard _emptyGuard =
     Guard(name: '', phone: '', address: '', fee: 0, last: '—', next: '—');
 const SummaryData _zeroSummary = SummaryData(

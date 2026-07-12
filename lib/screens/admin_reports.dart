@@ -1,5 +1,6 @@
 // عمارتي — Admin: Reports, Alerts & Messages, Years.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../common.dart';
 import '../api/repository.dart';
+import '../data/file_save.dart';
 import 'report_pdf.dart';
 
 /// Clone chart data with a money value label drawn above each bar.
@@ -107,51 +109,79 @@ class _ReportsScreenState extends State<ReportsScreen> {
       .where((e) => (DateTime.tryParse(e.date)?.year ?? selYear) == selYear)
       .fold<int>(0, (s, e) => s + e.amount);
 
-  /// Export chooser: real .xlsx / .csv files (shared) or copy to clipboard.
+  /// Export chooser: real .xlsx / .pdf files, either shared or SAVED to the
+  /// device (#41 — the sheet used to offer share only), or copied as text.
   void _exportSheet(Ctx ctx, String title, List<List<String>> rows) {
+    bool download = false;
     showAppSheet(
       context,
-      SheetShell(
-        title: title,
-        children: [
-          _exportOption(
-            icon: 'file',
-            label: 'تصدير PDF (ملف .pdf)',
-            onTap: () async {
-              Navigator.of(context).pop();
-              try {
-                await exportReportPdf(title, rows, buildingName: ctx.building.name);
-              } catch (e) {
-                ctx.toast(apiErrorText(e), tone: 'late');
-              }
-            },
-          ),
-          const SizedBox(height: 10),
-          _exportOption(
-            icon: 'excel',
-            label: 'تصدير Excel (ملف .xlsx)',
-            onTap: () {
-              Navigator.of(context).pop();
-              _shareReport(ctx, rows, excel: true);
-            },
-          ),
-          const SizedBox(height: 10),
-          _exportOption(
-            icon: 'receipt',
-            label: 'نسخ إلى الحافظة',
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: _rowsToCsv(rows)));
-              Navigator.of(context).pop();
-              ctx.toast('تم نسخ التقرير إلى الحافظة');
-            },
-          ),
-          const SizedBox(height: 8),
-          Text('PDF و Excel — تُصدَّر كملفات فعلية عبر مشاركة النظام.',
-              style: AppType.base(size: 11, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
-        ],
+      StatefulBuilder(
+        builder: (sheetCtx, setS) => SheetShell(
+          title: title,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Segmented(
+                value: download ? 'save' : 'share',
+                onChanged: (v) => setS(() => download = v == 'save'),
+                options: const [
+                  SegOption('share', 'مشاركة', icon: 'send'),
+                  SegOption('save', 'تنزيل', icon: 'download'),
+                ],
+              ),
+            ),
+            _exportOption(
+              icon: 'file',
+              label: '${download ? 'تنزيل' : 'تصدير'} PDF (ملف .pdf)',
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                try {
+                  if (download) {
+                    final path = await saveReportPdf(title, rows,
+                        buildingName: ctx.building.name, fileName: _stampedName('pdf'));
+                    ctx.toast('تم حفظ الملف في: $path');
+                  } else {
+                    await exportReportPdf(title, rows, buildingName: ctx.building.name);
+                  }
+                } catch (e) {
+                  ctx.toast(apiErrorText(e), tone: 'late');
+                }
+              },
+            ),
+            const SizedBox(height: 10),
+            _exportOption(
+              icon: 'excel',
+              label: '${download ? 'تنزيل' : 'تصدير'} Excel (ملف .xlsx)',
+              onTap: () {
+                Navigator.of(sheetCtx).pop();
+                _shareReport(ctx, rows, excel: true, download: download);
+              },
+            ),
+            const SizedBox(height: 10),
+            _exportOption(
+              icon: 'receipt',
+              label: 'نسخ إلى الحافظة',
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: _rowsToCsv(rows)));
+                Navigator.of(sheetCtx).pop();
+                ctx.toast('تم نسخ التقرير إلى الحافظة');
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+                download
+                    ? 'يُحفظ الملف في مجلد التنزيلات على الجهاز، ويظهر مساره بعد الحفظ.'
+                    : 'تُصدَّر الملفات عبر مشاركة النظام (واتساب، بريد، …).',
+                style: AppType.base(
+                    size: 11, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
+          ],
+        ),
       ),
     );
   }
+
+  String _stampedName(String ext) =>
+      'amarati-$tab-$selYear${(selMonth + 1).toString().padLeft(2, '0')}.$ext';
 
   Widget _exportOption({required String icon, required String label, required VoidCallback onTap}) {
     return GestureDetector(
@@ -185,43 +215,86 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ];
   }
 
-  Future<void> _shareReport(Ctx ctx, List<List<String>> rows, {required bool excel}) async {
+  /// Build the .xlsx/.csv and either share it or save it to the device (#41).
+  Future<void> _shareReport(Ctx ctx, List<List<String>> rows,
+      {required bool excel, bool download = false}) async {
     try {
       final data = _withHeader(ctx, rows);
-      final dir = await getTemporaryDirectory();
-      final stamp = '$selYear${(selMonth + 1).toString().padLeft(2, '0')}';
+      final name = _stampedName(excel ? 'xlsx' : 'csv');
+      final List<int> bytes;
       if (excel) {
         final book = xlsx.Excel.createExcel();
         final sheet = book[book.getDefaultSheet() ?? 'Sheet1'];
         for (final r in data) {
           sheet.appendRow([for (final c in r) xlsx.TextCellValue(c)]);
         }
-        final bytes = book.encode() ?? <int>[];
-        final file = File('${dir.path}/amarati-$tab-$stamp.xlsx');
-        await file.writeAsBytes(bytes);
-        await Share.shareXFiles([XFile(file.path)], text: 'تقرير عمارتي');
+        bytes = book.encode() ?? <int>[];
       } else {
         // Prepend a BOM so Excel opens the Arabic CSV in UTF-8.
-        final csv = '﻿${_rowsToCsv(data)}';
-        final file = File('${dir.path}/amarati-$tab-$stamp.csv');
-        await file.writeAsString(csv);
-        await Share.shareXFiles([XFile(file.path)], text: 'تقرير عمارتي');
+        bytes = utf8.encode('﻿${_rowsToCsv(data)}');
       }
+      if (download) {
+        final path = await saveToDownloads(name, bytes);
+        ctx.toast('تم حفظ الملف في: $path');
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$name');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(file.path)], text: 'تقرير عمارتي');
     } catch (_) {
       ctx.toast('تعذّر تصدير الملف', tone: 'late');
     }
   }
 
+  /// #41 — the comprehensive workbook can be shared or saved to the device.
+  void _comprehensiveSheet(Ctx ctx) {
+    showAppSheet(
+      context,
+      SheetShell(
+        title: 'التقرير الشامل (Excel)',
+        children: [
+          _exportOption(
+            icon: 'download',
+            label: 'تنزيل الملف على الجهاز',
+            onTap: () {
+              Navigator.of(context).pop();
+              _shareComprehensive(ctx, download: true);
+            },
+          ),
+          const SizedBox(height: 10),
+          _exportOption(
+            icon: 'send',
+            label: 'مشاركة الملف',
+            onTap: () {
+              Navigator.of(context).pop();
+              _shareComprehensive(ctx);
+            },
+          ),
+          const SizedBox(height: 8),
+          Text('يحتوي الملف على ورقة لكل سنة فيها دفعات — الأحدث أولاً.',
+              style: AppType.base(
+                  size: 11, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
+        ],
+      ),
+    );
+  }
+
   /// "تقرير شامل" — a workbook with one sheet per year, each a resident-by-month
   /// matrix of payments (signed, carry-over included) drawn straight from live data.
-  Future<void> _shareComprehensive(Ctx ctx) async {
+  Future<void> _shareComprehensive(Ctx ctx, {bool download = false}) async {
     final residents =
         (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
     if (residents.isEmpty) {
       ctx.toast('لا يوجد سكّان لإصدار تقرير شامل', tone: 'late');
       return;
     }
-    final years = kYears.isNotEmpty ? kYears : [selYear];
+    // #42: kYears always seeds the last three calendar years, so the workbook
+    // used to open on an empty 2024 sheet. Only export years that hold payments
+    // (newest first), falling back to the selected year when there are none.
+    var years = kYears.where((y) => kPayments.any((p) => p.year == y)).toList()
+      ..sort((a, b) => b.compareTo(a));
+    if (years.isEmpty) years = [selYear];
     final bName = ctx.building.name.trim();
     try {
       final book = xlsx.Excel.createExcel();
@@ -277,8 +350,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (defaultSheet != null && !years.map((y) => '$y').contains(defaultSheet)) {
         book.delete(defaultSheet);
       }
-      final dir = await getTemporaryDirectory();
       final bytes = book.encode() ?? <int>[];
+      if (download) {
+        final path = await saveToDownloads('amarati-comprehensive.xlsx', bytes);
+        ctx.toast('تم حفظ الملف في: $path');
+        return;
+      }
+      final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/amarati-comprehensive.xlsx');
       await file.writeAsBytes(bytes);
       await Share.shareXFiles([XFile(file.path)], text: 'التقرير الشامل — عمارتي');
@@ -379,7 +457,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         subtitle: 'تحليل شامل للمبنى',
         onHome: ctx.role == AppRole.admin ? () => ctx.go('home') : null,
         right: Row(mainAxisSize: MainAxisSize.min, children: [
-          RoundBtn(icon: 'excel', onTap: () => _shareComprehensive(ctx)),
+          RoundBtn(icon: 'excel', onTap: () => _comprehensiveSheet(ctx)),
           const SizedBox(width: 8),
           RoundBtn(
               icon: 'download',
@@ -409,7 +487,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           label: 'تقرير شامل (Excel)',
           full: true,
           icon: 'excel',
-          onTap: () => _shareComprehensive(ctx),
+          onTap: () => _comprehensiveSheet(ctx),
         ),
         const SizedBox(height: 10),
         Row(children: [

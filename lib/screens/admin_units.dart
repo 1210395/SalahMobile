@@ -467,6 +467,15 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 keyboardType: TextInputType.number,
                 inputFormatters: digitsOnly,
                 onChanged: (v) => f['prev'] = v),
+            // #17 — the field alone read as noise; say what it is for.
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                  'المبلغ المتراكم على ${res ? 'الساكن' : 'المستأجر'} قبل تسجيله في التطبيق. '
+                  'يُضاف إلى ذممه كرصيد افتتاحي، ويُسدَّد بدفعة من بند «ذمم».',
+                  style: AppType.base(
+                      size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
+            ),
             DateField(
                 label: 'تاريخ بداية العقد',
                 value: start,

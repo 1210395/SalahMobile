@@ -668,4 +668,53 @@ void main() {
     expect(find.text('ذمم العام $y'), findsOneWidget);
     expect(find.text('إجمالي الذمم'), findsOneWidget);
   });
+
+  // ─────────── Audit redesign — P5 (reports, building, copy) ───────────
+
+  // #6: a new building starts in shekels — but every currency stays selectable.
+  test('the default currency is NIS and every currency stays selectable', () {
+    expect(kDefaultCurrency, 'NIS');
+    expect(kCurrencyCodes.first, 'NIS');
+    expect(kCurrencyCodes, contains('USD'));
+    expect(kCurrencyCodes.length, greaterThan(5));
+    expect(currencySymbol('NIS'), '₪');
+  });
+
+  // #44: the corner pen must say what it does, not just draw a glyph.
+  testWidgets('the edit pen is labelled تعديل', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'building', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+    expect(find.ancestor(of: find.text('تعديل'), matching: find.byType(RoundBtn)), findsOneWidget);
+  });
+
+  // #41: exports offered share only — a download/save mode must exist. The
+  // "تقرير شامل" button sits below the 600px test viewport, so scroll to it first.
+  testWidgets('the report export sheet offers a تنزيل mode', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'reports', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final btn = find.text('تقرير شامل (Excel)');
+    await tester.scrollUntilVisible(btn, 250, scrollable: find.byType(Scrollable).first);
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(btn.first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('تنزيل الملف على الجهاز'), findsOneWidget);
+    expect(find.text('مشاركة الملف'), findsOneWidget);
+  });
+
+  // #46: المزيد rows must explain themselves, not just name themselves.
+  testWidgets('the المزيد hub explains every entry', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'more', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+    expect(find.text('بيانات المبنى، الاشتراك الشهري الافتراضي، الرسوم، والعملة'), findsOneWidget);
+    expect(find.text('تسجيل دفعات السكان والإيرادات الخاصة'), findsOneWidget);
+  });
 }

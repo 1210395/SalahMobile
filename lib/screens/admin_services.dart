@@ -25,7 +25,7 @@ class GuardScreen extends StatelessWidget {
       header: AppHeader(
         title: 'إدارة الحارس',
         onBack: ctx.back,
-        right: RoundBtn(icon: 'edit', onTap: () => _openEdit(context, ctx, g)),
+        right: RoundBtn(icon: 'edit', label: 'تعديل', onTap: () => _openEdit(context, ctx, g)),
       ),
       nav: ctx.adminNav,
       children: [
@@ -235,7 +235,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
         title: 'إدارة المصعد',
         subtitle: '$allowed من ${base.length} مصرّح لهم',
         onBack: ctx.back,
-        right: RoundBtn(icon: 'edit', onTap: () => _editContract(ctx, b)),
+        right: RoundBtn(icon: 'edit', label: 'تعديل', onTap: () => _editContract(ctx, b)),
       ),
       nav: ctx.adminNav,
       children: [

@@ -72,7 +72,7 @@ class DatabaseSeeder extends Seeder
         Building::create([
             'key' => 'residential', 'name' => 'عمارة الياسمين',
             'address' => 'حي النرجس، شارع 12، الرياض', 'type' => 'سكني',
-            'subscription' => 40, 'currency' => 'USD', 'floors' => 6, 'units_count' => 12,
+            'subscription' => 40, 'currency' => 'NIS', 'floors' => 6, 'units_count' => 12,
             'exchange_rate' => 3.75, 'elevator_fee' => 15, 'summary' => $summary,
             'elevator_phone' => '+966 92 000 1234',
             'elevator_company' => 'شركة أوتيس للمصاعد',
@@ -83,7 +83,7 @@ class DatabaseSeeder extends Seeder
         Building::create([
             'key' => 'commercial', 'name' => 'مجمع التجارة الذهبي',
             'address' => 'طريق الملك فهد، الرياض', 'type' => 'تجاري',
-            'subscription' => 120, 'currency' => 'USD', 'floors' => 3, 'units_count' => 10,
+            'subscription' => 120, 'currency' => 'NIS', 'floors' => 3, 'units_count' => 10,
             'exchange_rate' => 3.75, 'elevator_fee' => 15, 'summary' => $summary,
             'elevator_phone' => '+966 92 000 1234',
             'elevator_company' => 'شركة أوتيس للمصاعد',
@@ -277,7 +277,7 @@ class DatabaseSeeder extends Seeder
         foreach ([['residential', 'سكني'], ['commercial', 'تجاري']] as [$key, $type]) {
             Building::create([
                 'key' => $key, 'name' => '', 'address' => '', 'type' => $type,
-                'subscription' => 0, 'currency' => 'USD', 'floors' => 0, 'units_count' => 0,
+                'subscription' => 0, 'currency' => 'NIS', 'floors' => 0, 'units_count' => 0,
                 'exchange_rate' => 3.75, 'elevator_fee' => 0, 'elevator_phone' => '',
                 'summary' => [],
             ]);

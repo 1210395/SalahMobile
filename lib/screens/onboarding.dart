@@ -253,7 +253,7 @@ class BuildingSetupScreen extends StatefulWidget {
 class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
   final f = {'name': '', 'address': '', 'floors': '', 'units': '', 'sub': ''};
   BType type = BType.residential;
-  String currency = 'USD';
+  String currency = kDefaultCurrency;
   int step = 0;
   bool _saving = false;
 
