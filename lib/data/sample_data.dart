@@ -583,13 +583,31 @@ class SummaryData {
   const SummaryData({
     required this.balance,
     required this.due,
+    required this.dueYear,
+    required this.duePrev,
+    required this.carried,
+    required this.yearRevenue,
+    required this.yearExpense,
     required this.revenueM,
     required this.expenseM,
     required this.bars,
     required this.trend,
   });
   final int balance;
+
+  /// Dues owed as of the end of the selected year …
   final int due;
+
+  /// … split into what the selected year itself added (#9) …
+  final int dueYear;
+
+  /// … and what was carried in from earlier years (#10).
+  final int duePrev;
+
+  /// Cash carried into the selected year from earlier years (#10).
+  final int carried;
+  final int yearRevenue;
+  final int yearExpense;
   final int revenueM;
   final int expenseM;
   final List<ChartDatum> bars;
@@ -602,6 +620,11 @@ class SummaryData {
     return SummaryData(
       balance: _int(j['balance']),
       due: _int(j['due']),
+      dueYear: _int(j['dueYear']),
+      duePrev: _int(j['duePrev']),
+      carried: _int(j['carried']),
+      yearRevenue: _int(j['yearRevenue']),
+      yearExpense: _int(j['yearExpense']),
       revenueM: _int(j['revenueM']),
       expenseM: _int(j['expenseM']),
       bars: list('bars'),
@@ -667,7 +690,17 @@ const Building _emptyBuilding = Building(
 const Guard _emptyGuard =
     Guard(name: '', phone: '', address: '', fee: 0, last: '—', next: '—');
 const SummaryData _zeroSummary = SummaryData(
-    balance: 0, due: 0, revenueM: 0, expenseM: 0, bars: [], trend: []);
+    balance: 0,
+    due: 0,
+    dueYear: 0,
+    duePrev: 0,
+    carried: 0,
+    yearRevenue: 0,
+    yearExpense: 0,
+    revenueM: 0,
+    expenseM: 0,
+    bars: [],
+    trend: []);
 
 final DataStore _s = DataStore.I;
 bool get _resLoaded => _s.loaded && _s.loadedBtype == BType.residential;
@@ -700,6 +733,11 @@ class Summary {
   static SummaryData get _d => _s.summary ?? _zeroSummary;
   static int get balance => _d.balance;
   static int get due => _d.due;
+  static int get dueYear => _d.dueYear;
+  static int get duePrev => _d.duePrev;
+  static int get carried => _d.carried;
+  static int get yearRevenue => _d.yearRevenue;
+  static int get yearExpense => _d.yearExpense;
   static int get revenueM => _d.revenueM;
   static int get expenseM => _d.expenseM;
   static List<ChartDatum> get bars => _d.bars;

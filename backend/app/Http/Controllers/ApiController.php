@@ -118,7 +118,6 @@ class ApiController extends Controller
         $payments = Payment::where('building_id', $this->buildingId($r))->get(['amount', 'month', 'year']);
         $expenses = Expense::where('building_id', $this->buildingId($r))->get(['amount', 'cat', 'date']);
         $units = Unit::where('building_id', $this->buildingId($r))->where('status', '!=', 'vacant')->get();
-        $unitSums = $this->paymentSums($this->buildingId($r));
 
         $expYM = fn ($e) => Carbon::parse($e->date)->year === $year
             && ($month === null || (int) Carbon::parse($e->date)->month === $month + 1);
@@ -136,12 +135,34 @@ class ApiController extends Controller
         $opening = $this->openingBalance($this->buildingId($r), $year, $payments, $expenses);
         $balance = $opening + $yearRevenue - $yearExpense;
 
-        // Residents' net dues (live): sum of DERIVED negative balances.
-        $due = (int) $units->sum(function ($u) use ($unitSums) {
-            $bal = $u->derivedBalance((int) ($unitSums[$u->no] ?? 0));
+        // Residents' dues as of the END of the selected year, split into what was
+        // carried in from earlier years and what this year itself added (#9/#10).
+        // Payments settle the oldest debt first, so the carried slice is capped by
+        // what is still owed overall.
+        $sumsThroughYear = $this->paymentSums($this->buildingId($r), $year);
+        $sumsBeforeYear = $this->paymentSums($this->buildingId($r), $year - 1);
+        $endOfYear = Carbon::create($year, 12, 1)->startOfMonth();
+        $endOfPrevYear = Carbon::create($year - 1, 12, 1)->startOfMonth();
 
-            return $bal < 0 ? -$bal : 0;
-        });
+        $due = $dueYear = $duePrev = 0;
+        foreach ($units as $u) {
+            $paidThrough = (int) ($sumsThroughYear[$u->no] ?? 0);
+            $paidBefore = (int) ($sumsBeforeYear[$u->no] ?? 0);
+
+            $bal = (int) $u->opening_balance - $u->chargesThrough($endOfYear) + $paidThrough;
+            $owed = $bal < 0 ? -$bal : 0;
+
+            // Debt standing at the start of the year, then this year's payments —
+            // which settle the OLDEST debt first, so whatever survives is this
+            // year's own charges.
+            $balPrev = (int) $u->opening_balance - $u->chargesThrough($endOfPrevYear) + $paidBefore;
+            $debtPrev = $balPrev < 0 ? -$balPrev : 0;
+            $owedPrev = min($owed, max(0, $debtPrev - ($paidThrough - $paidBefore)));
+
+            $due += $owed;
+            $duePrev += $owedPrev;
+            $dueYear += $owed - $owedPrev;
+        }
 
         $arShort = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
         $trend = [];
@@ -154,6 +175,13 @@ class ApiController extends Controller
         return response()->json([
             'balance' => $balance,
             'due' => $due,
+            // #9/#10 — the dashboard's carry-over breakdown for the selected year.
+            'dueYear' => $dueYear,          // dues this year added
+            'duePrev' => $duePrev,          // ذمم من السنوات السابقة
+            'carried' => $opening,          // رصيد مرحّل من السنوات السابقة (cash)
+            'yearRevenue' => $yearRevenue,
+            'yearExpense' => $yearExpense,
+            'year' => $year,
             'revenueM' => $revenueM,
             'expenseM' => $expenseM,
             'bars' => [
@@ -321,10 +349,13 @@ class ApiController extends Controller
     /// Dues-settling payment totals per unit_no (base currency), in one query.
     /// Only payments with applies_to_dues settle charges — an "أخرى" line is
     /// income but must not clear the resident's dues (#28).
-    private function paymentSums(?int $buildingId): array
+    private function paymentSums(?int $buildingId, ?int $throughYear = null): array
     {
         return Payment::where('building_id', $buildingId)
             ->where('applies_to_dues', true)
+            // Cap the sum at payments recorded FOR $throughYear or earlier — this
+            // is how dues get split into "this year" vs "carried over" (#9/#10).
+            ->when($throughYear !== null, fn ($q) => $q->where('year', '<=', $throughYear))
             ->selectRaw('unit_no, SUM(amount) as s')
             ->groupBy('unit_no')
             ->pluck('s', 'unit_no')

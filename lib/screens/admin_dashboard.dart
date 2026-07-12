@@ -129,13 +129,13 @@ class _DashboardState extends State<Dashboard> {
                     Text('${res ? 'سكني' : 'تجاري'} · ${b.units} وحدة · ${b.currency}',
                         style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.navy300)),
                     const SizedBox(height: 12),
-                    Text('الرصيد الحالي',
+                    Text('رصيد الصندوق',
                         style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.navy300)),
                     const SizedBox(height: 6),
                     NumText(fmtUSD(Summary.balance),
                         style: AppType.num(size: 22, weight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(height: 4),
-                    // رصيد الصندوق = إجمالي الإيرادات ناقص المصروفات.
+                    // #8 — رصيد الصندوق = المرحّل + إيرادات العام − مصروفاته.
                     Text('الإيرادات − المصروفات · للعام $selYear',
                         style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.navy300)),
                   ],
@@ -167,7 +167,10 @@ class _DashboardState extends State<Dashboard> {
                       NumText(fmtUSD(Summary.due.abs()),
                           style: AppType.num(size: 22, weight: FontWeight.w800, color: tone)),
                       const SizedBox(height: 4),
-                      Text(credit ? 'رصيد دائن للسكان' : 'مطلوب من السكان (مدين)',
+                      // #9 — say WHICH year the figure closes on, like رصيد الصندوق does.
+                      Text(credit
+                          ? 'رصيد دائن للسكان · حتى نهاية $selYear'
+                          : 'مطلوب من السكان (مدين) · حتى نهاية $selYear',
                           style: AppType.base(size: 10, weight: FontWeight.w500, color: tone)),
                     ],
                   ),
@@ -177,6 +180,10 @@ class _DashboardState extends State<Dashboard> {
           ],
           ),
         ),
+        const SizedBox(height: 10),
+        // #10 — where the two hero figures come from: what this year added, and
+        // what was carried in from the years before it.
+        _CarryOverCard(year: selYear),
         const SizedBox(height: 14),
         gridRows(tiles, n: 3),
         const SizedBox(height: 16),
@@ -245,6 +252,57 @@ class _DashboardState extends State<Dashboard> {
           ]),
         ),
       ],
+    );
+  }
+}
+
+/// #10 — the carry-over breakdown. Both hero figures are cumulative, so this
+/// card says what the selected year itself added versus what it inherited:
+///   رصيد الصندوق = المرحّل + (إيرادات العام − مصروفات العام)
+///   الذمم        = ذمم السنوات السابقة + ذمم العام
+class _CarryOverCard extends StatelessWidget {
+  const _CarryOverCard({required this.year});
+  final int year;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(String label, int value, {Color? color, bool strong = false}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(label,
+                    style: AppType.base(
+                        size: 11.5,
+                        weight: strong ? FontWeight.w700 : FontWeight.w600,
+                        color: strong ? AppColors.ink900 : AppColors.ink600)),
+              ),
+              NumText(fmtUSD(value),
+                  style: AppType.num(
+                      size: 12.5,
+                      weight: strong ? FontWeight.w800 : FontWeight.w700,
+                      color: color ?? AppColors.ink900)),
+            ],
+          ),
+        );
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('تفصيل العام $year',
+              style: AppType.base(size: 12.5, weight: FontWeight.w800, color: AppColors.ink900)),
+          const SizedBox(height: 6),
+          row('رصيد مرحّل من السنوات السابقة', Summary.carried),
+          row('إيرادات العام $year', Summary.yearRevenue, color: AppColors.ok700),
+          row('مصروفات العام $year', Summary.yearExpense, color: AppColors.late700),
+          const Divider(height: 14, color: AppColors.line),
+          row('ذمم من السنوات السابقة', Summary.duePrev, color: AppColors.late700),
+          row('ذمم العام $year', Summary.dueYear, color: AppColors.late700),
+          row('إجمالي الذمم', Summary.due, color: AppColors.late700, strong: true),
+        ],
+      ),
     );
   }
 }

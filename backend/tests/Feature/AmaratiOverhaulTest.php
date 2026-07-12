@@ -404,6 +404,66 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertSame(1200, (int) $sum['balance']); // 1000 + 500 - 300
     }
 
+    // ───────── #9/#10 — dues split into this year vs carried over ─────────
+
+    // A unit billed from Jan of LAST year owes 12 months of carry-over plus every
+    // month elapsed this year (inclusive accrual, #21/#25).
+    public function test_summary_splits_dues_into_carried_over_and_this_year(): void
+    {
+        $this->seedBuilding();
+        $year = (int) now()->year;
+        $this->makeUnit([
+            'no' => '101', 'sub' => 100, 'balance' => 0,
+            'billing_start' => ($year - 1).'-01-01',
+        ]);
+
+        $sum = $this->actingAs($this->admin(), 'sanctum')
+            ->getJson('/api/summary?year='.$year)->json();
+
+        $thisYear = (int) now()->month * 100;   // Jan…current month, inclusive
+        $this->assertSame(1200, (int) $sum['duePrev']);
+        $this->assertSame($thisYear, (int) $sum['dueYear']);
+        $this->assertSame(1200 + $thisYear, (int) $sum['due']);
+    }
+
+    // Payments settle the OLDEST debt first: clearing last year's 1200 leaves only
+    // this year's own charges standing.
+    public function test_a_payment_this_year_clears_the_carried_over_dues_first(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $year = (int) now()->year;
+        $this->makeUnit([
+            'no' => '101', 'sub' => 100, 'balance' => 0,
+            'billing_start' => ($year - 1).'-01-01',
+        ]);
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => 1200, 'kind' => 'ذمم', 'month' => 0,
+            'year' => $year, 'date' => now()->toDateString(), 'method' => 'نقداً',
+        ])->assertCreated();
+
+        $sum = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year='.$year)->json();
+
+        $thisYear = (int) now()->month * 100;
+        $this->assertSame(0, (int) $sum['duePrev']);
+        $this->assertSame($thisYear, (int) $sum['dueYear']);
+        $this->assertSame($thisYear, (int) $sum['due']);
+    }
+
+    // The cash carried into the year is reported on its own (مرحل من السنوات السابقة).
+    public function test_summary_reports_the_cash_carried_over_from_previous_years(): void
+    {
+        $this->seedBuilding();
+        \App\Models\YearSummary::create([
+            'building_key' => 'residential', 'year' => 2026,
+            'opening_balance' => 800, 'months' => [],
+        ]);
+
+        $sum = $this->actingAs($this->admin(), 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(800, (int) $sum['carried']);
+        $this->assertSame(800, (int) $sum['balance']); // nothing else moved yet
+    }
+
     // ─────────────── Redeem code round-trip ───────────────
 
     public function test_manager_created_resident_can_redeem_their_code(): void

@@ -642,4 +642,30 @@ void main() {
     // Per-payment mode names the covered month on every row (Salah's #note).
     expect(find.textContaining('عن '), findsWidgets);
   });
+
+  // ─────────── Audit redesign — #8/#9/#10 (dashboard carry-over) ───────────
+
+  // #8/#9/#10: both hero figures are cumulative, so the dashboard must say what
+  // the selected year added versus what it inherited from earlier years.
+  testWidgets('dashboard breaks the year down into carried-over and this-year',
+      (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'home', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+
+    final y = DateTime.now().year;
+    // #8 — the cash box names itself and its year.
+    expect(find.text('رصيد الصندوق'), findsOneWidget);
+    expect(find.textContaining('للعام'), findsWidgets);
+    // #9 — the dues box says which year it closes on.
+    expect(find.textContaining('حتى نهاية'), findsOneWidget);
+    // #10 — the carry-over lines.
+    expect(find.textContaining('تفصيل العام'), findsOneWidget);
+    expect(find.text('رصيد مرحّل من السنوات السابقة'), findsOneWidget);
+    expect(find.text('ذمم من السنوات السابقة'), findsOneWidget);
+    expect(find.text('ذمم العام $y'), findsOneWidget);
+    expect(find.text('إجمالي الذمم'), findsOneWidget);
+  });
 }

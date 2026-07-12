@@ -19,25 +19,43 @@ class Unit extends Model
     // charges = monthly fee × months from billing_start through the current
     // month, inclusive (dues accrue at the START of each month, #21/#25).
 
-    /// Whole months from billing_start through the current month, inclusive.
-    /// 0 for a vacant unit, no billing_start, or a future start.
-    public function monthsBilled(): int
+    /// Whole months from billing_start through the month of $upTo, inclusive,
+    /// never past the current month (the future is not billed yet).
+    /// 0 for a vacant unit, no billing_start, or a start after $upTo.
+    public function monthsBilledThrough(Carbon $upTo): int
     {
         if ($this->status === 'vacant' || ! $this->billing_start) {
             return 0;
         }
         $start = Carbon::parse($this->billing_start)->startOfMonth();
+        $end = $upTo->copy()->startOfMonth();
         $now = now()->startOfMonth();
-        if ($start->greaterThan($now)) {
+        if ($end->greaterThan($now)) {
+            $end = $now;
+        }
+        if ($start->greaterThan($end)) {
             return 0;
         }
-        return ($now->year - $start->year) * 12 + ($now->month - $start->month) + 1;
+        return ($end->year - $start->year) * 12 + ($end->month - $start->month) + 1;
+    }
+
+    /// Whole months from billing_start through the current month, inclusive.
+    public function monthsBilled(): int
+    {
+        return $this->monthsBilledThrough(now());
+    }
+
+    /// Charges accrued from billing_start through the month of $upTo.
+    /// Used to split dues into "this year" vs "carried over" (#9/#10).
+    public function chargesThrough(Carbon $upTo): int
+    {
+        return $this->status === 'vacant' ? 0 : (int) $this->sub * $this->monthsBilledThrough($upTo);
     }
 
     /// Total charges accrued to date (monthly fee × months billed).
     public function charges(): int
     {
-        return $this->status === 'vacant' ? 0 : (int) $this->sub * $this->monthsBilled();
+        return $this->chargesThrough(now());
     }
 
     /// The derived balance given the unit's total payments (base currency).
