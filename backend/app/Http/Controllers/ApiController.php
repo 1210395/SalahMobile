@@ -550,7 +550,8 @@ class ApiController extends Controller
     {
         $this->requireAdmin($r);
         $data = $r->validate([
-            'unit_no' => 'required|string|max:20',
+            // Nullable: an "ايراد خاص" line is building income with no renter (#38).
+            'unit_no' => 'nullable|string|max:20',
             'name' => 'nullable|string|max:120',
             'amount' => 'nullable|integer|max:'.self::MONEY_MAX,   // base amount (legacy/optional)
             'original_amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX, // amount as entered
@@ -569,8 +570,17 @@ class ApiController extends Controller
             'applies_to_dues' => 'nullable|boolean',
         ]);
         $bk = $this->bk($r);
-        $unit = Unit::where('building_id', $this->buildingId($r))->where('no', $data['unit_no'])->first();
-        abort_unless($unit !== null, 422, 'الوحدة غير موجودة في هذا المبنى');
+        // "ايراد خاص" (#38): building income with no renter — it must be labelled
+        // and never settles anyone's dues.
+        $special = empty($data['unit_no']);
+        $unit = null;
+        if ($special) {
+            abort_if(empty($data['name']), 422, 'الإيراد الخاص يتطلب وصفاً');
+        } else {
+            $unit = Unit::where('building_id', $this->buildingId($r))
+                ->where('no', $data['unit_no'])->first();
+            abort_unless($unit !== null, 422, 'الوحدة غير موجودة في هذا المبنى');
+        }
 
         // A cheque payment must carry its future due-date + number.
         if ($data['method'] === 'شيك') {
@@ -592,8 +602,8 @@ class ApiController extends Controller
         $payment = Payment::create([
             'building_key' => $bk,
             'building_id' => $this->buildingId($r),
-            'unit_no' => $data['unit_no'],
-            'name' => $data['name'] ?? $unit->resident,
+            'unit_no' => $special ? null : $data['unit_no'],
+            'name' => $data['name'] ?? ($unit?->resident ?? ''),
             'amount' => $baseAmount,  // base currency
             'currency' => $currency,
             'original_amount' => $original,
@@ -607,8 +617,9 @@ class ApiController extends Controller
             'cheque_date' => $data['cheque_date'] ?? null,
             'cheque_number' => $data['cheque_number'] ?? null,
             // Defaults to true (a normal دفعة شهرية / ذمم settles dues); the client
-            // sends false for an "أخرى" line so it stays income only (#28).
-            'applies_to_dues' => $data['applies_to_dues'] ?? true,
+            // sends false for an "أخرى" line so it stays income only (#28). A
+            // unit-less "ايراد خاص" never settles dues.
+            'applies_to_dues' => $special ? false : ($data['applies_to_dues'] ?? true),
         ]);
 
         // Balance is derived (opening − charges + payments) — recompute the cache.

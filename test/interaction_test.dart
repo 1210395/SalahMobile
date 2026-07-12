@@ -314,6 +314,9 @@ void main() {
     await tester.pumpWidget(_wrap(AmaratiApp(
         initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
     await tester.pump(const Duration(milliseconds: 150));
+    // #33: the list opens grouped per renter — switch to the per-payment view.
+    await tester.tap(find.text('كل الدفعات'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
     final row = find.text('أحمد علي');
     if (row.evaluate().isNotEmpty) {
       await tester.longPress(row.first, warnIfMissed: false);
@@ -406,6 +409,9 @@ void main() {
     await tester.pumpWidget(_wrap(AmaratiApp(
         initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
     await tester.pump(const Duration(milliseconds: 150));
+    // #33: the list opens grouped per renter — switch to the per-payment view.
+    await tester.tap(find.text('كل الدفعات'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.text('أحمد علي').first, warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pump(const Duration(milliseconds: 300));
@@ -576,5 +582,64 @@ void main() {
     // The sheet opened on unit 102 (سارة محمد in the bundle) — prefilled.
     expect(find.textContaining('102'), findsWidgets);
     expect(find.text('بند الدفع'), findsOneWidget);
+  });
+
+  // ─────────── Audit redesign — P4c (ايراد خاص + إيرادات views) ───────────
+
+  // #38/#39: a payment can be building income with no renter behind it
+  // ("دفعة برج جوال"). The sheet exposes an ايراد خاص target.
+  testWidgets('payment sheet offers an ايراد خاص target with no unit', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final ctx = tester.widget<PaymentsScreen>(find.byType(PaymentsScreen)).ctx;
+
+    await tester.pumpWidget(_wrap(Scaffold(body: AddPaymentSheet(ctx: ctx))));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('ايراد خاص'), findsOneWidget);
+
+    await tester.tap(find.text('ايراد خاص'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+    // Special income is not a renter's dues: no بند picker, no month picker.
+    expect(find.text('بند الدفع'), findsNothing);
+  });
+
+  // #38/#39: a unit-less payment must never render as the literal string "null".
+  test('Payment.fromJson maps a null unit_no to an empty unit', () {
+    final p = Payment.fromJson({
+      'id': 1,
+      'unit_no': null,
+      'name': 'دفعة برج جوال',
+      'amount': 1200,
+      'kind': 'ايراد خاص',
+      'month': 7,
+      'year': 2026,
+      'date': '2026-07-01',
+      'method': 'نقدي',
+      'applies_to_dues': false,
+    });
+    expect(p.unit, '');
+    expect(p.appliesToDues, isFalse);
+  });
+
+  // #33: الإيرادات can be read per-renter (default) or as individual payments.
+  testWidgets('الإيرادات toggles between per-renter and per-payment views', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+
+    expect(find.text('حسب الساكن'), findsOneWidget);
+    expect(find.text('كل الدفعات'), findsOneWidget);
+    // Renter mode is the default — rows are summarised as "N دفعة".
+    expect(find.textContaining('دفعة'), findsWidgets);
+
+    await tester.tap(find.text('كل الدفعات'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+    // Per-payment mode names the covered month on every row (Salah's #note).
+    expect(find.textContaining('عن '), findsWidgets);
   });
 }

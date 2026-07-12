@@ -1533,4 +1533,32 @@ class AmaratiOverhaulTest extends TestCase
         $res->assertCreated();
         $this->assertSame('C-1', $res->json('cheque_number'));
     }
+
+    public function test_special_income_needs_no_unit_and_never_settles_dues(): void
+    {
+        // #38: "ايراد خاص" (e.g. دفعة برج جوال) is building income with NO renter.
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->makeUnit(['no' => 'SI1', 'sub' => 100, 'balance' => -300]); // owes 300
+
+        // A unit-less line must be labelled.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'amount' => 500, 'kind' => 'ايراد خاص',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-10', 'method' => 'نقداً',
+        ])->assertStatus(422);
+
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'name' => 'دفعة برج جوال', 'amount' => 500, 'kind' => 'ايراد خاص',
+            'month' => 0, 'year' => 2026, 'date' => '2026-01-10', 'method' => 'نقداً',
+        ]);
+        $res->assertCreated();
+        $this->assertNull($res->json('unit_no'));
+        $this->assertFalse((bool) $res->json('applies_to_dues'));
+
+        // Counted as revenue, but nobody's dues change.
+        $sum = $this->actingAs($admin, 'sanctum')->getJson('/api/summary?year=2026')->json();
+        $this->assertSame(500, (int) $sum['revenueM']);
+        $this->assertSame(300, (int) $sum['due']);
+        $this->assertSame(-300, (int) Unit::where('no', 'SI1')->first()->balance);
+    }
 }

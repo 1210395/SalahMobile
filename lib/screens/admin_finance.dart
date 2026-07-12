@@ -23,6 +23,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   String month = 'all';
   late int year = kYears.isNotEmpty ? kYears.last : DateTime.now().year;
 
+  /// #33: group الإيرادات by renter (tap → their payments for the active filter)
+  /// instead of one row per individual payment.
+  bool byRenter = true;
+
   @override
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
@@ -102,29 +106,77 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           ],
         ),
         const SizedBox(height: 12),
+        // #33: view the الإيرادات grouped by renter, or as individual payments.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Segmented(
+            small: true,
+            value: byRenter ? 'renter' : 'payment',
+            onChanged: (v) => setState(() => byRenter = v == 'renter'),
+            options: const [
+              SegOption('renter', 'حسب الساكن'),
+              SegOption('payment', 'كل الدفعات'),
+            ],
+          ),
+        ),
         AppCard(
           pad: 6,
           child: list.isEmpty
               ? const EmptyState(icon: 'wallet', title: 'لا توجد دفعات', sub: 'لا توجد دفعات في هذا الشهر')
-              : Column(
-                  children: List.generate(list.length, (i) {
-                    final p = list[i];
-                    return GestureDetector(
-                      onTap: () => _openDetail(ctx, p),
-                      onLongPress: () => _openEdit(ctx, p),
-                      child: ListRow(
-                        leading: const IconChip(icon: 'wallet', tone: 'ok', size: 42),
-                        title: p.name,
-                        // Show which month the payment COVERS (not just the pay date).
-                        sub: '${ctx.res ? 'شقة' : 'وحدة'} ${p.unit} · عن ${monthLabelNum(p.month)} ${p.year} · ${p.method}',
-                        dividerBelow: i < list.length - 1,
-                        trailing: _amountTrailing('+${fmtUSD(p.amount)}', p.date, AppColors.ok700),
-                      ),
-                    );
-                  }),
-                ),
+              : (byRenter ? _renterRows(ctx, list) : _paymentRows(ctx, list)),
         ),
       ],
+    );
+  }
+
+  /// One row per individual payment.
+  Widget _paymentRows(Ctx ctx, List<Payment> list) => Column(
+        children: List.generate(list.length, (i) {
+          final p = list[i];
+          return GestureDetector(
+            onTap: () => _openDetail(ctx, p),
+            onLongPress: () => _openEdit(ctx, p),
+            child: ListRow(
+              leading: const IconChip(icon: 'wallet', tone: 'ok', size: 42),
+              title: p.name,
+              // Show which month the payment COVERS (not just the pay date).
+              sub: '${p.unit.isEmpty ? 'إيراد خاص' : '${ctx.res ? 'شقة' : 'وحدة'} ${p.unit}'}'
+                  ' · عن ${monthLabelNum(p.month)} ${p.year} · ${p.method}',
+              dividerBelow: i < list.length - 1,
+              trailing: _amountTrailing('+${fmtUSD(p.amount)}', p.date, AppColors.ok700),
+            ),
+          );
+        }),
+      );
+
+  /// #33: one row per RENTER (count + total for the active filter); tapping one
+  /// opens all of that renter's payments within the same filter.
+  Widget _renterRows(Ctx ctx, List<Payment> list) {
+    final groups = <String, List<Payment>>{};
+    for (final p in list) {
+      groups.putIfAbsent(p.unit, () => []).add(p);
+    }
+    final keys = groups.keys.toList()..sort();
+    return Column(
+      children: List.generate(keys.length, (i) {
+        final no = keys[i];
+        final rows = groups[no]!;
+        final sum = rows.fold<int>(0, (s, p) => s + p.amount);
+        final name = rows.first.name;
+        final special = no.isEmpty;
+        return GestureDetector(
+          onTap: () => _openUnitPayments(ctx, no, name, only: rows),
+          child: ListRow(
+            leading: IconChip(icon: special ? 'receipt' : 'user', tone: 'ok', size: 42),
+            title: special ? 'إيرادات خاصة' : name,
+            sub: special
+                ? '${rows.length} إيراد'
+                : '${ctx.res ? 'شقة' : 'وحدة'} $no · ${rows.length} دفعة',
+            dividerBelow: i < keys.length - 1,
+            trailing: _amountTrailing('+${fmtUSD(sum)}', '', AppColors.ok700),
+          ),
+        );
+      }),
     );
   }
 
@@ -158,7 +210,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             },
           ),
           children: [
-            Text('${p.name} · وحدة ${p.unit}',
+            Text(p.unit.isEmpty ? '${p.name} · إيراد خاص' : '${p.name} · وحدة ${p.unit}',
                 style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink600)),
             const SizedBox(height: 12),
             Field(label: 'المبلغ', icon: 'wallet', value: f['amount']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['amount'] = v),
@@ -191,14 +243,17 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   void _openDetail(Ctx ctx, Payment p) {
     final u = _unitFor(ctx, p.unit);
     final unitWord = ctx.res ? 'الشقة' : 'الوحدة';
+    // ايراد خاص (#38/#39) has no renter and no unit — hide the unit-bound rows
+    // and the "all payments of this unit" shortcut.
+    final special = p.unit.isEmpty;
     showAppSheet(
       context,
       SheetShell(
-        title: 'تفاصيل الدفعة',
+        title: special ? 'تفاصيل الإيراد' : 'تفاصيل الدفعة',
         children: [
           DetailGrid(rows: [
-            DetailRow('user', 'الساكن', p.name),
-            DetailRow('building', unitWord, p.unit),
+            DetailRow('user', special ? 'المصدر' : 'الساكن', p.name),
+            if (!special) DetailRow('building', unitWord, p.unit),
             DetailRow('wallet', 'المبلغ', fmtUSD(p.amount)),
             DetailRow('receipt', 'البند', _kindNoGuard(p.kind)),
             DetailRow('calendar', 'الشهر المدفوع عنه', '${monthLabelNum(p.month)} ${p.year}'),
@@ -206,18 +261,20 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             DetailRow('dollar', 'طريقة الدفع', p.method),
           ]),
           const SizedBox(height: 12),
-          AppButton(
-            label: 'كل دفعات ${ctx.res ? 'هذه الشقة' : 'هذه الوحدة'}',
-            full: true,
-            size: BtnSize.lg,
-            variant: BtnVariant.outline,
-            icon: 'list',
-            onTap: () {
-              Navigator.of(context).pop();
-              _openUnitPayments(ctx, p.unit, p.name);
-            },
-          ),
-          const SizedBox(height: 8),
+          if (!special) ...[
+            AppButton(
+              label: 'كل دفعات ${ctx.res ? 'هذه الشقة' : 'هذه الوحدة'}',
+              full: true,
+              size: BtnSize.lg,
+              variant: BtnVariant.outline,
+              icon: 'list',
+              onTap: () {
+                Navigator.of(context).pop();
+                _openUnitPayments(ctx, p.unit, p.name);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
           AppButton(
             label: 'سند قبض',
             full: true,
@@ -262,25 +319,31 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }
 
   /// Every payment recorded for one unit (newest first) + a running total.
-  void _openUnitPayments(Ctx ctx, String unitNo, String name) {
-    final list = kPayments.where((x) => x.unit == unitNo).toList()
+  /// All payments for a unit. Pass [only] to scope the list to the caller's
+  /// active filter (#33 — a renter row shows just that filter's payments).
+  void _openUnitPayments(Ctx ctx, String unitNo, String name, {List<Payment>? only}) {
+    final list = (only ?? kPayments.where((x) => x.unit == unitNo).toList()).toList()
       ..sort((a, b) {
         final byYear = b.year.compareTo(a.year);
         return byYear != 0 ? byYear : b.month.compareTo(a.month);
       });
     final total = list.fold<int>(0, (s, x) => s + x.amount);
+    final special = unitNo.isEmpty;
     showAppSheet(
       context,
       SheetShell(
-        title: 'كل الدفعات — $name',
+        title: special ? 'الإيرادات الخاصة' : 'كل الدفعات — $name',
         children: [
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
                 color: AppColors.surface2, borderRadius: BorderRadius.circular(12)),
-            child: Text('${list.length} دفعة بإجمالي ${fmtUSD(total)} لـ '
-                '${ctx.res ? 'الشقة' : 'الوحدة'} $unitNo.',
+            child: Text(
+                special
+                    ? '${list.length} إيراد بإجمالي ${fmtUSD(total)} خارج ذمم السكان.'
+                    : '${list.length} دفعة بإجمالي ${fmtUSD(total)} لـ '
+                        '${ctx.res ? 'الشقة' : 'الوحدة'} $unitNo.',
                 style: AppType.base(
                     size: 13, weight: FontWeight.w600, color: AppColors.ink600, height: 1.5)),
           ),
@@ -296,33 +359,42 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             for (final x in list)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    border: Border.all(color: AppColors.line, width: 1.5),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: Row(
-                    children: [
-                      const AppIcon('wallet', size: 18, color: AppColors.navy600),
-                      const SizedBox(width: 11),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('${monthLabelNum(x.month)} ${x.year}',
-                                style: AppType.base(size: 13.5, weight: FontWeight.w700)),
-                            Text(_kindNoGuard(x.kind),
-                                style: AppType.base(
-                                    size: 11.5, weight: FontWeight.w600, color: AppColors.ink500)),
-                          ],
+                // Tapping a row drills into the payment (تعديل / حذف / سند قبض) —
+                // so the per-renter view (#33) is not a dead end.
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _openDetail(ctx, x);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      border: Border.all(color: AppColors.line, width: 1.5),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Row(
+                      children: [
+                        const AppIcon('wallet', size: 18, color: AppColors.navy600),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('${monthLabelNum(x.month)} ${x.year}',
+                                  style: AppType.base(size: 13.5, weight: FontWeight.w700)),
+                              Text(_kindNoGuard(x.kind),
+                                  style: AppType.base(
+                                      size: 11.5, weight: FontWeight.w600, color: AppColors.ink500)),
+                            ],
+                          ),
                         ),
-                      ),
-                      NumText(fmtUSD(x.amount),
-                          style: AppType.num(size: 13.5, weight: FontWeight.w800, color: AppColors.ok)),
-                    ],
+                        NumText(fmtUSD(x.amount),
+                            style:
+                                AppType.num(size: 13.5, weight: FontWeight.w800, color: AppColors.ok)),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -382,8 +454,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     return [
       'سند قبض — عمارتي',
       'التاريخ: ${p.date}',
-      'الساكن: ${p.name}',
-      'ال$unitWord: ${p.unit}',
+      p.unit.isEmpty ? 'المصدر: ${p.name}' : 'الساكن: ${p.name}',
+      // ايراد خاص carries no unit — omit the line entirely rather than print an empty one.
+      if (p.unit.isNotEmpty) 'ال$unitWord: ${p.unit}',
       'المبلغ: ${fmtUSD(p.amount)}',
       'البند: ${_kindNoGuard(p.kind)}',
       'الشهر: ${monthLabelNum(p.month)} ${p.year}',
@@ -423,8 +496,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             pw.Divider(color: PdfColor.fromInt(0xFFC2A24E), thickness: 1.2),
             pw.SizedBox(height: 10),
             row('التاريخ', p.date),
-            row('الساكن', p.name),
-            row('ال$unitWord', p.unit),
+            row(p.unit.isEmpty ? 'المصدر' : 'الساكن', p.name),
+            if (p.unit.isNotEmpty) row('ال$unitWord', p.unit),
             row('المبلغ', fmtUSD(p.amount)),
             row('البند', _kindNoGuard(p.kind)),
             row('الشهر', '${monthLabelNum(p.month)} ${p.year}'),
@@ -520,6 +593,9 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     final unitList = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
     final unitWord = ctx.res ? 'شقة' : 'وحدة';
 
+    // #38/#39: "ايراد خاص" is building income with NO renter — label + amount only.
+    final special = target == 'special';
+
     final sel = target == 'one' ? _unitOf(ctx, '$unit') : null;
     final fee = sel?.sub ?? 0; // the all-in monthly charge
     final dues = sel == null ? 0 : duesOf(sel);
@@ -538,11 +614,13 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     final monthsCount = payMonths.isEmpty ? 1 : payMonths.length;
 
     // Suggested amount per بند (seeds the field; the admin may override).
-    final suggested = switch (item) {
-      PayItem.monthly => fee * monthsCount,
-      PayItem.dues => dues,
-      PayItem.other => 0,
-    };
+    final suggested = special
+        ? 0
+        : switch (item) {
+            PayItem.monthly => fee * monthsCount,
+            PayItem.dues => dues,
+            PayItem.other => 0,
+          };
     final total = amountTouched ? (int.tryParse(amountStr.trim()) ?? 0) : suggested;
 
     final sameCur = currency == activeCurrency;
@@ -552,24 +630,31 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
 
     // #36: covering several months requires at least one month's fee for each.
     final perMonth = total ~/ monthsCount;
-    final multiMonthOk =
-        item != PayItem.monthly || monthsCount == 1 || (fee > 0 && perMonth >= fee);
+    final multiMonthOk = special ||
+        item != PayItem.monthly ||
+        monthsCount == 1 ||
+        (fee > 0 && perMonth >= fee);
 
     // #26: a cheque needs a FUTURE date + a number.
     final chequeWhen = DateTime.tryParse(chequeDate);
     final chequeFuture = chequeWhen != null && chequeWhen.isAfter(DateTime.now());
     final chequeOk = method != 'شيك' || (chequeFuture && chequeNumber.trim().isNotEmpty);
 
-    final canSave = ((target == 'one' && '$unit'.isNotEmpty) ||
-            (target == 'group' && selUnits.isNotEmpty) ||
-            target == 'all') &&
+    final targetOk = special ||
+        (target == 'one' && '$unit'.isNotEmpty) ||
+        (target == 'group' && selUnits.isNotEmpty) ||
+        target == 'all';
+
+    final canSave = targetOk &&
         rateOk &&
         chequeOk &&
         multiMonthOk &&
         total > 0 && // #30: never zero
-        (item != PayItem.other || otherLabel.trim().isNotEmpty) &&
-        (item != PayItem.dues || total <= dues) &&
-        (item != PayItem.monthly || payMonths.isNotEmpty);
+        // A special income line (or an "أخرى" بند) must be described.
+        (special ? otherLabel.trim().isNotEmpty : true) &&
+        (special || item != PayItem.other || otherLabel.trim().isNotEmpty) &&
+        (special || item != PayItem.dues || total <= dues) &&
+        (special || item != PayItem.monthly || payMonths.isNotEmpty);
 
     return SheetShell(
       title: 'تسجيل دفعة جديدة',
@@ -592,6 +677,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
               SegOption('one', '$unitWord واحدة'),
               const SegOption('all', 'الجميع'),
               const SegOption('group', 'مجموعة'),
+              const SegOption('special', 'ايراد خاص'), // #39 — income with no renter
             ],
           ),
         ),
@@ -649,21 +735,30 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                 'ستُسجَّل الدفعة لجميع ${ctx.res ? 'الشقق' : 'الوحدات'} الفعّالة (${unitList.length}).'),
           ),
 
+        // #39: ايراد خاص — no renter, no بند; just a description + amount.
+        if (special)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _infoNote(
+                'إيراد للمبنى غير مرتبط بساكن (مثال: دفعة برج جوال). لا يُخصم من ذمم أحد.'),
+          ),
+
         // بند الدفع (#23) — only the relevant fields show for each (#27).
-        SelectField(
-          label: 'بند الدفع',
-          icon: 'receipt',
-          options: [
-            SelectOption(PayItem.monthly, payItemLabel(PayItem.monthly)),
-            if (duesAvailable) SelectOption(PayItem.dues, payItemLabel(PayItem.dues)),
-            SelectOption(PayItem.other, payItemLabel(PayItem.other)),
-          ],
-          value: item,
-          onChanged: (v) => setState(() {
-            item = v as PayItem;
-            amountTouched = false;
-          }),
-        ),
+        if (!special)
+          SelectField(
+            label: 'بند الدفع',
+            icon: 'receipt',
+            options: [
+              SelectOption(PayItem.monthly, payItemLabel(PayItem.monthly)),
+              if (duesAvailable) SelectOption(PayItem.dues, payItemLabel(PayItem.dues)),
+              SelectOption(PayItem.other, payItemLabel(PayItem.other)),
+            ],
+            value: item,
+            onChanged: (v) => setState(() {
+              item = v as PayItem;
+              amountTouched = false;
+            }),
+          ),
         if (sel != null && item == PayItem.monthly && fee > 0)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -674,14 +769,14 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             padding: const EdgeInsets.only(bottom: 12),
             child: _infoNote('الذمم المستحقة: ${fmtMoney(dues, activeCurrency)}.'),
           ),
-        if (item == PayItem.other)
+        if (!special && item == PayItem.other)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _infoNote('الإيراد تحت بند "أخرى" لا يُخصم من ذمم الساكن.'),
           ),
 
         // #27/#31: year + months only for the monthly بند, admin only.
-        if (item == PayItem.monthly && ctx.role == AppRole.admin) ...[
+        if (!special && item == PayItem.monthly && ctx.role == AppRole.admin) ...[
           SelectField(
             label: 'سنة الأشهر المدفوعة',
             icon: 'calendar',
@@ -734,12 +829,12 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             ),
         ],
 
-        if (item == PayItem.other)
+        if (special || item == PayItem.other)
           Field(
-            label: 'وصف الإيراد',
+            label: special ? 'وصف الإيراد الخاص' : 'وصف الإيراد',
             icon: 'receipt',
             value: otherLabel,
-            placeholder: 'مثال: غرامة تأخير',
+            placeholder: special ? 'مثال: دفعة برج جوال' : 'مثال: غرامة تأخير',
             onChanged: (v) => setState(() => otherLabel = v),
           ),
 
@@ -910,13 +1005,41 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
   }
 
   Future<void> _save(Ctx ctx, int total, List<Unit> unitList) async {
-    final targets = target == 'all'
-        ? unitList.map((u) => u.no).toList()
-        : (target == 'group' ? selUnits.toList() : ['$unit']);
-
     final cur = currency as String;
     final sameCur = cur == activeCurrency;
     final rate = sameCur ? 1.0 : (double.tryParse(rateStr) ?? 1);
+
+    // #38/#39: "ايراد خاص" — one row, no renter, never settles dues (the backend
+    // forces applies_to_dues=false when unit_no is absent).
+    if (target == 'special') {
+      final base = sameCur ? total : (total * rate).round();
+      Navigator.of(context).pop();
+      try {
+        await Api.I.createPayment(ctx.btype, {
+          'name': otherLabel.trim(),
+          'amount': base,
+          'original_amount': total,
+          'currency': cur,
+          'exchange_rate': rate,
+          'kind': 'ايراد خاص',
+          'month': DateTime.now().month - 1,
+          'year': DateTime.now().year,
+          'date': dateIso,
+          'method': method as String,
+          if (method == 'شيك') 'cheque_date': chequeDate,
+          if (method == 'شيك') 'cheque_number': chequeNumber.trim(),
+        });
+        await ctx.reload();
+        ctx.toast('تم تسجيل إيراد خاص بقيمة ${fmtMoney(base, activeCurrency)}');
+      } catch (e) {
+        ctx.toast(apiErrorText(e), tone: 'late');
+      }
+      return;
+    }
+
+    final targets = target == 'all'
+        ? unitList.map((u) => u.no).toList()
+        : (target == 'group' ? selUnits.toList() : ['$unit']);
 
     final kind = switch (item) {
       PayItem.monthly => 'دفعة شهرية',

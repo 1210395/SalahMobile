@@ -290,7 +290,9 @@ class Payment {
 
   factory Payment.fromJson(Map<String, dynamic> j) => Payment(
         id: _int(j['id']),
-        unit: '${j['unit_no'] ?? j['unit']}',
+        // ايراد خاص rows carry no unit at all (unit_no is null) — keep it empty,
+        // never the literal string "null".
+        unit: '${j['unit_no'] ?? j['unit'] ?? ''}',
         name: j['name'] ?? '',
         amount: _int(j['amount']),
         kind: j['kind'] ?? '',
