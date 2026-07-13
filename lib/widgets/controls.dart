@@ -554,3 +554,57 @@ class AppFab extends StatelessWidget {
     );
   }
 }
+
+/// Why a form's submit button is disabled — spelled out, never left to guess.
+///
+/// A greyed-out button with no explanation is a dead end: the user sees the app
+/// refusing them and has no idea what to fix. Every gated submit in the app pairs
+/// its `disabled:` with one of these, listing exactly what is still missing.
+class FormBlockedHint extends StatelessWidget {
+  const FormBlockedHint({super.key, required this.reasons, this.title});
+
+  /// The outstanding requirements, in the order the fields appear.
+  final List<String> reasons;
+
+  /// Overrides the default lead-in ("لإكمال الحفظ:").
+  final String? title;
+
+  @override
+  Widget build(BuildContext context) {
+    if (reasons.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.lateBg,
+        border: Border.all(color: AppColors.late.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const AppIcon('alert', size: 15, color: AppColors.late700),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(title ?? (reasons.length == 1 ? 'لإكمال الحفظ:' : 'لإكمال الحفظ، أكمل ما يلي:'),
+                    style: AppType.base(
+                        size: 12, weight: FontWeight.w800, color: AppColors.late700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          for (final r in reasons)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 21),
+              child: Text('• $r',
+                  style: AppType.base(
+                      size: 11.5, weight: FontWeight.w600, color: AppColors.late700, height: 1.5)),
+            ),
+        ],
+      ),
+    );
+  }
+}

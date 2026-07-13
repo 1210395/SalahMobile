@@ -322,9 +322,18 @@ class _LoginScreenState extends State<LoginScreen> {
     ctx.toast('تم مسح الرمز');
   }
 
-  bool get _canSubmit => method == 'code'
-      ? loginCode.trim().isNotEmpty
-      : val.trim().isNotEmpty && pass.isNotEmpty;
+  /// What is still stopping sign-in. This is the app's front door — a greyed
+  /// button here with no reason is the worst possible first impression.
+  List<String> get _missing => method == 'code'
+      ? [
+          if (loginCode.trim().isEmpty) 'أدخل كود الدخول أو امسح رمز QR',
+        ]
+      : [
+          if (val.trim().isEmpty) 'أدخل بريدك الإلكتروني أو رقم جوالك',
+          if (pass.isEmpty) 'أدخل كلمة المرور',
+        ];
+
+  bool get _canSubmit => _missing.isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -392,6 +401,10 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ],
         const SizedBox(height: 22),
+        if (_missing.isNotEmpty) ...[
+          FormBlockedHint(reasons: _missing, title: 'لتسجيل الدخول، أكمل ما يلي:'),
+          const SizedBox(height: 10),
+        ],
         AppButton(
           label: 'دخول',
           size: BtnSize.lg,
@@ -461,16 +474,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
   static bool _phoneValid(String s) =>
       s.replaceAll(RegExp(r'[^0-9]'), '').length >= 7;
 
-  // The base fields must be valid before a confirmation code can be requested.
-  // WhatsApp is optional here (it defaults to the phone on submit), but if the
-  // user typed one it must itself be a valid phone number.
-  bool get _fieldsValid =>
-      f['name']!.trim().isNotEmpty &&
-      _phoneValid(f['phone']!) &&
-      (f['whatsapp']!.trim().isEmpty || _phoneValid(f['whatsapp']!)) &&
-      f['email']!.trim().contains('@') &&
-      f['password']!.length >= 6 &&
-      f['password'] == f['confirm'];
+  // Sending a confirmation code needs ONE thing: somewhere to send it. It used to
+  // be gated on the whole form, so a half-filled registration left the button dead
+  // with nothing on screen saying why.
+  bool get _emailValid {
+    final e = f['email']!.trim();
+    final at = e.indexOf('@');
+    return at > 0 && e.indexOf('.', at) > at + 1 && !e.endsWith('.');
+  }
+
+  // The base fields must all be valid to CREATE the account. WhatsApp is optional
+  // (it defaults to the phone on submit), but if the user typed one it must itself
+  // be a valid phone number.
+  bool get _fieldsValid => _missing.isEmpty;
+
+  /// What is still stopping "إنشاء الحساب" — shown to the user rather than left
+  /// for them to guess at a greyed-out button.
+  List<String> get _missing => [
+        if (f['name']!.trim().isEmpty) 'الاسم الكامل',
+        if (!_phoneValid(f['phone']!)) 'رقم جوال صحيح',
+        if (f['whatsapp']!.trim().isNotEmpty && !_phoneValid(f['whatsapp']!))
+          'رقم واتساب صحيح',
+        if (!_emailValid) 'بريد إلكتروني صحيح',
+        if (f['password']!.length < 6) 'كلمة سر من 6 أحرف على الأقل',
+        if (f['password']!.length >= 6 && f['password'] != f['confirm'])
+          'تطابق كلمة السر مع تأكيدها',
+      ];
 
   // Email verification is OPTIONAL — a manager can create the account with just
   // the base fields. If they DID enter a code, it must be a plausible length so a
@@ -482,12 +511,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _sendCode() async {
     final ctx = widget.ctx;
-    if (!f['email']!.trim().contains('@')) {
+    if (!_emailValid) {
       ctx.toast('أدخل بريداً إلكترونياً صحيحاً أولاً', tone: 'late');
-      return;
-    }
-    if (f['password']!.length < 6 || f['password'] != f['confirm']) {
-      ctx.toast('تحقق من كلمة السر وتأكيدها أولاً', tone: 'late');
       return;
     }
     try {
@@ -648,9 +673,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 size: BtnSize.lg,
                 full: true,
                 icon: 'send',
-                disabled: !_fieldsValid,
+                // Only the email gates this — it is all the code needs.
+                disabled: !_emailValid,
                 onTap: _sendCode,
               ),
+              if (!_emailValid)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: FormBlockedHint(reasons: ['أدخل بريدك الإلكتروني أولاً']),
+                ),
               // Prominent code card (dev/demo): shows the code clearly and stays
               // visible while the user types it in, with a copy button.
               if (_devCode != null) ...[
@@ -708,6 +739,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
         const SizedBox(height: 18),
+        // Never a dead button: if the form can't be submitted yet, say exactly why.
+        if (_missing.isNotEmpty) ...[
+          FormBlockedHint(reasons: _missing, title: 'لإنشاء الحساب، أكمل ما يلي:'),
+          const SizedBox(height: 10),
+        ] else if (f['code']!.trim().isNotEmpty && f['code']!.trim().length < 4) ...[
+          const FormBlockedHint(reasons: ['رمز التأكيد غير مكتمل — أو احذفه لتخطّي التأكيد']),
+          const SizedBox(height: 10),
+        ],
         AppButton(
           label: _saving ? 'جارٍ الإنشاء…' : 'إنشاء الحساب',
           size: BtnSize.lg,

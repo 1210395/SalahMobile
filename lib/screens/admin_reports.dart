@@ -1015,42 +1015,56 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   : target == 'floor'
                       ? units.where((u) => u.floor == selFloor).toList()
                       : units;
-          final canSend = title.trim().isNotEmpty &&
-              body.trim().isNotEmpty &&
-              (target == 'all' || recips.isNotEmpty);
+          // Every reason the notification can't be sent yet — the send button used
+          // to just grey out and leave the manager guessing.
+          final blockers = <String>[
+            if (title.trim().isEmpty) 'عنوان الإشعار',
+            if (body.trim().isEmpty) 'نص الإشعار',
+            if (target != 'all' && recips.isEmpty) 'لا يوجد مستلمون مطابقون — غيّر المستلمين',
+          ];
+          final canSend = blockers.isEmpty;
           return SheetShell(
             title: 'إرسال إشعار',
-            footer: AppButton(
-              label: target == 'all' ? 'إرسال للجميع' : 'إرسال · ${recips.length} مستلم',
-              full: true,
-              size: BtnSize.lg,
-              icon: 'send',
-              disabled: !canSend,
-              onTap: () async {
-                Navigator.of(sheetCtx).pop();
-                try {
-                  if (target == 'all') {
-                    await Api.I.sendNotification(ctx.btype, {
-                      'title': title.trim(),
-                      'body': body.trim(),
-                      'target': 'all',
-                    });
-                  } else {
-                    for (final u in recips) {
-                      await Api.I.sendNotification(ctx.btype, {
-                        'title': title.trim(),
-                        'body': body.trim(),
-                        'target': u.no,
-                      });
+            footer: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (blockers.isNotEmpty) ...[
+                  FormBlockedHint(reasons: blockers, title: 'لإرسال الإشعار، أكمل ما يلي:'),
+                  const SizedBox(height: 10),
+                ],
+                AppButton(
+                  label: target == 'all' ? 'إرسال للجميع' : 'إرسال · ${recips.length} مستلم',
+                  full: true,
+                  size: BtnSize.lg,
+                  icon: 'send',
+                  disabled: !canSend,
+                  onTap: () async {
+                    Navigator.of(sheetCtx).pop();
+                    try {
+                      if (target == 'all') {
+                        await Api.I.sendNotification(ctx.btype, {
+                          'title': title.trim(),
+                          'body': body.trim(),
+                          'target': 'all',
+                        });
+                      } else {
+                        for (final u in recips) {
+                          await Api.I.sendNotification(ctx.btype, {
+                            'title': title.trim(),
+                            'body': body.trim(),
+                            'target': u.no,
+                          });
+                        }
+                      }
+                      await ctx.reload();
+                      final n = target == 'all' ? units.length : recips.length;
+                      ctx.toast('تم إرسال الإشعار ($n مستلم)');
+                    } catch (e) {
+                      ctx.toast(apiErrorText(e), tone: 'late');
                     }
-                  }
-                  await ctx.reload();
-                  final n = target == 'all' ? units.length : recips.length;
-                  ctx.toast('تم إرسال الإشعار ($n مستلم)');
-                } catch (e) {
-                  ctx.toast(apiErrorText(e), tone: 'late');
-                }
-              },
+                  },
+                ),
+              ],
             ),
             children: [
               SelectField(
@@ -1082,18 +1096,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   value: selFloor,
                   onChanged: (v) => setS(() => selFloor = v as int),
                 ),
-              if (target != 'all')
+              // The empty case now lives in the blockers list above the send button.
+              if (target != 'all' && recips.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Text(
-                    recips.isEmpty
-                        ? 'لا يوجد مستلمون مطابقون'
-                        : 'سيصل إلى ${recips.length} ${recips.length == 1 ? 'مستلم' : 'مستلمين'}: '
-                            '${recips.take(4).map((u) => u.no).join('، ')}${recips.length > 4 ? '…' : ''}',
+                    'سيصل إلى ${recips.length} ${recips.length == 1 ? 'مستلم' : 'مستلمين'}: '
+                        '${recips.take(4).map((u) => u.no).join('، ')}${recips.length > 4 ? '…' : ''}',
                     style: AppType.base(
-                        size: 11.5,
-                        weight: FontWeight.w600,
-                        color: recips.isEmpty ? AppColors.late700 : AppColors.ink500),
+                        size: 11.5, weight: FontWeight.w600, color: AppColors.ink500),
                   ),
                 ),
               Text('اختيارات جاهزة',
@@ -1251,6 +1262,11 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   hint: 'متبقٍ ${50 - _note.length} حرفاً',
                   onChanged: (v) => setState(() => _note = v),
                 ),
+                if (_note.trim().isEmpty) ...[
+                  const FormBlockedHint(
+                      reasons: ['اكتب ملاحظتك أولاً'], title: 'لإرسال الملاحظة:'),
+                  const SizedBox(height: 10),
+                ],
                 AppButton(
                   label: 'إرسال',
                   full: true,

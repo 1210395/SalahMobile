@@ -662,33 +662,51 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
     // #26: a cheque needs a FUTURE date + a number.
     final chequeWhen = DateTime.tryParse(chequeDate);
     final chequeFuture = chequeWhen != null && chequeWhen.isAfter(DateTime.now());
-    final chequeOk = method != 'شيك' || (chequeFuture && chequeNumber.trim().isNotEmpty);
 
     final targetOk = special ||
         (target == 'one' && '$unit'.isNotEmpty) ||
         (target == 'group' && selUnits.isNotEmpty) ||
         target == 'all';
 
-    final canSave = targetOk &&
-        rateOk &&
-        chequeOk &&
-        multiMonthOk &&
-        total > 0 && // #30: never zero
-        // A special income line (or an "أخرى" بند) must be described.
-        (special ? otherLabel.trim().isNotEmpty : true) &&
-        (special || item != PayItem.other || otherLabel.trim().isNotEmpty) &&
-        (special || item != PayItem.dues || total <= dues) &&
-        (special || item != PayItem.monthly || payMonths.isNotEmpty);
+    // Every reason this payment can't be saved yet, in the words of the form's own
+    // labels — the save button used to just grey out and leave the admin guessing.
+    final blockers = <String>[
+      if (!targetOk)
+        target == 'group' ? 'اختر $unitWord واحدة على الأقل' : 'اختر ال$unitWord',
+      if (special && otherLabel.trim().isEmpty) 'اكتب وصف الإيراد الخاص',
+      if (!special && item == PayItem.other && otherLabel.trim().isEmpty)
+        'اكتب وصف الدفعة (بند «أخرى»)',
+      if (!special && item == PayItem.monthly && payMonths.isEmpty)
+        'اختر الأشهر المشمولة',
+      if (total <= 0) 'أدخل مبلغاً أكبر من صفر', // #30
+      if (!special && item == PayItem.dues && total > dues)
+        'المبلغ يتجاوز الذمم المستحقة (${fmtUSD(dues)})',
+      if (!multiMonthOk)
+        'المبلغ لا يغطي $monthsCount أشهر — الحد الأدنى ${fmtUSD(fee * monthsCount)}', // #36
+      if (!rateOk) 'أدخل سعر صرف صحيح أكبر من صفر',
+      if (method == 'شيك' && !chequeFuture) 'أدخل تاريخ شيك مستقبلي', // #26
+      if (method == 'شيك' && chequeNumber.trim().isEmpty) 'أدخل رقم الشيك',
+    ];
+    final canSave = blockers.isEmpty;
 
     return SheetShell(
       title: 'تسجيل دفعة جديدة',
-      footer: AppButton(
-        label: 'حفظ الدفعة · ${fmtMoney(baseTotal, activeCurrency)}',
-        full: true,
-        size: BtnSize.lg,
-        icon: 'check',
-        disabled: !canSave,
-        onTap: () => _save(ctx, total, unitList),
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (blockers.isNotEmpty) ...[
+            FormBlockedHint(reasons: blockers, title: 'لحفظ الدفعة، أكمل ما يلي:'),
+            const SizedBox(height: 10),
+          ],
+          AppButton(
+            label: 'حفظ الدفعة · ${fmtMoney(baseTotal, activeCurrency)}',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'check',
+            disabled: !canSave,
+            onTap: () => _save(ctx, total, unitList),
+          ),
+        ],
       ),
       children: [
         Padding(
@@ -842,15 +860,6 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
               ]),
             ),
           ),
-          if (!multiMonthOk)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                  'لتغطية ${payMonths.length} أشهر يجب ألا يقل المبلغ عن '
-                  '${fmtMoney(fee * payMonths.length, activeCurrency)}.',
-                  style: AppType.base(
-                      size: 11.5, weight: FontWeight.w600, color: AppColors.late700, height: 1.5)),
-            ),
         ],
 
         if (special || item == PayItem.other)
@@ -878,12 +887,6 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             amountStr = v;
           }),
         ),
-        if (item == PayItem.dues && total > dues)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text('المبلغ يتجاوز الذمم المستحقة (${fmtMoney(dues, activeCurrency)}).',
-                style: AppType.base(size: 11.5, weight: FontWeight.w600, color: AppColors.late700)),
-          ),
 
         SelectField(
           label: 'عملة الدفع',
@@ -978,16 +981,25 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
       StatefulBuilder(
         builder: (sheetCtx, setS) => SheetShell(
           title: 'الأشهر المشمولة',
-          footer: AppButton(
-            label: 'تم · ${payMonths.length} شهر',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            disabled: payMonths.isEmpty,
-            onTap: () {
-              Navigator.of(sheetCtx).pop();
-              setState(() => amountTouched = false);
-            },
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (payMonths.isEmpty) ...[
+                const FormBlockedHint(reasons: ['اختر شهراً واحداً على الأقل']),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
+                label: 'تم · ${payMonths.length} شهر',
+                full: true,
+                size: BtnSize.lg,
+                icon: 'check',
+                disabled: payMonths.isEmpty,
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  setState(() => amountTouched = false);
+                },
+              ),
+            ],
           ),
           children: [
             for (var i = 0; i < 12; i++)
@@ -1335,14 +1347,26 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           final original = int.tryParse(f['amount']!) ?? 0;
           final baseAmount = sameCur ? original : (original * rate).round();
           final rateOk = sameCur || rate > 0;
+          final blockers = <String>[
+            if (f['supplier']!.trim().isEmpty) 'أدخل اسم المورّد / الجهة',
+            if (original <= 0) 'أدخل مبلغاً أكبر من صفر',
+            if (!rateOk) 'أدخل سعر صرف صحيح أكبر من صفر',
+          ];
           return SheetShell(
             title: 'تسجيل مصروف',
-            footer: AppButton(
+            footer: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (blockers.isNotEmpty) ...[
+                  FormBlockedHint(reasons: blockers, title: 'لحفظ المصروف، أكمل ما يلي:'),
+                  const SizedBox(height: 10),
+                ],
+                AppButton(
               label: 'حفظ المصروف · ${fmtMoney(baseAmount, activeCurrency)}',
               full: true,
               size: BtnSize.lg,
               icon: 'check',
-              disabled: f['supplier']!.trim().isEmpty || original <= 0 || !rateOk,
+              disabled: blockers.isNotEmpty,
               onTap: () async {
                 final meta = _expMeta[f['cat']] ?? const ['receipt', 'gold'];
                 Navigator.of(sheetCtx).pop();
@@ -1365,6 +1389,8 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                   ctx.toast('تعذّر حفظ المصروف، تحقّق من الاتصال', tone: 'late');
                 }
               },
+                ),
+              ],
             ),
             children: [
               SelectField(
@@ -1661,16 +1687,27 @@ class WorkersScreen extends StatelessWidget {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+        final blockers = <String>[
+          if (f['name']!.trim().isEmpty) 'أدخل اسم العامل / الشركة',
+          if (f['phone']!.trim().isEmpty) 'أدخل رقم الجوال',
+          if ((int.tryParse(f['amount']!) ?? 0) <= 0) 'أدخل أجراً أكبر من صفر',
+        ];
+        return SheetShell(
           title: 'إضافة عامل / شركة',
-          footer: AppButton(
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
             label: 'حفظ',
             full: true,
             size: BtnSize.lg,
             icon: 'check',
-            disabled: f['name']!.trim().isEmpty ||
-                f['phone']!.trim().isEmpty ||
-                (int.tryParse(f['amount']!) ?? 0) <= 0,
+            disabled: blockers.isNotEmpty,
             onTap: () async {
               Navigator.of(sheetCtx).pop();
               try {
@@ -1687,6 +1724,8 @@ class WorkersScreen extends StatelessWidget {
                 ctx.toast('تعذّر الحفظ، تحقّق من الاتصال', tone: 'late');
               }
             },
+              ),
+            ],
           ),
           children: [
             Field(
@@ -1726,7 +1765,8 @@ class WorkersScreen extends StatelessWidget {
                 keyboardType: TextInputType.number,
                 onChanged: (v) => setS(() => f['amount'] = v)),
           ],
-        ),
+        );
+        },
       ),
     );
   }
@@ -1877,7 +1917,14 @@ class ParkingScreen extends StatelessWidget {
       StatefulBuilder(
         builder: (sheetCtx, setS) => SheetShell(
           title: 'إضافة موقف',
-          footer: AppButton(
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (f['no']!.trim().isEmpty) ...[
+                const FormBlockedHint(reasons: ['أدخل رقم الموقف']),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
             label: 'حفظ',
             full: true,
             size: BtnSize.lg,
@@ -1899,6 +1946,8 @@ class ParkingScreen extends StatelessWidget {
                 ctx.toast(apiErrorText(e), tone: 'late');
               }
             },
+              ),
+            ],
           ),
           children: [
             Field(label: 'رقم الموقف', icon: 'parking', placeholder: 'P-01', ltr: true, onChanged: (v) => setS(() => f['no'] = v)),

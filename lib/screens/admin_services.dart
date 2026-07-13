@@ -117,10 +117,17 @@ class GuardScreen extends StatelessWidget {
           Expanded(child: _payCard('الاستحقاق القادم', g.next, AppColors.late700)),
         ]),
         const SizedBox(height: 14),
+        // The wage is what gets recorded; without it the button had nothing to
+        // save and only said so after the tap. Say it before, and gate the button.
+        if (g.fee <= 0) ...[
+          const FormBlockedHint(reasons: ['حدّد أجرة الحارس الشهرية أولاً']),
+          const SizedBox(height: 10),
+        ],
         AppButton(
           label: 'تسجيل دفعة جديدة',
           full: true,
           icon: 'wallet',
+          disabled: g.fee <= 0,
           // Records the guard's wage as a real expense (shows up in expenses +
           // reports) — previously this only showed a toast without saving.
           onTap: () async {
@@ -655,31 +662,44 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+          final blockers = <String>[
+            if (f['name']!.trim().isEmpty) 'اسم الصنايعي',
+            if (f['job']!.trim().isEmpty) 'المهنة (سباكة، كهرباء…)',
+            if (f['phone']!.trim().isEmpty) 'رقم الجوال',
+          ];
+          return SheetShell(
           title: 'إضافة صنايعي',
-          footer: AppButton(
-            label: 'حفظ',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            disabled: f['name']!.trim().isEmpty ||
-                f['job']!.trim().isEmpty ||
-                f['phone']!.trim().isEmpty,
-            onTap: () async {
-              Navigator.of(sheetCtx).pop();
-              try {
-                await Api.I.createCraftsman({
-                  'name': f['name']!.trim(),
-                  'job': f['job']!.trim(),
-                  'phone': f['phone']!.trim(),
-                  'note': f['note'],
-                });
-                await ctx.reload();
-                ctx.toast('تمت إضافة ${f['name']!.trim()}');
-              } catch (_) {
-                ctx.toast('تعذّر الحفظ، تحقّق من الاتصال', tone: 'late');
-              }
-            },
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers, title: 'لإضافة الصنايعي، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
+                label: 'حفظ',
+                full: true,
+                size: BtnSize.lg,
+                icon: 'check',
+                disabled: blockers.isNotEmpty,
+                onTap: () async {
+                  Navigator.of(sheetCtx).pop();
+                  try {
+                    await Api.I.createCraftsman({
+                      'name': f['name']!.trim(),
+                      'job': f['job']!.trim(),
+                      'phone': f['phone']!.trim(),
+                      'note': f['note'],
+                    });
+                    await ctx.reload();
+                    ctx.toast('تمت إضافة ${f['name']!.trim()}');
+                  } catch (_) {
+                    ctx.toast('تعذّر الحفظ، تحقّق من الاتصال', tone: 'late');
+                  }
+                },
+              ),
+            ],
           ),
           children: [
             Field(
@@ -706,7 +726,8 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
                 rows: 2,
                 onChanged: (v) => f['note'] = v),
           ],
-        ),
+        );
+        },
       ),
     );
   }

@@ -717,4 +717,92 @@ void main() {
     expect(find.text('بيانات المبنى، الاشتراك الشهري الافتراضي، الرسوم، والعملة'), findsOneWidget);
     expect(find.text('تسجيل دفعات السكان والإيرادات الخاصة'), findsOneWidget);
   });
+
+  // ─────────── Silently-blocked forms (the user's report) ───────────
+  //
+  // A greyed-out button with no explanation is a dead end: the app refuses the
+  // user and they cannot tell what to fix. Every gated submit must name what is
+  // missing. These tests guard the rule, not just the individual screens.
+
+  // The reported bug: "إرسال رمز التأكيد" was greyed out on the register screen.
+  // It used to require the ENTIRE form (name, phone, whatsapp, password, confirm)
+  // even though sending a code to an email needs only… the email.
+  testWidgets('register: the send-code button needs only a valid email', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(initialScreen: 'register', initialRole: AppRole.admin)));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // Nothing typed yet: the button is blocked AND says so.
+    expect(find.byType(FormBlockedHint), findsWidgets);
+    expect(find.text('• أدخل بريدك الإلكتروني أولاً'), findsOneWidget);
+
+    final sendBtn = find.ancestor(
+        of: find.text('إرسال رمز التأكيد'), matching: find.byType(AppButton));
+    expect(tester.widget<AppButton>(sendBtn).disabled, isTrue);
+
+    // An email ALONE unblocks it — no name, no phone, no password required.
+    await tester.enterText(
+        find.descendant(
+            of: find.widgetWithText(Field, 'البريد الإلكتروني'),
+            matching: find.byType(TextField)),
+        'salah@example.com');
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(tester.widget<AppButton>(sendBtn).disabled, isFalse);
+    expect(find.text('• أدخل بريدك الإلكتروني أولاً'), findsNothing);
+  });
+
+  // The register submit stays gated on the whole form — but now it LISTS what is
+  // missing instead of just going grey.
+  testWidgets('register: a blocked submit names every missing field', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(initialScreen: 'register', initialRole: AppRole.admin)));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('لإنشاء الحساب، أكمل ما يلي:'), findsOneWidget);
+    expect(find.text('• الاسم الكامل'), findsOneWidget);
+    expect(find.text('• رقم جوال صحيح'), findsOneWidget);
+    expect(find.text('• بريد إلكتروني صحيح'), findsOneWidget);
+    expect(find.text('• كلمة سر من 6 أحرف على الأقل'), findsOneWidget);
+  });
+
+  // The app's front door must never grey out in silence either.
+  testWidgets('login: a blocked sign-in says what is missing', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(initialScreen: 'login', initialRole: AppRole.admin)));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('لتسجيل الدخول، أكمل ما يلي:'), findsOneWidget);
+    expect(find.text('• أدخل بريدك الإلكتروني أو رقم جوالك'), findsOneWidget);
+    expect(find.text('• أدخل كلمة المرور'), findsOneWidget);
+  });
+
+  // The payment sheet had NINE silent conditions — the worst offender in the app.
+  testWidgets('payment sheet: a blocked save lists its reasons', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final ctx = tester.widget<PaymentsScreen>(find.byType(PaymentsScreen)).ctx;
+
+    await tester.pumpWidget(_wrap(Scaffold(body: AddPaymentSheet(ctx: ctx))));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+
+    // Fresh sheet: no unit picked yet, so it must SAY so rather than just grey out.
+    expect(find.byType(FormBlockedHint), findsOneWidget);
+    expect(find.text('لحفظ الدفعة، أكمل ما يلي:'), findsOneWidget);
+  });
+
+  // The rule itself: FormBlockedHint renders one bullet per reason, and nothing
+  // at all when the form is complete.
+  testWidgets('FormBlockedHint lists every reason and vanishes when satisfied',
+      (tester) async {
+    await tester.pumpWidget(_wrap(const Scaffold(
+        body: FormBlockedHint(reasons: ['أولاً', 'ثانياً'], title: 'لإكمال الحفظ:'))));
+    await tester.pump();
+    expect(find.text('لإكمال الحفظ:'), findsOneWidget);
+    expect(find.text('• أولاً'), findsOneWidget);
+    expect(find.text('• ثانياً'), findsOneWidget);
+
+    await tester.pumpWidget(_wrap(const Scaffold(body: FormBlockedHint(reasons: []))));
+    await tester.pump();
+    expect(find.byType(Text), findsNothing); // no empty red box when there is nothing to say
+  });
 }
