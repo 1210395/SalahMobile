@@ -347,52 +347,70 @@ class _UnitsScreenState extends State<UnitsScreen> {
           final floorBad = ctx.building.floors > 0 &&
               floorNum != null &&
               (floorNum < 0 || floorNum > ctx.building.floors);
+          // Flipping "إنشاء حساب دخول" silently added two more requirements and
+          // the save button just died — spell out everything that is missing.
+          final blockers = <String>[
+            if (f['name']!.trim().isEmpty) 'الاسم الكامل',
+            if (f['no']!.trim().isEmpty) 'رقم ${res ? 'الشقة' : 'الوحدة'}',
+            if (floorBad) 'الطابق يجب أن يكون بين 0 و ${ctx.building.floors}',
+            if (makeAccount && f['phone']!.trim().isEmpty)
+              'رقم الموبايل — هو اسم المستخدم لحساب الدخول',
+            // A resident account now requires a real password (phone+password
+            // is their durable login; the QR code is single-use).
+            if (makeAccount && f['password']!.trim().length < 6)
+              'كلمة مرور من 6 أحرف على الأقل لحساب الدخول',
+          ];
           return SheetShell(
           title: 'إضافة ${res ? 'ساكن' : 'مستأجر'} يدوياً',
-          footer: AppButton(
-            label: 'حفظ',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            disabled: f['name']!.trim().isEmpty ||
-                f['no']!.trim().isEmpty ||
-                floorBad ||
-                (makeAccount && f['phone']!.trim().isEmpty) ||
-                // A resident account now requires a real password (phone+password
-                // is their durable login; the QR code is single-use).
-                (makeAccount && f['password']!.trim().length < 6),
-            onTap: () {
-              Navigator.of(sheetCtx).pop();
-              final prev = int.tryParse(f['prev']!.trim()) ?? 0;
-              _save(
-                () async {
-                  await Api.I.createUnit(ctx.btype, {
-                    'no': f['no']!.trim(),
-                    'floor': int.tryParse(f['floor']!.trim()) ?? 0,
-                    'resident': f['name']!.trim(),
-                    'kind': kind,
-                    'phone': f['phone']!.trim().isEmpty ? '—' : f['phone']!.trim(),
-                    'sub': int.tryParse(f['sub']!.trim()) ?? ctx.building.subscription,
-                    'balance': -prev, // ذمم سابقة → opening debit (ignored if back_debt)
-                    'back_debt': backDebt,
-                    'contract_start': start,
-                    'contract_end': ongoing ? '' : end,
-                    'status': 'ok',
-                  });
-                  if (makeAccount) {
-                    await Api.I.createResident(ctx.btype, {
-                      'name': f['name']!.trim(),
-                      'phone': f['phone']!.trim(),
-                      if (f['password']!.trim().isNotEmpty) 'password': f['password']!.trim(),
-                      'unit_no': f['no']!.trim(),
-                    });
-                  }
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(
+                    reasons: blockers,
+                    title: 'لإضافة ${res ? 'الساكن' : 'المستأجر'}، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
+                label: 'حفظ',
+                full: true,
+                size: BtnSize.lg,
+                icon: 'check',
+                disabled: blockers.isNotEmpty,
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  final prev = int.tryParse(f['prev']!.trim()) ?? 0;
+                  _save(
+                    () async {
+                      await Api.I.createUnit(ctx.btype, {
+                        'no': f['no']!.trim(),
+                        'floor': int.tryParse(f['floor']!.trim()) ?? 0,
+                        'resident': f['name']!.trim(),
+                        'kind': kind,
+                        'phone': f['phone']!.trim().isEmpty ? '—' : f['phone']!.trim(),
+                        'sub': int.tryParse(f['sub']!.trim()) ?? ctx.building.subscription,
+                        'balance': -prev, // ذمم سابقة → opening debit (ignored if back_debt)
+                        'back_debt': backDebt,
+                        'contract_start': start,
+                        'contract_end': ongoing ? '' : end,
+                        'status': 'ok',
+                      });
+                      if (makeAccount) {
+                        await Api.I.createResident(ctx.btype, {
+                          'name': f['name']!.trim(),
+                          'phone': f['phone']!.trim(),
+                          if (f['password']!.trim().isNotEmpty) 'password': f['password']!.trim(),
+                          'unit_no': f['no']!.trim(),
+                        });
+                      }
+                    },
+                    makeAccount
+                        ? 'تمت إضافة ${f['name']!.trim()} وإنشاء حساب دخول'
+                        : 'تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'وحدة'} ${f['no']}',
+                  );
                 },
-                makeAccount
-                    ? 'تمت إضافة ${f['name']!.trim()} وإنشاء حساب دخول'
-                    : 'تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'وحدة'} ${f['no']}',
-              );
-            },
+              ),
+            ],
           ),
           children: [
             Field(
@@ -442,13 +460,6 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ),
               ],
             ),
-            if (floorBad)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Text('الطابق يجب أن يكون بين 0 و ${ctx.building.floors}',
-                    style: AppType.base(
-                        size: 11.5, weight: FontWeight.w500, color: AppColors.late700)),
-              ),
             Field(
                 label: 'الدفعة الشهرية',
                 icon: 'wallet',
@@ -560,35 +571,47 @@ class _UnitsScreenState extends State<UnitsScreen> {
           final floorBad = ctx.building.floors > 0 &&
               floorNum != null &&
               (floorNum < 0 || floorNum > ctx.building.floors);
+          final blockers = <String>[
+            if (floorBad) 'الطابق يجب أن يكون بين 0 و ${ctx.building.floors}',
+          ];
           return SheetShell(
           title: 'تعديل ${res ? 'شقة' : 'وحدة'} ${u.no}',
-          footer: AppButton(
-            label: 'حفظ التعديلات',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            disabled: floorBad,
-            onTap: () {
-              Navigator.of(sheetCtx).pop();
-              _save(
-                () => Api.I.updateUnit(ctx.btype, u.dbId, {
-                  'no': f['no']!.trim().isEmpty ? u.no : f['no']!.trim(),
-                  'floor': int.tryParse(f['floor']!.trim()) ?? u.floor,
-                  'resident': f['name'],
-                  'phone': f['phone'],
-                  'kind': kind,
-                  'sub': int.tryParse(f['sub']!.trim()) ?? u.sub,
-                  'contract_start': start,
-                  'contract_end': ongoing ? '' : end,
-                  // #18/#19: balance is set only via payments/back-debt; only the
-                  // vacant flag is hand-settable here (derived statuses aren't).
-                  if (vacant) 'status': 'vacant',
-                }),
-                vacant
-                    ? 'تم تعيين ${res ? 'الشقة' : 'الوحدة'} كشاغر — مستبعَد من الحسابات والدفعات'
-                    : 'تم حفظ التعديلات',
-              );
-            },
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers, title: 'لحفظ التعديلات، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
+                label: 'حفظ التعديلات',
+                full: true,
+                size: BtnSize.lg,
+                icon: 'check',
+                disabled: blockers.isNotEmpty,
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  _save(
+                    () => Api.I.updateUnit(ctx.btype, u.dbId, {
+                      'no': f['no']!.trim().isEmpty ? u.no : f['no']!.trim(),
+                      'floor': int.tryParse(f['floor']!.trim()) ?? u.floor,
+                      'resident': f['name'],
+                      'phone': f['phone'],
+                      'kind': kind,
+                      'sub': int.tryParse(f['sub']!.trim()) ?? u.sub,
+                      'contract_start': start,
+                      'contract_end': ongoing ? '' : end,
+                      // #18/#19: balance is set only via payments/back-debt; only the
+                      // vacant flag is hand-settable here (derived statuses aren't).
+                      if (vacant) 'status': 'vacant',
+                    }),
+                    vacant
+                        ? 'تم تعيين ${res ? 'الشقة' : 'الوحدة'} كشاغر — مستبعَد من الحسابات والدفعات'
+                        : 'تم حفظ التعديلات',
+                  );
+                },
+              ),
+            ],
           ),
           children: [
             Field(label: 'الاسم', icon: 'user', value: f['name']!, onChanged: (v) => f['name'] = v),
@@ -634,13 +657,6 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ),
               ],
             ),
-            if (floorBad)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Text('الطابق يجب أن يكون بين 0 و ${ctx.building.floors}',
-                    style: AppType.base(
-                        size: 11.5, weight: FontWeight.w500, color: AppColors.late700)),
-              ),
             Field(
                 label: 'الدفعة الشهرية',
                 icon: 'wallet',

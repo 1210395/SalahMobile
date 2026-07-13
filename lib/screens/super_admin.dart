@@ -291,31 +291,44 @@ class _AdminsScreenState extends State<AdminsScreen> {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+          final blockers = <String>[
+            if (f['name']!.trim().isEmpty) 'اسم المسؤول',
+            if (f['email']!.trim().isEmpty) 'البريد الإلكتروني',
+            if (f['password']!.trim().length < 6) 'كلمة مرور من 6 أحرف على الأقل',
+          ];
+          return SheetShell(
           title: 'إنشاء مسؤول مبنى',
-          footer: AppButton(
-            label: 'إنشاء',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            disabled: f['name']!.trim().isEmpty ||
-                f['email']!.trim().isEmpty ||
-                f['password']!.trim().length < 6,
-            onTap: () async {
-              Navigator.of(sheetCtx).pop();
-              try {
-                await Api.I.createAdmin({
-                  'name': f['name']!.trim(),
-                  'email': f['email']!.trim(),
-                  'password': f['password']!.trim(),
-                  'building_key': building,
-                });
-                ctx.toast('تم إنشاء المسؤول');
-                await _load();
-              } catch (e) {
-                ctx.toast(apiErrorText(e), tone: 'late');
-              }
-            },
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers, title: 'لإنشاء المسؤول، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
+                label: 'إنشاء',
+                full: true,
+                size: BtnSize.lg,
+                icon: 'check',
+                disabled: blockers.isNotEmpty,
+                onTap: () async {
+                  Navigator.of(sheetCtx).pop();
+                  try {
+                    await Api.I.createAdmin({
+                      'name': f['name']!.trim(),
+                      'email': f['email']!.trim(),
+                      'password': f['password']!.trim(),
+                      'building_key': building,
+                    });
+                    ctx.toast('تم إنشاء المسؤول');
+                    await _load();
+                  } catch (e) {
+                    ctx.toast(apiErrorText(e), tone: 'late');
+                  }
+                },
+              ),
+            ],
           ),
           children: [
             Field(label: 'الاسم', icon: 'user', placeholder: 'اسم المسؤول', onChanged: (v) => setS(() => f['name'] = v)),
@@ -347,7 +360,8 @@ class _AdminsScreenState extends State<AdminsScreen> {
               ],
             ),
           ],
-        ),
+          );
+        },
       ),
     );
   }

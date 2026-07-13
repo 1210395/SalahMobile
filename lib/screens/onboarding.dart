@@ -261,26 +261,34 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
 
   bool get _res => type == BType.residential;
 
-  // Whether the current step's answer is acceptable to advance.
-  bool get _stepValid {
+  // Why the current step's answer isn't acceptable yet — null when it is. The
+  // wizard used to just grey out "التالي" and leave the manager guessing.
+  String? get _stepBlocker {
     switch (_steps[step]) {
       case 'name':
-        return f['name']!.trim().isNotEmpty;
+        return f['name']!.trim().isEmpty ? 'اكتب اسم المبنى' : null;
       case 'address':
-        return f['address']!.trim().isNotEmpty;
+        return f['address']!.trim().isEmpty ? 'اكتب عنوان المبنى' : null;
       case 'floors':
         final n = _i(f['floors']!);
-        return n != null && n >= 1; // at least one floor
+        return n != null && n >= 1 ? null : 'أدخل عدد الطوابق (1 على الأقل)'; // at least one floor
       case 'units':
         final n = _i(f['units']!);
-        return n != null && n >= 1; // at least one unit
+        return n != null && n >= 1
+            ? null
+            : 'أدخل عدد ${_res ? 'الشقق' : 'الوحدات'} (1 على الأقل)'; // at least one unit
       case 'sub':
         final n = _i(f['sub']!);
-        return n != null && n >= 0; // last step → save (fee may be 0)
+        return n != null && n >= 0
+            ? null
+            : 'أدخل قيمة الاشتراك (يمكن أن تكون صفراً)'; // last step → save (fee may be 0)
       default:
-        return true; // type + currency always have a value
+        return null; // type + currency always have a value
     }
   }
+
+  // Whether the current step's answer is acceptable to advance.
+  bool get _stepValid => _stepBlocker == null;
 
   void _next() {
     if (step < _steps.length - 1) {
@@ -463,6 +471,13 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
           ),
         ),
         const SizedBox(height: 18),
+        if (_stepBlocker != null && !_saving) ...[
+          FormBlockedHint(
+            reasons: [_stepBlocker!],
+            title: isLast ? 'لإكمال الحفظ:' : 'للمتابعة:',
+          ),
+          const SizedBox(height: 10),
+        ],
         AppButton(
           label: _saving
               ? 'جارٍ الحفظ…'
@@ -505,11 +520,19 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
   final f = {'name': '', 'phone': '', 'floor': '', 'no': '', 'email': ''};
   bool _sending = false;
 
-  bool get _valid =>
-      f['name']!.trim().isNotEmpty &&
-      f['phone']!.trim().isNotEmpty &&
-      f['no']!.trim().isNotEmpty &&
-      _floorOk;
+  bool get _valid => _blockers.isEmpty;
+
+  /// What is still stopping "إرسال طلب الانضمام" — spelled out rather than left
+  /// for the resident to guess at a greyed-out button.
+  List<String> get _blockers {
+    final ctx = widget.ctx;
+    return [
+      if (f['name']!.trim().isEmpty) 'الاسم الكامل',
+      if (f['phone']!.trim().isEmpty) 'رقم الموبايل',
+      if (f['no']!.trim().isEmpty) 'رقم ${ctx.res ? 'الشقة' : 'الوحدة'}',
+      if (!_floorOk) 'الطابق يجب ألا يتجاوز ${ctx.building.floors}',
+    ];
+  }
 
   // #20 — the floor is optional, but if one is entered and the building's floor
   // count is known (>= 1), it must not exceed the building's total floors.
@@ -600,7 +623,7 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
                 children: [
                   Expanded(
                     child: Field(
-                        label: 'الطابق',
+                        label: 'الطابق (اختياري)',
                         icon: 'layers',
                         placeholder: '2',
                         ltr: true,
@@ -645,6 +668,10 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
           ),
         ),
         const SizedBox(height: 16),
+        if (_blockers.isNotEmpty) ...[
+          FormBlockedHint(reasons: _blockers, title: 'لإرسال الطلب، أكمل ما يلي:'),
+          const SizedBox(height: 10),
+        ],
         AppButton(
           label: _sending ? 'جارٍ الإرسال…' : 'إرسال طلب الانضمام',
           size: BtnSize.lg,

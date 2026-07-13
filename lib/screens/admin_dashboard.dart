@@ -458,35 +458,55 @@ class BuildingScreen extends StatelessWidget {
           final unitsVal = int.tryParse(f['units']!.trim());
           final unitsBelowExisting = unitsVal != null && unitsVal < existingCount;
           final floorsBelowExisting = floorsVal != null && topFloor > 0 && floorsVal < topFloor;
+          // A cleared count parses to null, which used to leave the button live while
+          // the save silently kept the old value — name it as a blocker instead.
+          final floorsEmpty = f['floors']!.trim().isEmpty;
+          final unitsEmpty = f['units']!.trim().isEmpty;
+          final blockers = <String>[
+            if (floorsEmpty) 'أدخل عدد الطوابق',
+            if (floorsVal != null && floorsVal < 1) 'عدد الطوابق يجب أن يكون 1 على الأقل',
+            if (floorsBelowExisting)
+              'عدد الطوابق لا يمكن أن يقل عن $topFloor — يوجد ${res ? 'شقق' : 'وحدات'} في هذا الطابق',
+            if (unitsEmpty) 'أدخل عدد ${res ? 'الشقق' : 'الوحدات'}',
+            if (unitsVal != null && unitsVal < 1)
+              'عدد ${res ? 'الشقق' : 'الوحدات'} يجب أن يكون 1 على الأقل',
+            if (unitsBelowExisting) 'عدد الوحدات لا يمكن أن يقل عن $existingCount وحدة مسجّلة',
+          ];
           return SheetShell(
           title: 'تعديل بيانات المبنى',
-          footer: AppButton(
-            label: 'حفظ التعديلات',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            disabled: (floorsVal != null && floorsVal < 1) ||
-                (unitsVal != null && unitsVal < 1) ||
-                unitsBelowExisting ||
-                floorsBelowExisting,
-            onTap: () async {
-              Navigator.of(sheetCtx).pop();
-              try {
-                await Api.I.updateBuilding(ctx.btype, {
-                  'name': f['name'],
-                  'address': f['address'],
-                  'floors': int.tryParse(f['floors']!.trim()) ?? b.floors,
-                  'units_count': int.tryParse(f['units']!.trim()) ?? b.units,
-                  'subscription': int.tryParse(f['sub']!.trim()) ?? b.subscription,
-                  'currency': currency,
-                  'elevator_fee': int.tryParse(f['elevator']!.trim()) ?? b.elevatorFee,
-                });
-                await ctx.reload();
-                ctx.toast('تم حفظ بيانات المبنى');
-              } catch (e) {
-                ctx.toast(apiErrorText(e), tone: 'late');
-              }
-            },
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers, title: 'لحفظ بيانات المبنى، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
+                label: 'حفظ التعديلات',
+                full: true,
+                size: BtnSize.lg,
+                icon: 'check',
+                disabled: blockers.isNotEmpty,
+                onTap: () async {
+                  Navigator.of(sheetCtx).pop();
+                  try {
+                    await Api.I.updateBuilding(ctx.btype, {
+                      'name': f['name'],
+                      'address': f['address'],
+                      'floors': int.tryParse(f['floors']!.trim()) ?? b.floors,
+                      'units_count': int.tryParse(f['units']!.trim()) ?? b.units,
+                      'subscription': int.tryParse(f['sub']!.trim()) ?? b.subscription,
+                      'currency': currency,
+                      'elevator_fee': int.tryParse(f['elevator']!.trim()) ?? b.elevatorFee,
+                    });
+                    await ctx.reload();
+                    ctx.toast('تم حفظ بيانات المبنى');
+                  } catch (e) {
+                    ctx.toast(apiErrorText(e), tone: 'late');
+                  }
+                },
+              ),
+            ],
           ),
           children: [
             Field(label: 'اسم المبنى', icon: 'building2', value: f['name']!, onChanged: (v) => f['name'] = v),
@@ -531,22 +551,6 @@ class BuildingScreen extends StatelessWidget {
                 ),
               ],
             ),
-            if (unitsBelowExisting)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, bottom: 2),
-                child: Text(
-                  'عدد الوحدات لا يمكن أن يقل عن $existingCount وحدة مسجّلة',
-                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.late700),
-                ),
-              ),
-            if (floorsBelowExisting)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, bottom: 2),
-                child: Text(
-                  'عدد الطوابق لا يمكن أن يقل عن $topFloor — يوجد ${res ? 'شقق' : 'وحدات'} في هذا الطابق',
-                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.late700),
-                ),
-              ),
             Field(
                 label: 'الاشتراك الشهري',
                 icon: 'wallet',
@@ -593,29 +597,42 @@ class BuildingScreen extends StatelessWidget {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+          final blockers = <String>[
+            if (f['name']!.trim().isEmpty) 'اسم المسؤول',
+            if (f['email']!.trim().isEmpty) 'البريد الإلكتروني',
+            if (f['password']!.trim().length < 6) 'كلمة مرور من 6 أحرف على الأقل',
+          ];
+          return SheetShell(
           title: 'إضافة مسؤول مساعد',
-          footer: AppButton(
-            label: 'إنشاء المسؤول',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            disabled: f['name']!.trim().isEmpty ||
-                f['email']!.trim().isEmpty ||
-                f['password']!.trim().length < 6,
-            onTap: () async {
-              Navigator.of(sheetCtx).pop();
-              try {
-                await Api.I.createCoAdmin(ctx.btype, {
-                  'name': f['name']!.trim(),
-                  'email': f['email']!.trim(),
-                  'password': f['password']!.trim(),
-                });
-                ctx.toast('تم إنشاء حساب المسؤول المساعد');
-              } catch (e) {
-                ctx.toast(apiErrorText(e), tone: 'late');
-              }
-            },
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers, title: 'لإنشاء المسؤول، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
+                label: 'إنشاء المسؤول',
+                full: true,
+                size: BtnSize.lg,
+                icon: 'check',
+                disabled: blockers.isNotEmpty,
+                onTap: () async {
+                  Navigator.of(sheetCtx).pop();
+                  try {
+                    await Api.I.createCoAdmin(ctx.btype, {
+                      'name': f['name']!.trim(),
+                      'email': f['email']!.trim(),
+                      'password': f['password']!.trim(),
+                    });
+                    ctx.toast('تم إنشاء حساب المسؤول المساعد');
+                  } catch (e) {
+                    ctx.toast(apiErrorText(e), tone: 'late');
+                  }
+                },
+              ),
+            ],
           ),
           children: [
             Text('سيتمكّن هذا المسؤول من إدارة نفس المبنى (الدفعات والمصروفات والوحدات…).',
@@ -636,7 +653,8 @@ class BuildingScreen extends StatelessWidget {
                 ltr: true,
                 onChanged: (v) => setS(() => f['password'] = v)),
           ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -698,29 +716,46 @@ class BuildingScreen extends StatelessWidget {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+          // An unparseable value used to fall back to the old amount and still toast
+          // "تم تحديث الرسم" — the admin was told a number was saved that never was.
+          final amountVal = int.tryParse(f['amount']!.trim());
+          final blockers = <String>[
+            if (amountVal == null || amountVal < 0) 'أدخل قيمة الرسم (رقم صحيح)',
+          ];
+          return SheetShell(
           title: 'تعديل: ${pt.label}',
-          footer: AppButton(
-            label: 'حفظ',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            onTap: () async {
-              Navigator.of(sheetCtx).pop();
-              try {
-                await Api.I.updatePayType(pt.dbId, {
-                  'amount': int.tryParse(f['amount']!.trim()) ?? pt.amount,
-                  'enabled': enabled,
-                });
-                await ctx.reload();
-                ctx.toast('تم تحديث الرسم');
-              } catch (e) {
-                ctx.toast(apiErrorText(e), tone: 'late');
-              }
-            },
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers, title: 'لحفظ الرسم، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
+                label: 'حفظ',
+                full: true,
+                size: BtnSize.lg,
+                icon: 'check',
+                disabled: blockers.isNotEmpty,
+                onTap: () async {
+                  Navigator.of(sheetCtx).pop();
+                  try {
+                    await Api.I.updatePayType(pt.dbId, {
+                      'amount': int.tryParse(f['amount']!.trim()) ?? pt.amount,
+                      'enabled': enabled,
+                    });
+                    await ctx.reload();
+                    ctx.toast('تم تحديث الرسم');
+                  } catch (e) {
+                    ctx.toast(apiErrorText(e), tone: 'late');
+                  }
+                },
+              ),
+            ],
           ),
           children: [
-            Field(label: 'القيمة', icon: 'wallet', value: f['amount']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['amount'] = v),
+            Field(label: 'القيمة', icon: 'wallet', value: f['amount']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => setS(() => f['amount'] = v)),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -734,7 +769,8 @@ class BuildingScreen extends StatelessWidget {
               ]),
             ),
           ],
-        ),
+          );
+        },
       ),
     );
   }
