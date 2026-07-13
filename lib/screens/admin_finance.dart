@@ -1119,10 +1119,15 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         : [DateTime.now().month - 1];
     final year = item == PayItem.monthly ? payYear : DateTime.now().year;
 
-    // Split the total across the covered months (remainder onto the first).
+    // Split the total across the covered months (remainder onto the first). The
+    // BASE total is split directly — converting each row separately and rounding
+    // let the rows drift a shekel or two off the confirmed total.
     final n = months.isEmpty ? 1 : months.length;
     final each = total ~/ n;
     final first = each + (total - each * n);
+    final baseTotal = sameCur ? total : (total * rate).round();
+    final baseEach = baseTotal ~/ n;
+    final baseFirst = baseEach + (baseTotal - baseEach * n);
 
     Navigator.of(context).pop();
     try {
@@ -1136,7 +1141,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         }
         for (var i = 0; i < months.length; i++) {
           final amt = i == 0 ? first : each;
-          final base = sameCur ? amt : (amt * rate).round();
+          final base = i == 0 ? baseFirst : baseEach;
           await Api.I.createPayment(ctx.btype, {
             'unit_no': no,
             if (u != null && u.resident.trim().isNotEmpty) 'name': u.resident,

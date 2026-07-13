@@ -29,7 +29,9 @@ class SettingsController extends Controller
 
     public function update(Request $r)
     {
-        abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
+        // Platform branding (app name, logo, colours) is shared by EVERY building, so
+        // only the super-admin may change it — not an individual building manager.
+        abort_unless($r->user()->role === 'superadmin', 403, 'يتطلب صلاحية المسؤول العام');
         $data = $r->validate([
             'app_name' => 'nullable|string|max:60',
             'slogan' => 'nullable|string|max:120',
@@ -51,7 +53,9 @@ class SettingsController extends Controller
 
     public function uploadLogo(Request $r)
     {
-        abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
+        // Platform branding (app name, logo, colours) is shared by EVERY building, so
+        // only the super-admin may change it — not an individual building manager.
+        abort_unless($r->user()->role === 'superadmin', 403, 'يتطلب صلاحية المسؤول العام');
         $r->validate(['logo' => 'required|image|max:4096']);
         $path = $r->file('logo')->store('brand', 'public');
         $url = Storage::disk('public')->url($path);

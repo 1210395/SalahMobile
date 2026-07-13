@@ -15,8 +15,22 @@ class AuthController extends Controller
     {
         return [
             'token' => $user->createToken('amarati')->plainTextToken,
-            'user' => $user->only(['id', 'name', 'email', 'phone', 'role', 'building_key', 'unit_no']),
+            'user' => $user->only(['id', 'name', 'email', 'phone', 'role', 'building_id', 'building_key', 'unit_no']),
         ];
+    }
+
+    /// Whether to return the OTP / email code in the HTTP response (dev + e2e only).
+    /// Honoured locally, in tests, and on a demo deploy that opts in — but NEVER in
+    /// production, so a stray AMARATI_EXPOSE_OTP_DEV_CODE=true can't turn every
+    /// resident's phone into a one-request account takeover.
+    private function exposesDevCode(): bool
+    {
+        if (app()->environment('production')) {
+            return false;
+        }
+
+        return app()->environment(['local', 'testing'])
+            || (bool) config('amarati.expose_otp_dev_code');
     }
 
     /// A short, unique, uppercase login code (QR / shareable). 8 hex chars.
@@ -85,7 +99,8 @@ class AuthController extends Controller
         $user = isset($data['email'])
             ? User::where('email', $data['email'])->first()
             : User::where('phone', $data['phone'])->first();
-        if (! $user || ! $user->password || ! Hash::check($data['password'], $user->password)) {
+        if (! $user || $user->isDisabled() || ! $user->password
+            || ! Hash::check($data['password'], $user->password)) {
             throw ValidationException::withMessages(['email' => ['بيانات الدخول غير صحيحة']]);
         }
 
@@ -110,7 +125,7 @@ class AuthController extends Controller
         // AMARATI_EXPOSE_OTP_DEV_CODE=true — we return it so the email-verify flow
         // is testable without a mail provider.
         $body = ['sent' => true];
-        if (app()->environment('local') || config('amarati.expose_otp_dev_code')) {
+        if ($this->exposesDevCode()) {
             $body['dev_code'] = $code;
         }
 
@@ -172,7 +187,7 @@ class AuthController extends Controller
     {
         $data = $r->validate(['code' => 'required|string|max:64']);
         $user = User::where('login_code', strtoupper(trim($data['code'])))->first();
-        if (! $user) {
+        if (! $user || $user->isDisabled()) {
             throw ValidationException::withMessages(['code' => ['رمز الدخول غير صحيح']]);
         }
 
@@ -200,7 +215,7 @@ class AuthController extends Controller
         // AMARATI_EXPOSE_OTP_DEV_CODE=true — we return it so the phone-login flow
         // is testable without an SMS provider.
         $body = ['sent' => true];
-        if (app()->environment('local') || config('amarati.expose_otp_dev_code')) {
+        if ($this->exposesDevCode()) {
             $body['dev_code'] = $code;
         }
 
@@ -244,8 +259,9 @@ class AuthController extends Controller
 
         // Renters never self-register: an account only exists if a manager issued
         // a QR/invite or approved a join request. An OTP for an unknown phone is
-        // rejected (it must NOT silently create a resident account).
-        if (! $user) {
+        // rejected (it must NOT silently create a resident account). A disabled
+        // (moved-out) account is treated the same — it cannot be signed into.
+        if (! $user || $user->isDisabled()) {
             throw ValidationException::withMessages(
                 ['phone' => ['لا يوجد حساب لهذا الرقم — انضم عبر رمز/رابط من مسؤول العمارة']]
             );
@@ -270,7 +286,7 @@ class AuthController extends Controller
     public function me(Request $r)
     {
         return response()->json([
-            'user' => $r->user()->only(['id', 'name', 'email', 'phone', 'role', 'building_key', 'unit_no']),
+            'user' => $r->user()->only(['id', 'name', 'email', 'phone', 'role', 'building_id', 'building_key', 'unit_no']),
         ]);
     }
 

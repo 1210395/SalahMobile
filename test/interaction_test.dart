@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:amarati/app.dart';
 import 'package:amarati/common.dart';
+import 'package:amarati/api/auth_store.dart' show AuthUser;
 import 'package:amarati/screens/admin_finance.dart' show AddPaymentSheet, PaymentsScreen;
 
 Widget _wrap(Widget child) => MaterialApp(
@@ -917,5 +918,40 @@ void main() {
     expect(monthsCountLabel(3), '3 أشهر');
     expect(monthsCountLabel(10), '10 أشهر');
     expect(monthsCountLabel(11), '11 شهراً');
+  });
+
+  // ─────────── Round-2: turnover routing + resident scoping ───────────
+
+  // A1: a resident with NO unit but a real building must NOT be sent to the
+  // manager subscribe/setup flow (which 403s) — only a genuine pending manager
+  // (no building at all) goes there.
+  test('isPendingManager tells a placed renter from a pending manager', () {
+    final pending = AuthUser(id: 1, name: 'x', role: 'resident', buildingKey: 'residential');
+    expect(pending.isPendingManager, isTrue); // no building, no unit → setup flow
+
+    final placedNoUnit = AuthUser(
+        id: 2, name: 'y', role: 'resident', buildingKey: 'residential', buildingId: 7);
+    expect(placedNoUnit.isPendingManager, isFalse); // belongs to a building → resHome
+
+    final tenant = AuthUser(
+        id: 3, name: 'z', role: 'resident', buildingKey: 'residential', buildingId: 7, unitNo: '101');
+    expect(tenant.isPendingManager, isFalse);
+
+    final admin = AuthUser(id: 4, name: 'a', role: 'admin', buildingKey: 'residential');
+    expect(admin.isPendingManager, isFalse); // never a pending manager
+  });
+
+  // The resident home shows the resident's OWN dues, not building-wide financials.
+  testWidgets('resident home shows own subscription, not building totals', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'resHome', initialRole: AppRole.resident, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('اشتراكي هذا العام'), findsOneWidget);
+    expect(find.text('المطلوب سنوياً'), findsOneWidget);
+    // Building-wide income/expense cards are gone from the resident home.
+    expect(find.text('إيرادات الشهر'), findsNothing);
+    expect(find.text('مصروفات الشهر'), findsNothing);
   });
 }

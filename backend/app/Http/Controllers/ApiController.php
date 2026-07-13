@@ -104,6 +104,11 @@ class ApiController extends Controller
 
     public function summary(Request $r)
     {
+        // Building-wide cash/revenue/expenses are for the manager only — a resident
+        // must not read the building's finances (matches how /expenses, /workers,
+        // /parking already return nothing to non-admins).
+        $this->requireAdmin($r);
+
         // Computed LIVE from the building's real payments/expenses/units so the
         // dashboard always reflects current data (the old stored JSON went stale
         // and never updated when payments/expenses were recorded).
@@ -238,12 +243,15 @@ class ApiController extends Controller
             'unit_no' => 'nullable|string|max:20',
         ]);
 
-        // A unit has at most one resident account. Unlink anyone currently on it
-        // (e.g. the previous tenant) so they can't keep seeing the new tenant's
-        // payments via /me/payments.
+        // A unit has at most one resident account. The previous tenant is being
+        // replaced — disable their login (revokes tokens, kills their password +
+        // QR) and unlink them, so a moved-out tenant can't keep a working account.
         if (! empty($data['unit_no'])) {
             User::where('building_id', $this->buildingId($r))->where('unit_no', $data['unit_no'])
-                ->update(['unit_no' => null]);
+                ->where('role', 'resident')->get()->each(function ($old) {
+                    $old->disableLogin();
+                    $old->update(['unit_no' => null]);
+                });
         }
 
         $user = User::create([
@@ -301,10 +309,12 @@ class ApiController extends Controller
         }
 
         // A new password invalidates the old QR: reissue it so the admin can share
-        // a working one over WhatsApp straight away.
+        // a working one over WhatsApp straight away. Setting a password also
+        // RE-ENABLES a disabled account (e.g. a tenant whose unit was un-vacated).
         $user->update([
             'password' => Hash::make($data['password']),
             'login_code' => $this->loginCode(),
+            'disabled_at' => null,
         ]);
 
         return response()->json(
@@ -451,6 +461,9 @@ class ApiController extends Controller
             $data['exchange_rate'] = $rate;
             $data['original_amount'] = $original;
             $data['amount'] = (int) round($original * $rate);
+            // storeExpense guards this; the edit path must too, or a huge
+            // original × rate raises a raw out-of-range 500 instead of a clean 422.
+            $this->guardIntRange($data['amount']);
         }
 
         $expense->update(array_filter($data, fn ($v) => $v !== null));
@@ -992,10 +1005,18 @@ class ApiController extends Controller
     /// stale (the stored `months` JSON did, and only held a partial set).
     public function yearSummary(Request $r)
     {
+        // Admin-only: the year grid exposes the building's month-by-month dues and
+        // opening balance — not a resident's business.
+        $this->requireAdmin($r);
+
         $bk = $this->bk($r);
         $year = (int) ($r->query('year') ?: now()->year);
 
-        $payments = Payment::where('building_id', $this->buildingId($r))->get(['amount', 'month', 'year']);
+        // The month-by-month dues-collection grid: only DUES-settling payments count
+        // toward "paid" (an "أخرى"/"ايراد خاص" income line must not make a month read
+        // as collected — #28). `total` is the expected monthly dues.
+        $payments = Payment::where('building_id', $this->buildingId($r))
+            ->where('applies_to_dues', true)->get(['amount', 'month', 'year']);
         $expenses = Expense::where('building_id', $this->buildingId($r))->get(['amount', 'date']);
         // Expected monthly collection = sum of active (non-vacant) unit dues.
         $monthlyExpected = (int) Unit::where('building_id', $this->buildingId($r))

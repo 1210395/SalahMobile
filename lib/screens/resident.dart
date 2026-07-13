@@ -37,6 +37,14 @@ class ResidentHome extends StatelessWidget {
     final me = _meUnit(ctx);
     final res = ctx.res;
     final paid = me.status != 'late';
+    // Resident's OWN dues progress this year. Building-wide financials were
+    // removed from this home (residents must see only their own dues; the
+    // backend /summary is admin-gated and returns zeros to residents). Count
+    // only dues-settling payments so this agrees with the balance shown above.
+    final requiredYear = me.sub * 12;
+    final paidYear = kPayments
+        .where((p) => p.unit == me.no && p.year == DateTime.now().year && p.appliesToDues)
+        .fold<int>(0, (s, p) => s + p.amount);
 
     final header = AppHeader(
       accent: true,
@@ -147,11 +155,11 @@ class ResidentHome extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        const SectionTitle(text: 'ملخص عام للمبنى'),
+        const SectionTitle(text: 'اشتراكي هذا العام'),
         Row(children: [
-          Expanded(child: StatCard(label: 'إيرادات الشهر', value: fmtUSD(Summary.revenueM), icon: 'trend', tone: 'ok')),
+          Expanded(child: StatCard(label: 'المسدّد هذا العام', value: fmtUSD(paidYear), icon: 'checkCircle', tone: 'ok')),
           const SizedBox(width: 10),
-          Expanded(child: StatCard(label: 'مصروفات الشهر', value: fmtUSD(Summary.expenseM), icon: 'expense', tone: 'late')),
+          Expanded(child: StatCard(label: 'المطلوب سنوياً', value: fmtUSD(requiredYear), icon: 'wallet', tone: 'navy')),
         ]),
         const SizedBox(height: 16),
         const SectionTitle(text: 'روابط سريعة'),
@@ -210,13 +218,15 @@ class _ResidentReportState extends State<ResidentReport> {
         .toList();
     final s = kStatusMap[me.status]!;
 
-    // "المسدّد" = the resident's ACTUAL payments for the year — NOT sub×12+balance
-    // (that conflated the annual requirement with the carry-over ledger and, for
-    // a credited resident, showed more than they really paid — e.g. paid 600 but
-    // shown 909). The month filter only narrows the history list below; the
-    // ratio/donut always reflect the whole selected year.
+    // "المسدّد" = the resident's ACTUAL dues-settling payments for the year — NOT
+    // sub×12+balance (that conflated the annual requirement with the carry-over
+    // ledger and, for a credited resident, showed more than they really paid —
+    // e.g. paid 600 but shown 909). appliesToDues keeps "أخرى"/non-dues income
+    // out so the ratio agrees with the dues-based "الرصيد" in the same card. The
+    // month filter only narrows the history list below; the ratio/donut always
+    // reflect the whole selected year.
     final paidYear = kPayments
-        .where((p) => p.unit == me.no && p.year == selYear)
+        .where((p) => p.unit == me.no && p.year == selYear && p.appliesToDues)
         .fold<int>(0, (sum, p) => sum + p.amount);
     final required = me.sub * 12;
     final paidAmt = paidYear.clamp(0, required).toInt(); // clamped for the donut

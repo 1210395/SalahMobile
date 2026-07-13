@@ -348,9 +348,16 @@ class AmaratiOverhaulTest extends TestCase
     public function test_settings_reject_a_non_hex_colour(): void
     {
         $this->seedBuilding();
+        // Platform branding is super-admin only now — a building manager can't
+        // rebrand the whole product for every other building.
         $admin = $this->admin();
-        $this->actingAs($admin, 'sanctum')->putJson('/api/settings', ['primary' => 'not-a-hex'])->assertStatus(422);
-        $this->actingAs($admin, 'sanctum')->putJson('/api/settings', ['primary' => '#123456'])->assertOk();
+        $this->actingAs($admin, 'sanctum')->putJson('/api/settings', ['primary' => '#123456'])->assertStatus(403);
+
+        $super = User::create([
+            'name' => 'عام', 'email' => 'super@test.app', 'password' => Hash::make('password'), 'role' => 'superadmin',
+        ]);
+        $this->actingAs($super, 'sanctum')->putJson('/api/settings', ['primary' => 'not-a-hex'])->assertStatus(422);
+        $this->actingAs($super, 'sanctum')->putJson('/api/settings', ['primary' => '#123456'])->assertOk();
     }
 
     public function test_year_balance_carries_forward_to_the_next_year(): void
@@ -465,6 +472,159 @@ class AmaratiOverhaulTest extends TestCase
     }
 
     // ─────────────── Redeem code round-trip ───────────────
+
+    // Vacating then un-vacating a unit must NOT corrupt its ledger. Nulling
+    // billing_start on vacate used to make the round-trip resurface old payments as
+    // a phantom credit (or silently erase accrued debt).
+    public function test_vacate_then_unvacate_preserves_the_ledger(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $year = (int) now()->year;
+        // Billed from Jan this year; the accrued charge is settled to exactly 0.
+        $unit = $this->makeUnit(['no' => '101', 'sub' => 100, 'balance' => 0,
+            'billing_start' => $year.'-01-01']);
+        $months = (int) now()->month; // Jan..now inclusive
+        $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
+            'unit_no' => '101', 'amount' => $months * 100, 'kind' => 'ذمم', 'month' => 0,
+            'year' => $year, 'date' => now()->toDateString(), 'method' => 'نقداً',
+        ])->assertCreated();
+        $this->assertSame(0, (int) $unit->fresh()->balance); // settled
+
+        // Vacate, then bring it back.
+        $this->actingAs($admin, 'sanctum')->putJson("/api/units/{$unit->id}", [
+            'no' => '101', 'floor' => 1, 'kind' => 'شاغر', 'status' => 'vacant', 'sub' => 100,
+        ])->assertOk();
+        $this->actingAs($admin, 'sanctum')->putJson("/api/units/{$unit->id}", [
+            'no' => '101', 'floor' => 1, 'kind' => 'مالك', 'sub' => 100,
+        ])->assertOk();
+
+        // Still settled — not a phantom +N00 credit, not erased debt.
+        $this->assertSame(0, (int) $unit->fresh()->balance);
+        $this->assertSame('ok', $unit->fresh()->status);
+    }
+
+    // Renaming a unit must cascade to EVERYTHING keyed by its number, or those
+    // records dangle (and a private notice to old "101" resurfaces for a new "101").
+    public function test_renaming_a_unit_cascades_parking_and_alerts(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $unit = $this->makeUnit(['no' => '101']);
+        \App\Models\ParkingSpot::create(['building_key' => 'residential', 'no' => 'P1',
+            'status' => 'مشغول', 'unit_no' => '101']);
+        \App\Models\Alert::create(['building_key' => 'residential', 'type' => 'notice',
+            'icon' => 'bell', 'tone' => 'navy', 'title' => 'خاص', 'body' => 'رسالة',
+            'time_label' => 'الآن', 'channel' => 'internal', 'target' => '101']);
+
+        $this->actingAs($admin, 'sanctum')->putJson("/api/units/{$unit->id}", [
+            'no' => '202', 'floor' => 1, 'sub' => (int) $unit->sub,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('parking_spots', ['no' => 'P1', 'unit_no' => '202']);
+        $this->assertDatabaseHas('alerts', ['title' => 'خاص', 'target' => '202']);
+        $this->assertDatabaseMissing('parking_spots', ['unit_no' => '101']);
+        $this->assertDatabaseMissing('alerts', ['target' => '101']);
+    }
+
+    // Residents must not read building-wide finances.
+    public function test_a_resident_cannot_read_the_building_summary(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->addRenter($admin, '101', '+970599666000');
+        $token = $this->postJson('/api/auth/login',
+            ['phone' => '+970599666000', 'password' => 'secret6'])->json('token');
+
+        // addRenter() used actingAs(); forget the sticky test guard so the bearer
+        // token below actually resolves as the resident, not the admin.
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/summary')->assertStatus(403);
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/year-summary?year=2026')->assertStatus(403);
+    }
+
+    // ───────── Tenant turnover: the old login must stop working ─────────
+
+    private function addRenter(User $admin, string $no, string $phone, string $pw = 'secret6'): array
+    {
+        return $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
+            'no' => $no, 'floor' => 1, 'resident' => 'ساكن', 'phone' => $phone,
+            'sub' => 100, 'status' => 'ok', 'password' => $pw,
+        ])->json();
+    }
+
+    // Marking a unit vacant = the tenant moved out. Their login must die.
+    public function test_vacating_a_unit_disables_the_tenant_login(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $unit = $this->addRenter($admin, '101', '+970599111000');
+        $this->postJson('/api/auth/login', ['phone' => '+970599111000', 'password' => 'secret6'])->assertOk();
+
+        $this->actingAs($admin, 'sanctum')->putJson("/api/units/{$unit['id']}", [
+            'no' => '101', 'floor' => 1, 'kind' => 'شاغر', 'status' => 'vacant', 'sub' => 100,
+        ])->assertOk();
+
+        // Neither the password nor an OTP can sign the moved-out tenant back in.
+        $this->postJson('/api/auth/login', ['phone' => '+970599111000', 'password' => 'secret6'])
+            ->assertStatus(422);
+        $req = $this->postJson('/api/auth/request-otp', ['phone' => '+970599111000'])->json();
+        $this->postJson('/api/auth/verify-otp',
+            ['phone' => '+970599111000', 'code' => $req['dev_code'] ?? '000000'])->assertStatus(422);
+
+        // Un-vacating + a new password re-enables the same account.
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/units/{$unit['id']}/password", ['password' => 'again6'])->assertOk();
+        $this->postJson('/api/auth/login', ['phone' => '+970599111000', 'password' => 'again6'])->assertOk();
+    }
+
+    // Replacing a tenant disables the previous one's login (a stale credential
+    // into the building is exactly what we're closing).
+    public function test_reassigning_a_unit_disables_the_previous_tenant(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $this->addRenter($admin, '101', '+970599222000'); // tenant A
+        $this->postJson('/api/auth/login', ['phone' => '+970599222000', 'password' => 'secret6'])->assertOk();
+
+        // Tenant B onto the same unit via /residents.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
+            'name' => 'تينانت B', 'phone' => '+970599333000', 'unit_no' => '101', 'password' => 'secret6',
+        ])->assertCreated();
+
+        // A is out; B is in.
+        $this->postJson('/api/auth/login', ['phone' => '+970599222000', 'password' => 'secret6'])
+            ->assertStatus(422);
+        $this->postJson('/api/auth/login', ['phone' => '+970599333000', 'password' => 'secret6'])->assertOk();
+    }
+
+    // A disabled tenant's live session is revoked immediately, not just future logins.
+    // (Uses real bearer tokens throughout — actingAs() would set a sticky test user
+    // that masks the very token check we're asserting.)
+    public function test_disabling_revokes_the_tenants_active_token(): void
+    {
+        $this->seedBuilding();
+        $admin = $this->admin();
+        $unit = $this->addRenter($admin, '101', '+970599444000');
+        $adminToken = $this->postJson('/api/auth/login',
+            ['email' => 'admin@test.app', 'password' => 'password'])->json('token');
+        $token = $this->postJson('/api/auth/login',
+            ['phone' => '+970599444000', 'password' => 'secret6'])->json('token');
+
+        // addRenter() used actingAs(), whose sticky test user would mask the bearer
+        // token below — forget the guards so /me really resolves via the token.
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/me')->assertOk();
+
+        $this->app['auth']->forgetGuards();
+        $this->withToken($adminToken)->putJson("/api/units/{$unit['id']}", [
+            'no' => '101', 'floor' => 1, 'kind' => 'شاغر', 'status' => 'vacant', 'sub' => 100,
+        ])->assertOk();
+
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/me')->assertStatus(401); // session cut off
+    }
 
     // ───────── Renter login: created WITH the unit, atomically ─────────
 

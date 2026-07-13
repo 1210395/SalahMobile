@@ -153,8 +153,12 @@ class UnitController extends Controller
             // plus a QR code the admin can share over WhatsApp. Same transaction, so
             // the unit and the account either both exist or neither does.
             if ($wantsLogin && ! $vacant) {
+                // Replacing whoever was on this unit — disable their login too.
                 User::where('building_id', $this->buildingId($r))->where('unit_no', $unit->no)
-                    ->update(['unit_no' => null]); // a unit has at most one renter
+                    ->where('role', 'resident')->get()->each(function ($old) {
+                        $old->disableLogin();
+                        $old->update(['unit_no' => null]);
+                    });
 
                 User::create([
                     'name' => $data['resident'] ?? '',
@@ -180,7 +184,12 @@ class UnitController extends Controller
         abort_unless($unit->building_id === $this->buildingId($r), 403);
         $data = $r->validate($this->rules());
 
+        $wasVacant = $unit->status === 'vacant';
         $vacant = ($data['kind'] ?? $unit->kind) === 'شاغر' || ($data['status'] ?? null) === 'vacant';
+        // A unit that has just been marked vacant means the tenant moved out — cut
+        // off their login below so a moved-out tenant can't keep signing in.
+        $newlyVacant = $vacant && ! $wasVacant;
+        $reactivated = ! $vacant && $wasVacant;
 
         // Renaming a unit's number must cascade: payments and the resident's login
         // both reference the unit by its `no` string. Without this, a rename
@@ -214,7 +223,7 @@ class UnitController extends Controller
             );
         }
 
-        DB::transaction(function () use ($unit, $vacant, $data, $renamed, $oldNo, $newNo, $rephoned, $newPhone) {
+        DB::transaction(function () use ($unit, $vacant, $newlyVacant, $reactivated, $data, $renamed, $oldNo, $newNo, $rephoned, $newPhone) {
             $unit->update([
                 'no' => $data['no'],
                 'floor' => $data['floor'],
@@ -230,17 +239,32 @@ class UnitController extends Controller
                     ? null
                     : (array_key_exists('contract_end', $data) ? $data['contract_end'] : $unit->contract_end),
                 'notes' => $data['notes'] ?? $unit->notes,
-                // A vacant unit stops accruing charges (excluded from dues).
-                'billing_start' => $vacant ? null : $unit->billing_start,
+                // Vacancy is a REVERSIBLE exclusion ("شاغر — مستبعد من الحسابات"):
+                // a vacant unit is already dropped from dues by its status, so we
+                // PRESERVE billing_start. Nulling it here meant un-vacating never
+                // restored accrual — the unit came back billing 0, resurfacing old
+                // payments as a phantom credit or silently erasing real debt. Only
+                // when REACTIVATING a unit that never had a start (created vacant)
+                // do we seed one, so a plain field edit never begins billing a
+                // never-billed unit by surprise.
+                'billing_start' => $reactivated
+                    ? ($unit->billing_start ?? now()->startOfMonth()->toDateString())
+                    : $unit->billing_start,
             ]);
 
-            // Cascade the rename so payment history and the resident's account
-            // stay linked to the unit.
+            // Cascade the rename EVERYWHERE the unit is referenced by its number —
+            // payments, the resident's account, the parking assignment, and any
+            // alert targeted at the unit. Missing one orphans that record (a private
+            // notice to old "101" would resurface for a future new "101").
             if ($renamed) {
                 Payment::where('building_id', $unit->building_id)
                     ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
                 User::where('building_id', $unit->building_id)
                     ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
+                \App\Models\ParkingSpot::where('building_id', $unit->building_id)
+                    ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
+                \App\Models\Alert::where('building_id', $unit->building_id)
+                    ->where('target', $oldNo)->update(['target' => $newNo]);
             }
 
             // …and cascade the phone, which is the renter's username.
@@ -249,6 +273,14 @@ class UnitController extends Controller
                     ->where('unit_no', $renamed ? $newNo : $oldNo)
                     ->where('role', 'resident')
                     ->update(['phone' => $newPhone]);
+            }
+
+            // Tenant moved out → disable their login (keep the unit_no link so
+            // un-vacating + a new password re-enables the same account).
+            if ($newlyVacant) {
+                User::where('building_id', $unit->building_id)
+                    ->where('unit_no', $unit->no)->where('role', 'resident')
+                    ->get()->each->disableLogin();
             }
 
             // Recompute the DERIVED balance + status cache — sub/vacant may have
@@ -271,7 +303,7 @@ class UnitController extends Controller
 
     public function destroy(Request $r, Unit $unit)
     {
-        abort_unless($r->user()->role === 'admin', 403, 'يتطلب صلاحية المسؤول');
+        abort_unless(in_array(optional($r->user())->role, ['admin', 'superadmin']), 403, 'يتطلب صلاحية المسؤول');
         abort_unless($unit->building_id === $this->buildingId($r), 403);
 
         // Deleting a unit would orphan its payment history and leave a resident
