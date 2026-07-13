@@ -51,6 +51,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Admin creates a renter account / a co-admin for their own building.
     Route::post('/residents', [ApiController::class, 'storeResident']);
+    // Set (or create) the login for the renter on a unit — a renter added before
+    // logins were mandatory had no way to ever get one, and a forgotten password
+    // could not be reset from anywhere.
+    Route::post('/units/{unit}/password', [ApiController::class, 'setUnitPassword']);
     Route::post('/co-admins', [ApiController::class, 'createCoAdmin']);
 
     Route::get('/payments', [ApiController::class, 'payments']);

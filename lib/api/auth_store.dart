@@ -11,6 +11,7 @@ class AuthUser {
     required this.name,
     required this.role,
     required this.buildingKey,
+    this.buildingId,
     this.email,
     this.phone,
     this.unitNo,
@@ -19,15 +20,26 @@ class AuthUser {
   final String name;
   final String role; // admin | resident | guest
   final String buildingKey; // residential | commercial
+  // null = belongs to NO building yet (a freshly-registered pending manager).
+  // A renter placed by an admin always has one — used to tell the two apart.
+  final int? buildingId;
   final String? email;
   final String? phone;
   final String? unitNo;
+
+  /// A pending manager: registered, will create their own building at setup.
+  /// Distinct from a placed renter who simply has no unit yet.
+  bool get isPendingManager =>
+      role == 'resident' && buildingId == null && (unitNo == null || unitNo!.trim().isEmpty);
 
   factory AuthUser.fromJson(Map<String, dynamic> j) => AuthUser(
         id: j['id'] is int ? j['id'] : int.tryParse('${j['id']}') ?? 0,
         name: j['name'] ?? '',
         role: j['role'] ?? 'resident',
         buildingKey: j['building_key'] ?? 'residential',
+        buildingId: j['building_id'] is int
+            ? j['building_id']
+            : int.tryParse('${j['building_id'] ?? ''}'),
         email: j['email'],
         phone: j['phone'],
         unitNo: j['unit_no'],

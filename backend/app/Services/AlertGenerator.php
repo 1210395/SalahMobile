@@ -24,6 +24,11 @@ class AlertGenerator
         }
         $buildingId = $building->id;
 
+        // Dues accrue with time but the cached balance/status is only rewritten on
+        // a write — so refresh it first, or a unit that quietly went late this month
+        // would be missed and its overdue amount under-reported.
+        Unit::refreshLedgerCache($buildingId);
+
         // Refresh ONLY the auto-derived alerts. Manager-composed notifications
         // (type = 'notice', sent to residents) are real messages — regenerating
         // must not wipe them.

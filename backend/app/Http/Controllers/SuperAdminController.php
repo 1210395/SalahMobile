@@ -85,6 +85,9 @@ class SuperAdminController extends Controller
             // hand (consistent with the dashboard's opening + revenue − expenses).
             $opening = (int) (\App\Models\YearSummary::where('building_id', Building::idForKey($bk))
                 ->orderBy('year')->value('opening_balance') ?? 0);
+            // Refresh the cached balance/status first — it drifts stale between
+            // writes as dues accrue, so a raw "late" count under-reports.
+            Unit::refreshLedgerCache(Building::idForKey($bk));
             $units = Unit::where('building_id', Building::idForKey($bk))->where('status', '!=', 'vacant')->count();
             $late = Unit::where('building_id', Building::idForKey($bk))->where('status', 'late')->count();
             $admins = User::where('building_id', Building::idForKey($bk))->where('role', 'admin')->count();

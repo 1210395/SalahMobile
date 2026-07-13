@@ -153,3 +153,63 @@ test('redeeming an invalid login code is rejected (422)', async ({ page }) => {
   const r = await page.evaluate(async () => window.T.req('POST', '/auth/redeem-code', null, { code: 'NOTACODE' }));
   expect(r.status).toBe(422);
 });
+
+// A renter added before logins were mandatory had NO account, and the edit sheet
+// had no password field — so they could never sign in, and a forgotten password
+// was unrecoverable. Setting a password on the unit creates/repairs the login.
+test('setting a unit password creates the renter login and reissues the QR', async ({ page }) => {
+  const r = await page.evaluate(async ({ no, phone }) => {
+    const tok = await window.T.adminToken();
+    const unit = (await window.T.req('POST', '/units?btype=residential', tok,
+      { no, floor: 1, resident: 'ساكن بلا حساب', kind: 'مستأجر', phone, sub: 100, status: 'ok' })).body;
+
+    // No account exists yet: phone + password cannot sign in.
+    const before = await window.T.req('POST', '/auth/login', null, { phone, password: 'secret6' });
+
+    const set = await window.T.req('POST', `/units/${unit.id}/password?btype=residential`, tok,
+      { password: 'secret6' });
+    const after = await window.T.req('POST', '/auth/login', null, { phone, password: 'secret6' });
+
+    // A reset rotates the QR and kills the old password.
+    const reset = await window.T.req('POST', `/units/${unit.id}/password?btype=residential`, tok,
+      { password: 'newpass6' });
+    const stale = await window.T.req('POST', '/auth/login', null, { phone, password: 'secret6' });
+    const fresh = await window.T.req('POST', '/auth/login', null, { phone, password: 'newpass6' });
+
+    return {
+      before: before.status,
+      set: set.status,
+      code: (set.body.login_code || '').length,
+      after: after.status,
+      role: after.body && after.body.user && after.body.user.role,
+      rotated: reset.body.login_code !== set.body.login_code,
+      stale: stale.status,
+      fresh: fresh.status,
+    };
+  }, { no: 'PW' + Math.floor(Math.random() * 1e7), phone: '+9705' + Math.floor(Math.random() * 1e7) });
+
+  expect(r.before).toBe(422);   // no login existed
+  expect(r.set).toBe(200);
+  expect(r.code).toBe(32);      // a QR to share over واتساب
+  expect(r.after).toBe(200);    // the renter can now sign in
+  expect(r.role).toBe('resident');
+  expect(r.rotated).toBe(true); // a reset reissues the QR…
+  expect(r.stale).toBe(422);    // …and the old password is dead
+  expect(r.fresh).toBe(200);
+});
+
+test('a unit password needs 6+ chars, and a resident cannot set one', async ({ page }) => {
+  const r = await page.evaluate(async ({ no }) => {
+    const tok = await window.T.adminToken();
+    const unit = (await window.T.req('POST', '/units?btype=residential', tok,
+      { no, floor: 1, sub: 100, status: 'ok', phone: '+9705' + Math.floor(Math.random() * 1e7) })).body;
+    const short = await window.T.req('POST', `/units/${unit.id}/password?btype=residential`, tok,
+      { password: '123' });
+    const res = await window.T.residentSession('101');
+    const byResident = await window.T.req('POST', `/units/${unit.id}/password?btype=residential`,
+      res.token, { password: 'hacked6' });
+    return { short: short.status, byResident: byResident.status };
+  }, { no: 'PS' + Math.floor(Math.random() * 1e7) });
+  expect(r.short).toBe(422);
+  expect(r.byResident).toBe(403); // only an admin may reset a renter's login
+});

@@ -120,7 +120,7 @@ class GuardScreen extends StatelessWidget {
         // The wage is what gets recorded; without it the button had nothing to
         // save and only said so after the tap. Say it before, and gate the button.
         if (g.fee <= 0) ...[
-          const FormBlockedHint(reasons: ['حدّد أجرة الحارس الشهرية أولاً']),
+          const FormBlockedHint(reasons: ['حدّد «الأجرة الشهرية» من زر «تعديل» في أعلى الصفحة']),
           const SizedBox(height: 10),
         ],
         AppButton(
@@ -163,36 +163,54 @@ class GuardScreen extends StatelessWidget {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+          // A blank أجرة used to re-save the old wage under «تم حفظ بيانات الحارس».
+          // 0 is a real answer (no wage set); blank is not an answer at all.
+          final feeVal = int.tryParse(f['fee']!.trim());
+          final blockers = <String>[
+            if (feeVal == null || feeVal < 0) 'أدخل الأجرة الشهرية',
+          ];
+          return SheetShell(
           title: 'تعديل بيانات الحارس',
-          footer: AppButton(
-            label: 'حفظ',
-            full: true,
-            size: BtnSize.lg,
-            icon: 'check',
-            onTap: () async {
-              Navigator.of(sheetCtx).pop();
-              try {
-                await Api.I.setGuard(ctx.btype, {
-                  'name': f['name'],
-                  'phone': f['phone'],
-                  'address': f['address'],
-                  'fee': int.tryParse(f['fee']!.trim()) ?? g.fee,
-                });
-                await ctx.reload();
-                ctx.toast('تم حفظ بيانات الحارس');
-              } catch (e) {
-                ctx.toast(apiErrorText(e), tone: 'late');
-              }
-            },
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers, title: 'لحفظ بيانات الحارس، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
+                label: 'حفظ',
+                full: true,
+                size: BtnSize.lg,
+                icon: 'check',
+                disabled: blockers.isNotEmpty,
+                onTap: () async {
+                  Navigator.of(sheetCtx).pop();
+                  try {
+                    await Api.I.setGuard(ctx.btype, {
+                      'name': f['name'],
+                      'phone': f['phone'],
+                      'address': f['address'],
+                      'fee': int.tryParse(f['fee']!.trim()) ?? g.fee,
+                    });
+                    await ctx.reload();
+                    ctx.toast('تم حفظ بيانات الحارس');
+                  } catch (e) {
+                    ctx.toast(apiErrorText(e), tone: 'late');
+                  }
+                },
+              ),
+            ],
           ),
           children: [
             Field(label: 'اسم الحارس', icon: 'user', value: f['name']!, onChanged: (v) => f['name'] = v),
             Field(label: 'رقم الجوال', icon: 'phone', value: f['phone']!, ltr: true, keyboardType: TextInputType.phone, inputFormatters: phoneChars, onChanged: (v) => f['phone'] = v),
             Field(label: 'العنوان', icon: 'pin', value: f['address']!, onChanged: (v) => f['address'] = v),
-            Field(label: 'الأجرة الشهرية', icon: 'wallet', value: f['fee']!, ltr: true, keyboardType: TextInputType.number, inputFormatters: digitsOnly, onChanged: (v) => f['fee'] = v),
+            Field(label: 'الأجرة الشهرية', icon: 'wallet', value: f['fee']!, ltr: true, keyboardType: TextInputType.number, inputFormatters: digitsOnly, onChanged: (v) => setS(() => f['fee'] = v)),
           ],
-        ),
+        );
+        },
       ),
     );
   }

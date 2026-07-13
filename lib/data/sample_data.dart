@@ -75,6 +75,16 @@ const List<String> arMonths = [
 /// layer (Payment.month, report selectors, …).
 String monthLabelNum(int i) => 'شهر ${i + 1}';
 
+/// A COUNT of months in correct Arabic. Arabic doesn't pluralise like English:
+/// 1 → شهر، 2 → شهرين، 3-10 → N أشهر، 11+ → N شهراً. Writing "2 أشهر" or
+/// "11 أشهر" reads as broken Arabic to a native speaker.
+String monthsCountLabel(int n) {
+  if (n == 1) return 'شهر واحد';
+  if (n == 2) return 'شهرين';
+  if (n >= 3 && n <= 10) return '$n أشهر';
+  return '$n شهراً';
+}
+
 // ───────────── Derived ledger helpers (month settlement) ─────────────
 
 /// Dues-settling amount already paid for a unit's given month/year. An "أخرى"

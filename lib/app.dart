@@ -278,8 +278,10 @@ class _AmaratiAppState extends State<AmaratiApp> {
       // building-setup flow on every login until it's promoted to admin — instead
       // of dropping it into the renter home. (Real renters always have a unit_no,
       // assigned by their manager via QR/join, so they still land on resHome.)
-      final pendingManager =
-          r == AppRole.resident && (u.unitNo == null || u.unitNo!.trim().isEmpty);
+      // A pending manager (registered, no building yet) goes to setup/subscribe.
+      // A renter who simply has no unit assigned belongs to a building already —
+      // they must land on their home's empty state, NOT the manager pay flow.
+      final pendingManager = u.isPendingManager;
       setState(() {
         _busy = false;
         this.role = r;

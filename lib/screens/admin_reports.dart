@@ -334,7 +334,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
           sheet.appendRow(cells);
           paidAll += paidYear;
           reqAll += required;
-          remAll += u.balance;
+          // Grand total sums only what's OWED (debts), matching the dashboard's
+          // الذمم — signed balances would let a credited unit cancel a debtor's
+          // dues (owe 500 + credit 300 → misleading −200 instead of 500). The
+          // per-row column keeps the signed balance above.
+          remAll += u.balance < 0 ? -u.balance : 0;
         }
         // Trailing totals row: per-month column sums + the grand totals.
         sheet.appendRow([

@@ -115,14 +115,19 @@ test('the year-transfer grid is live: 12 months reflecting real payments', async
   expect(r.afterPaid).toBe(r.beforePaid + 5000); // reflects the live payment
 });
 
-test('settings reject a non-hex colour but accept a valid one', async ({ page }) => {
+// Platform branding is shared by every building, so only the super-admin may
+// change it — a building manager is forbidden. Colours must still be valid hex.
+test('platform settings are super-admin only and reject a non-hex colour', async ({ page }) => {
   const r = await page.evaluate(async () => {
-    const tok = await window.T.adminToken();
+    const admin = await window.T.adminToken();
+    const sup = await window.T.superToken();
     return {
-      bad: (await window.T.req('PUT', '/settings', tok, { primary: 'not-a-hex' })).status,
-      good: (await window.T.req('PUT', '/settings', tok, { primary: '#123456' })).status,
+      byAdmin: (await window.T.req('PUT', '/settings', admin, { primary: '#123456' })).status,
+      bad: (await window.T.req('PUT', '/settings', sup, { primary: 'not-a-hex' })).status,
+      good: (await window.T.req('PUT', '/settings', sup, { primary: '#123456' })).status,
     };
   });
+  expect(r.byAdmin).toBe(403); // a building manager can't rebrand the whole product
   expect(r.bad).toBe(422);
   expect(r.good).toBe(200);
 });

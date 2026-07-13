@@ -73,4 +73,28 @@ class Unit extends Model
     {
         return $balance < 0 ? 'late' : ($balance > 0 ? 'credit' : 'ok');
     }
+
+    /// Recompute + persist the cached balance/status for every non-vacant unit in a
+    /// building. Charges accrue with TIME, but the cache is only rewritten on a
+    /// payment/unit WRITE — so any consumer that reads the raw column (alerts, the
+    /// super-admin "late" count) drifts stale as the months pass. Call this before
+    /// reading the cache so a unit that has quietly gone late is seen as late.
+    public static function refreshLedgerCache(?int $buildingId): void
+    {
+        if (! $buildingId) {
+            return;
+        }
+        $paid = Payment::where('building_id', $buildingId)
+            ->where('applies_to_dues', true)
+            ->selectRaw('unit_no, SUM(amount) as s')
+            ->groupBy('unit_no')->pluck('s', 'unit_no');
+
+        foreach (self::where('building_id', $buildingId)->where('status', '!=', 'vacant')->get() as $u) {
+            $bal = $u->derivedBalance((int) ($paid[$u->no] ?? 0));
+            $status = self::statusForBalance($bal);
+            if ((int) $u->balance !== $bal || $u->status !== $status) {
+                $u->update(['balance' => $bal, 'status' => $status]);
+            }
+        }
+    }
 }

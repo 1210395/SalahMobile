@@ -301,9 +301,13 @@ class _LoginScreenState extends State<LoginScreen> {
   // user's real role + building, so no role/type picker is needed here.
   Future<String?> _signInIdentifier() {
     final ctx = widget.ctx;
+    // A phone may be stored with spaces ("059 123 4567"); the server matches the
+    // identifier exactly, so strip spaces client-side to avoid a false "wrong
+    // credentials" when the resident types the number without them. Emails are
+    // left untouched.
     return val.contains('@')
         ? ctx.signIn(email: val.trim(), password: pass, role: AppRole.admin, btype: btype)
-        : ctx.signIn(phone: val.trim(), password: pass, role: AppRole.admin, btype: btype);
+        : ctx.signIn(phone: val.trim().replaceAll(' ', ''), password: pass, role: AppRole.admin, btype: btype);
   }
 
   // Redeem a resident QR/login code, then land the resident on their home via

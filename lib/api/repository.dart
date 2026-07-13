@@ -41,8 +41,18 @@ class Api {
     Future<dynamic> get(String path, [Map<String, dynamic>? extra]) =>
         _dio.get(path, queryParameters: {...q, ...?extra}).then((r) => r.data);
 
+    // Building-wide financials are admin-only (a resident gets 403). Fail soft so
+    // a resident's bundle still loads — their summary/year just stay zeroed.
+    Future<dynamic> getSoft(String path, [Map<String, dynamic>? extra]) async {
+      try {
+        return await get(path, extra);
+      } catch (_) {
+        return null;
+      }
+    }
+
     final building = await get('/building');
-    final summary = await get('/summary');
+    final summary = await getSoft('/summary');
     final units = await get('/units');
     final payments = await get('/payments');
     final expenses = await get('/expenses');
@@ -50,7 +60,7 @@ class Api {
     final parking = await get('/parking');
     final guard = await get('/guard');
     final alerts = await get('/alerts');
-    final year = await get('/year-summary', {'year': '2026'});
+    final year = await getSoft('/year-summary', {'year': '${DateTime.now().year}'});
     final craftsmen = await _dio.get('/craftsmen').then((r) => r.data);
     final waTemplates = await _dio.get('/wa-templates').then((r) => r.data);
     final payTypes = await _dio.get('/pay-types').then((r) => r.data);
@@ -140,6 +150,11 @@ class Api {
 
   Future<void> createCoAdmin(BType b, Map<String, dynamic> body) =>
       _dio.post('/co-admins', queryParameters: {'btype': btypeKey(b)}, data: body);
+
+  /// Set (or create) the login for the renter on a unit; reissues their QR code.
+  Future<void> setUnitPassword(BType b, int unitId, String password) =>
+      _dio.post('/units/$unitId/password',
+          queryParameters: {'btype': btypeKey(b)}, data: {'password': password});
 
   // ───────────── Payments / expenses edit + delete ─────────────
   Future<void> updatePayment(BType b, int id, Map<String, dynamic> body) =>

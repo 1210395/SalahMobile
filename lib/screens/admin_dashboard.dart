@@ -443,7 +443,6 @@ class BuildingScreen extends StatelessWidget {
       'sub': '${b.subscription}',
       'elevator': '${b.elevatorFee}',
     };
-    BType type = ctx.btype;
     Object currency = b.currency;
     // #45: the building can't be shrunk below what is already on record — neither
     // fewer units than the occupied ones, nor fewer floors than the highest one in use.
@@ -462,6 +461,10 @@ class BuildingScreen extends StatelessWidget {
           // the save silently kept the old value — name it as a blocker instead.
           final floorsEmpty = f['floors']!.trim().isEmpty;
           final unitsEmpty = f['units']!.trim().isEmpty;
+          // Same silent fallback for the money fields: a blank الاشتراك/المصعد used to
+          // re-save the old amount under a success toast. 0 is a real value; blank isn't.
+          final subVal = int.tryParse(f['sub']!.trim());
+          final elevatorVal = int.tryParse(f['elevator']!.trim());
           final blockers = <String>[
             if (floorsEmpty) 'أدخل عدد الطوابق',
             if (floorsVal != null && floorsVal < 1) 'عدد الطوابق يجب أن يكون 1 على الأقل',
@@ -470,7 +473,9 @@ class BuildingScreen extends StatelessWidget {
             if (unitsEmpty) 'أدخل عدد ${res ? 'الشقق' : 'الوحدات'}',
             if (unitsVal != null && unitsVal < 1)
               'عدد ${res ? 'الشقق' : 'الوحدات'} يجب أن يكون 1 على الأقل',
-            if (unitsBelowExisting) 'عدد الوحدات لا يمكن أن يقل عن $existingCount وحدة مسجّلة',
+            if (unitsBelowExisting) 'عدد ${res ? 'الشقق' : 'الوحدات'} لا يمكن أن يقل عن $existingCount ${res ? 'شقة' : 'وحدة'} مسجّلة',
+            if (subVal == null || subVal < 0) 'أدخل الاشتراك الشهري',
+            if (elevatorVal == null || elevatorVal < 0) 'أدخل رسوم المصعد',
           ];
           return SheetShell(
           title: 'تعديل بيانات المبنى',
@@ -511,19 +516,8 @@ class BuildingScreen extends StatelessWidget {
           children: [
             Field(label: 'اسم المبنى', icon: 'building2', value: f['name']!, onChanged: (v) => f['name'] = v),
             Field(label: 'العنوان', icon: 'pin', value: f['address']!, onChanged: (v) => f['address'] = v),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text('نوع المبنى',
-                  style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-            ),
-            Segmented(
-              value: type,
-              onChanged: (v) => setS(() => type = v as BType),
-              options: const [
-                SegOption(BType.residential, 'سكني (شقق)', icon: 'building'),
-                SegOption(BType.commercial, 'تجاري (وحدات)', icon: 'store'),
-              ],
-            ),
+            // No «نوع المبنى» picker here: the type is fixed at setup and updateBuilding
+            // never sends it — the switch that used to sit here silently did nothing.
             const SizedBox(height: 14),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,7 +553,7 @@ class BuildingScreen extends StatelessWidget {
                 suffix: currencySymbol(currency as String),
                 keyboardType: TextInputType.number,
                 inputFormatters: digitsOnly,
-                onChanged: (v) => f['sub'] = v),
+                onChanged: (v) => setS(() => f['sub'] = v)),
             SelectField(
               label: 'عملة المبنى',
               icon: 'dollar',
@@ -580,7 +574,7 @@ class BuildingScreen extends StatelessWidget {
                       suffix: currencySymbol(currency as String),
                       keyboardType: TextInputType.number,
                       inputFormatters: digitsOnly,
-                      onChanged: (v) => f['elevator'] = v),
+                      onChanged: (v) => setS(() => f['elevator'] = v)),
                 ),
               ],
             ),

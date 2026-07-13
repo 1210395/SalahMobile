@@ -188,18 +188,33 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+        // A blank/garbage amount used to fall back to the OLD one and still toast
+        // success — the admin thought they had changed it. Say no instead.
+        final amount = int.tryParse(f['amount']!.trim()) ?? 0;
+        final blockers = <String>[
+          if (amount <= 0) 'أدخل مبلغاً أكبر من صفر',
+        ];
+        return SheetShell(
           title: 'تعديل الدفعة',
-          footer: AppButton(
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers, title: 'لحفظ التعديلات، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
             label: 'حفظ التعديلات',
             full: true,
             size: BtnSize.lg,
             icon: 'check',
+            disabled: blockers.isNotEmpty,
             onTap: () async {
               Navigator.of(sheetCtx).pop();
               try {
                 await Api.I.updatePayment(ctx.btype, p.id, {
-                  'amount': int.tryParse(f['amount']!.trim()) ?? p.amount,
+                  'amount': amount,
                   'kind': f['kind'],
                   'method': f['method'],
                 });
@@ -209,12 +224,23 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 ctx.toast(apiErrorText(e), tone: 'late');
               }
             },
+              ),
+            ],
           ),
           children: [
             Text(p.unit.isEmpty ? '${p.name} · إيراد خاص' : '${p.name} · وحدة ${p.unit}',
                 style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink600)),
             const SizedBox(height: 12),
-            Field(label: 'المبلغ', icon: 'wallet', value: f['amount']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['amount'] = v),
+            // setS, or the blockers list above never re-evaluates and the button
+            // stays dead however valid the amount is.
+            Field(
+                label: 'المبلغ',
+                icon: 'wallet',
+                value: f['amount']!,
+                ltr: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: digitsOnly,
+                onChanged: (v) => setS(() => f['amount'] = v)),
             Field(label: 'النوع', icon: 'receipt', value: f['kind']!, onChanged: (v) => f['kind'] = v),
             Field(label: 'طريقة الدفع', icon: 'wallet', value: f['method']!, onChanged: (v) => f['method'] = v),
             const SizedBox(height: 6),
@@ -235,7 +261,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               },
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }
@@ -654,10 +681,16 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
 
     // #36: covering several months requires at least one month's fee for each.
     final perMonth = total ~/ monthsCount;
+    // #36: covering several months requires at least one month's fee for each —
+    // but only where a fee is actually known. `fee` is 0 for الجميع/مجموعة (no
+    // single unit selected) and for a unit whose subscription is legitimately 0;
+    // requiring `perMonth >= 0` there made the button impossible to enable while
+    // the hint demanded a minimum of zero the user had already exceeded.
     final multiMonthOk = special ||
         item != PayItem.monthly ||
         monthsCount == 1 ||
-        (fee > 0 && perMonth >= fee);
+        fee <= 0 ||
+        perMonth >= fee;
 
     // #26: a cheque needs a FUTURE date + a number.
     final chequeWhen = DateTime.tryParse(chequeDate);
@@ -682,7 +715,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
       if (!special && item == PayItem.dues && total > dues)
         'المبلغ يتجاوز الذمم المستحقة (${fmtUSD(dues)})',
       if (!multiMonthOk)
-        'المبلغ لا يغطي $monthsCount أشهر — الحد الأدنى ${fmtUSD(fee * monthsCount)}', // #36
+        'المبلغ لا يغطي ${monthsCountLabel(monthsCount)} — الحد الأدنى ${fmtUSD(fee * monthsCount)}', // #36
       if (!rateOk) 'أدخل سعر صرف صحيح أكبر من صفر',
       if (method == 'شيك' && !chequeFuture) 'أدخل تاريخ شيك مستقبلي', // #26
       if (method == 'شيك' && chequeNumber.trim().isEmpty) 'أدخل رقم الشيك',
@@ -941,12 +974,6 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             value: chequeDate,
             onChanged: (v) => setState(() => chequeDate = v),
           ),
-          if (chequeDate.isNotEmpty && !chequeFuture)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text('تاريخ الشيك يجب أن يكون في المستقبل.',
-                  style: AppType.base(size: 11.5, weight: FontWeight.w600, color: AppColors.late700)),
-            ),
           Field(
             label: 'رقم الشيك',
             icon: 'receipt',
@@ -989,7 +1016,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                 const SizedBox(height: 10),
               ],
               AppButton(
-                label: 'تم · ${payMonths.length} شهر',
+                label: 'تم · ${monthsCountLabel(payMonths.length)}',
                 full: true,
                 size: BtnSize.lg,
                 icon: 'check',
@@ -1092,10 +1119,15 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         : [DateTime.now().month - 1];
     final year = item == PayItem.monthly ? payYear : DateTime.now().year;
 
-    // Split the total across the covered months (remainder onto the first).
+    // Split the total across the covered months (remainder onto the first). The
+    // BASE total is split directly — converting each row separately and rounding
+    // let the rows drift a shekel or two off the confirmed total.
     final n = months.isEmpty ? 1 : months.length;
     final each = total ~/ n;
     final first = each + (total - each * n);
+    final baseTotal = sameCur ? total : (total * rate).round();
+    final baseEach = baseTotal ~/ n;
+    final baseFirst = baseEach + (baseTotal - baseEach * n);
 
     Navigator.of(context).pop();
     try {
@@ -1109,7 +1141,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         }
         for (var i = 0; i < months.length; i++) {
           final amt = i == 0 ? first : each;
-          final base = sameCur ? amt : (amt * rate).round();
+          final base = i == 0 ? baseFirst : baseEach;
           await Api.I.createPayment(ctx.btype, {
             'unit_no': no,
             if (u != null && u.resident.trim().isNotEmpty) 'name': u.resident,
@@ -1269,19 +1301,35 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+        // Blank/garbage used to silently re-save the OLD amount under a success
+        // toast, and an empty supplier saved an empty supplier.
+        final amount = int.tryParse(f['amount']!.trim()) ?? 0;
+        final blockers = <String>[
+          if (f['supplier']!.trim().isEmpty) 'أدخل اسم المورّد / الجهة',
+          if (amount <= 0) 'أدخل مبلغاً أكبر من صفر',
+        ];
+        return SheetShell(
           title: 'تعديل المصروف',
-          footer: AppButton(
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers, title: 'لحفظ التعديلات، أكمل ما يلي:'),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
             label: 'حفظ التعديلات',
             full: true,
             size: BtnSize.lg,
             icon: 'check',
+            disabled: blockers.isNotEmpty,
             onTap: () async {
               Navigator.of(sheetCtx).pop();
               try {
                 await Api.I.updateExpense(ctx.btype, e.id, {
-                  'supplier': f['supplier'],
-                  'amount': int.tryParse(f['amount']!.trim()) ?? e.amount,
+                  'supplier': f['supplier']!.trim(),
+                  'amount': amount,
                   'cat': f['cat'],
                 });
                 await ctx.reload();
@@ -1290,10 +1338,23 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 ctx.toast(apiErrorText(err), tone: 'late');
               }
             },
+              ),
+            ],
           ),
           children: [
-            Field(label: 'المورّد', icon: 'receipt', value: f['supplier']!, onChanged: (v) => f['supplier'] = v),
-            Field(label: 'المبلغ', icon: 'wallet', value: f['amount']!, ltr: true, keyboardType: TextInputType.number, onChanged: (v) => f['amount'] = v),
+            Field(
+                label: 'المورّد',
+                icon: 'receipt',
+                value: f['supplier']!,
+                onChanged: (v) => setS(() => f['supplier'] = v)),
+            Field(
+                label: 'المبلغ',
+                icon: 'wallet',
+                value: f['amount']!,
+                ltr: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: digitsOnly,
+                onChanged: (v) => setS(() => f['amount'] = v)),
             Field(label: 'التصنيف', icon: 'grid', value: f['cat']!, onChanged: (v) => f['cat'] = v),
             const SizedBox(height: 6),
             AppButton(
@@ -1313,7 +1374,8 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               },
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }
@@ -1594,13 +1656,30 @@ class WorkersScreen extends StatelessWidget {
     showAppSheet(
       context,
       StatefulBuilder(
-        builder: (sheetCtx, setS) => SheetShell(
+        builder: (sheetCtx, setS) {
+        // A blank/garbage "المبلغ المدفوع" fell back to 0 — recording a partial
+        // payment of NOTHING while toasting success.
+        final paid = int.tryParse(partial.trim()) ?? 0;
+        final blockers = <String>[
+          if (payStatus == 'partial' && paid <= 0) 'أدخل المبلغ المدفوع (أكبر من صفر)',
+          if (payStatus == 'partial' && w.amount > 0 && paid >= w.amount)
+            'المبلغ المدفوع يساوي الأجر كاملاً — اختر «مدفوع بالكامل»',
+        ];
+        return SheetShell(
           title: 'تحديث حالة ${w.name}',
-          footer: AppButton(
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (blockers.isNotEmpty) ...[
+                FormBlockedHint(reasons: blockers),
+                const SizedBox(height: 10),
+              ],
+              AppButton(
             label: 'حفظ',
             full: true,
             size: BtnSize.lg,
             icon: 'check',
+            disabled: blockers.isNotEmpty,
             onTap: () async {
               Navigator.of(sheetCtx).pop();
               try {
@@ -1608,7 +1687,7 @@ class WorkersScreen extends StatelessWidget {
                   'came': came,
                   if (came) 'last_visit': todayIso(),
                   'pay_status': payStatus,
-                  if (payStatus == 'partial') 'paid_amount': int.tryParse(partial) ?? 0,
+                  if (payStatus == 'partial') 'paid_amount': paid,
                   if (payStatus == 'none') 'paid_amount': 0,
                 });
                 await ctx.reload();
@@ -1617,6 +1696,8 @@ class WorkersScreen extends StatelessWidget {
                 ctx.toast(apiErrorText(e), tone: 'late');
               }
             },
+              ),
+            ],
           ),
           children: [
             Container(
@@ -1677,7 +1758,8 @@ class WorkersScreen extends StatelessWidget {
               },
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }
