@@ -141,6 +141,11 @@ class Api {
   Future<void> createCoAdmin(BType b, Map<String, dynamic> body) =>
       _dio.post('/co-admins', queryParameters: {'btype': btypeKey(b)}, data: body);
 
+  /// Set (or create) the login for the renter on a unit; reissues their QR code.
+  Future<void> setUnitPassword(BType b, int unitId, String password) =>
+      _dio.post('/units/$unitId/password',
+          queryParameters: {'btype': btypeKey(b)}, data: {'password': password});
+
   // ───────────── Payments / expenses edit + delete ─────────────
   Future<void> updatePayment(BType b, int id, Map<String, dynamic> body) =>
       _dio.put('/payments/$id', queryParameters: {'btype': btypeKey(b)}, data: body);

@@ -264,8 +264,54 @@ class ApiController extends Controller
         );
     }
 
-    /// A building admin creates a co-admin for THEIR OWN building (building_key
-    /// is forced to the requester's — they cannot grant access to another building).
+    /// Set the login password for the renter on a unit, and reissue their QR code.
+    ///
+    /// Renters used to be creatable without an account at all, and there was no
+    /// password field on the edit sheet — so such a renter could never log in, and
+    /// a forgotten password could never be reset. If the unit has no resident
+    /// account yet this CREATES one from the unit's own name + phone.
+    public function setUnitPassword(Request $r, Unit $unit)
+    {
+        $this->requireAdmin($r);
+        abort_unless($unit->building_id === $this->buildingId($r), 403, 'وحدة من مبنى آخر');
+
+        $data = $r->validate(['password' => 'required|string|min:6']);
+
+        // Newest first: if a stale row ever shares this unit_no, act on the current
+        // renter rather than an arbitrary one.
+        $user = User::where('building_id', $unit->building_id)
+            ->where('unit_no', $unit->no)->where('role', 'resident')
+            ->orderByDesc('id')->first();
+
+        if (! $user) {
+            $phone = trim((string) $unit->phone);
+            abort_if($phone === '' || $phone === '—', 422,
+                'أضف رقم موبايل للوحدة أولاً — هو اسم المستخدم لحساب الدخول');
+            abort_if(User::where('phone', $phone)->exists(), 422,
+                'رقم الموبايل مستخدم في حساب آخر');
+
+            $user = User::create([
+                'name' => $unit->resident,
+                'phone' => $phone,
+                'role' => 'resident',
+                'building_key' => $unit->building_key,
+                'building_id' => $unit->building_id,
+                'unit_no' => $unit->no,
+            ]);
+        }
+
+        // A new password invalidates the old QR: reissue it so the admin can share
+        // a working one over WhatsApp straight away.
+        $user->update([
+            'password' => Hash::make($data['password']),
+            'login_code' => $this->loginCode(),
+        ]);
+
+        return response()->json(
+            $user->only(['id', 'name', 'phone', 'role', 'unit_no', 'login_code'])
+        );
+    }
+
     public function createCoAdmin(Request $r)
     {
         $this->requireAdmin($r);

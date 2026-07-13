@@ -333,7 +333,6 @@ class _UnitsScreenState extends State<UnitsScreen> {
     String start = todayIso();
     String end = '';
     bool ongoing = true; // start open-ended; the switch toggles an end date.
-    bool makeAccount = false;
     // When on, the opening debt is auto-computed server-side as
     // (sub × whole months since the contract start) instead of starting fresh
     // this month — "احتساب الإيجار من بداية العقد".
@@ -347,18 +346,15 @@ class _UnitsScreenState extends State<UnitsScreen> {
           final floorBad = ctx.building.floors > 0 &&
               floorNum != null &&
               (floorNum < 0 || floorNum > ctx.building.floors);
-          // Flipping "إنشاء حساب دخول" silently added two more requirements and
-          // the save button just died — spell out everything that is missing.
           final blockers = <String>[
             if (f['name']!.trim().isEmpty) 'الاسم الكامل',
             if (f['no']!.trim().isEmpty) 'رقم ${res ? 'الشقة' : 'الوحدة'}',
             if (floorBad) 'الطابق يجب أن يكون بين 0 و ${ctx.building.floors}',
-            if (makeAccount && f['phone']!.trim().isEmpty)
-              'رقم الموبايل — هو اسم المستخدم لحساب الدخول',
-            // A resident account now requires a real password (phone+password
-            // is their durable login; the QR code is single-use).
-            if (makeAccount && f['password']!.trim().length < 6)
-              'كلمة مرور من 6 أحرف على الأقل لحساب الدخول',
+            // Phone + password ARE the renter's login, so both are required.
+            if (f['phone']!.trim().isEmpty) 'رقم الموبايل — هو اسم المستخدم لحساب الدخول',
+            if (f['password']!.trim().length < 6) 'كلمة مرور من 6 أحرف على الأقل',
+            // A blank fee silently fell back to the building default.
+            if ((int.tryParse(f['sub']!.trim()) ?? -1) < 0) 'أدخل الدفعة الشهرية',
           ];
           return SheetShell(
           title: 'إضافة ${res ? 'ساكن' : 'مستأجر'} يدوياً',
@@ -382,31 +378,25 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   final prev = int.tryParse(f['prev']!.trim()) ?? 0;
                   _save(
                     () async {
+                      // The unit AND the renter's login are created in ONE request:
+                      // a rejected phone must not leave a unit behind with no
+                      // account attached to it.
                       await Api.I.createUnit(ctx.btype, {
                         'no': f['no']!.trim(),
                         'floor': int.tryParse(f['floor']!.trim()) ?? 0,
                         'resident': f['name']!.trim(),
                         'kind': kind,
-                        'phone': f['phone']!.trim().isEmpty ? '—' : f['phone']!.trim(),
+                        'phone': f['phone']!.trim(),
                         'sub': int.tryParse(f['sub']!.trim()) ?? ctx.building.subscription,
                         'balance': -prev, // ذمم سابقة → opening debit (ignored if back_debt)
                         'back_debt': backDebt,
                         'contract_start': start,
                         'contract_end': ongoing ? '' : end,
                         'status': 'ok',
+                        'password': f['password']!.trim(),
                       });
-                      if (makeAccount) {
-                        await Api.I.createResident(ctx.btype, {
-                          'name': f['name']!.trim(),
-                          'phone': f['phone']!.trim(),
-                          if (f['password']!.trim().isNotEmpty) 'password': f['password']!.trim(),
-                          'unit_no': f['no']!.trim(),
-                        });
-                      }
                     },
-                    makeAccount
-                        ? 'تمت إضافة ${f['name']!.trim()} وإنشاء حساب دخول'
-                        : 'تمت إضافة ${f['name']!.trim()} — ${res ? 'شقة' : 'وحدة'} ${f['no']}',
+                    'تمت إضافة ${f['name']!.trim()} وإنشاء حساب دخول',
                   );
                 },
               ),
@@ -468,7 +458,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 suffix: currencySymbol(activeCurrency),
                 keyboardType: TextInputType.number,
                 inputFormatters: digitsOnly,
-                onChanged: (v) => f['sub'] = v),
+                onChanged: (v) => setS(() => f['sub'] = v)),
             Field(
                 label: 'ذمم سابقة (اختياري)',
                 icon: 'dollar',
@@ -520,24 +510,22 @@ class _UnitsScreenState extends State<UnitsScreen> {
               }),
             ),
             const SizedBox(height: 12),
-            _switchRow(
-              label: 'إنشاء حساب دخول للساكن',
-              checked: makeAccount,
-              onChanged: (v) => setS(() => makeAccount = v),
-            ),
-            if (makeAccount) ...[
-              const SizedBox(height: 8),
-              Text('اسم المستخدم هو رقم الموبايل. يسجّل الساكن الدخول برقم الموبايل وكلمة المرور. '
-                  'رمز الـ QR للدخول لمرة واحدة فقط.',
-                  style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
-              const SizedBox(height: 8),
-              Field(
-                  label: 'كلمة المرور',
-                  icon: 'lock',
-                  placeholder: '6 أحرف على الأقل',
-                  ltr: true,
-                  onChanged: (v) => setS(() => f['password'] = v)),
-            ],
+            // Every renter gets a login. It used to hide behind a switch that was
+            // off by default, so a renter added the normal way ended up with no
+            // password — and no way to ever get one, since the QR is single-use.
+            const SectionTitle(text: 'حساب الدخول'),
+            Text('اسم المستخدم هو رقم الموبايل. يسجّل ${res ? 'الساكن' : 'المستأجر'} الدخول '
+                'برقم الموبايل وكلمة المرور، ويمكنك بعد الحفظ مشاركة الدخول عبر رمز QR أو واتساب.',
+                style: AppType.base(
+                    size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
+            const SizedBox(height: 10),
+            Field(
+                label: 'كلمة المرور',
+                icon: 'lock',
+                placeholder: '6 أحرف على الأقل',
+                ltr: true,
+                obscure: true,
+                onChanged: (v) => setS(() => f['password'] = v)),
           ],
         );
         },
@@ -554,6 +542,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
       'floor': '${u.floor}',
       'no': u.no,
       'sub': '${u.sub}',
+      'password': '', // blank = leave the existing login alone
     };
     String kind = u.kind == 'مالك' || u.kind == 'مستأجر' ? u.kind : 'مالك';
     // #18: the only hand-settable status is "vacant" (excluded from accounts).
@@ -571,8 +560,15 @@ class _UnitsScreenState extends State<UnitsScreen> {
           final floorBad = ctx.building.floors > 0 &&
               floorNum != null &&
               (floorNum < 0 || floorNum > ctx.building.floors);
+          final pass = f['password']!.trim();
+          // Blank fields used to silently re-save the OLD value under a success
+          // toast — the admin thought they had cleared/changed them.
           final blockers = <String>[
+            if (f['no']!.trim().isEmpty) 'رقم ${res ? 'الشقة' : 'الوحدة'}',
+            if (f['floor']!.trim().isEmpty || floorNum == null) 'أدخل الطابق',
             if (floorBad) 'الطابق يجب أن يكون بين 0 و ${ctx.building.floors}',
+            if ((int.tryParse(f['sub']!.trim()) ?? -1) < 0) 'أدخل الدفعة الشهرية',
+            if (pass.isNotEmpty && pass.length < 6) 'كلمة المرور الجديدة: 6 أحرف على الأقل',
           ];
           return SheetShell(
           title: 'تعديل ${res ? 'شقة' : 'وحدة'} ${u.no}',
@@ -592,22 +588,31 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 onTap: () {
                   Navigator.of(sheetCtx).pop();
                   _save(
-                    () => Api.I.updateUnit(ctx.btype, u.dbId, {
-                      'no': f['no']!.trim().isEmpty ? u.no : f['no']!.trim(),
-                      'floor': int.tryParse(f['floor']!.trim()) ?? u.floor,
-                      'resident': f['name'],
-                      'phone': f['phone'],
-                      'kind': kind,
-                      'sub': int.tryParse(f['sub']!.trim()) ?? u.sub,
-                      'contract_start': start,
-                      'contract_end': ongoing ? '' : end,
-                      // #18/#19: balance is set only via payments/back-debt; only the
-                      // vacant flag is hand-settable here (derived statuses aren't).
-                      if (vacant) 'status': 'vacant',
-                    }),
+                    () async {
+                      await Api.I.updateUnit(ctx.btype, u.dbId, {
+                        'no': f['no']!.trim(),
+                        'floor': floorNum,
+                        'resident': f['name'],
+                        'phone': f['phone'],
+                        'kind': kind,
+                        'sub': int.tryParse(f['sub']!.trim()) ?? 0,
+                        'contract_start': start,
+                        'contract_end': ongoing ? '' : end,
+                        // #18/#19: balance is set only via payments/back-debt; only the
+                        // vacant flag is hand-settable here (derived statuses aren't).
+                        if (vacant) 'status': 'vacant',
+                      });
+                      // A new password also reissues the QR, so the admin can
+                      // immediately share a working login over واتساب.
+                      if (pass.isNotEmpty) {
+                        await Api.I.setUnitPassword(ctx.btype, u.dbId, pass);
+                      }
+                    },
                     vacant
                         ? 'تم تعيين ${res ? 'الشقة' : 'الوحدة'} كشاغر — مستبعَد من الحسابات والدفعات'
-                        : 'تم حفظ التعديلات',
+                        : (pass.isNotEmpty
+                            ? 'تم حفظ التعديلات وتعيين كلمة مرور جديدة'
+                            : 'تم حفظ التعديلات'),
                   );
                 },
               ),
@@ -653,7 +658,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                       icon: 'grid',
                       value: f['no']!,
                       ltr: true,
-                      onChanged: (v) => f['no'] = v),
+                      onChanged: (v) => setS(() => f['no'] = v)),
                 ),
               ],
             ),
@@ -665,7 +670,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 suffix: currencySymbol(activeCurrency),
                 keyboardType: TextInputType.number,
                 inputFormatters: digitsOnly,
-                onChanged: (v) => f['sub'] = v),
+                onChanged: (v) => setS(() => f['sub'] = v)),
             DateField(
                 label: 'تاريخ بداية العقد',
                 value: start,
@@ -692,6 +697,22 @@ class _UnitsScreenState extends State<UnitsScreen> {
             if (vacant)
               _notes('عند جعل ${res ? 'الشقة' : 'الوحدة'} شاغراً يُستبعَد تلقائياً من الحسابات والدفعات والتقارير.'),
             const SizedBox(height: 12),
+            // Without this, a renter who was added before logins were mandatory
+            // could never get one, and a forgotten password could never be reset.
+            const SectionTitle(text: 'حساب الدخول'),
+            Text('اتركها فارغة للإبقاء على كلمة المرور الحالية. تعيين كلمة مرور جديدة '
+                'يُصدر رمز QR جديداً يمكنك مشاركته عبر واتساب.',
+                style: AppType.base(
+                    size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.5)),
+            const SizedBox(height: 10),
+            Field(
+                label: 'كلمة مرور جديدة',
+                icon: 'lock',
+                placeholder: '6 أحرف على الأقل',
+                ltr: true,
+                obscure: true,
+                onChanged: (v) => setS(() => f['password'] = v)),
+            const SizedBox(height: 4),
             AppButton(
               label: 'حذف ${res ? 'الشقة' : 'الوحدة'} نهائياً',
               variant: BtnVariant.danger,

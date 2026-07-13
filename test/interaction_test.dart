@@ -805,4 +805,117 @@ void main() {
     await tester.pump();
     expect(find.byType(Text), findsNothing); // no empty red box when there is nothing to say
   });
+
+  // ─────────── Renter login: password at creation + reset later ───────────
+
+  // A renter's password used to hide behind an "إنشاء حساب دخول" switch that was
+  // OFF by default, so a renter added the normal way got no account — and since the
+  // QR is single-use and the edit sheet had no password field, they could never log
+  // in at all. Every renter now leaves the add form with a real login.
+  testWidgets('adding a renter always asks for a password', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'units', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.byType(AppFab).first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The add sheet offers the manual path (below the fold in the test viewport).
+    final manual = find.text('إدخال البيانات يدوياً');
+    await tester.dragUntilVisible(
+        manual, find.byType(Scrollable).last, const Offset(0, -120));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(manual.first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.takeException(), isNull);
+
+    // No switch to hide the login behind — the password is simply there.
+    expect(find.text('إنشاء حساب دخول للساكن'), findsNothing);
+    expect(find.text('حساب الدخول'), findsWidgets);
+    expect(find.text('كلمة المرور'), findsOneWidget);
+
+    // …and a missing password blocks the save, out loud.
+    expect(find.text('• كلمة مرور من 6 أحرف على الأقل'), findsOneWidget);
+    expect(find.text('• رقم الموبايل — هو اسم المستخدم لحساب الدخول'), findsOneWidget);
+  });
+
+  // The edit sheet can now set/reset the login — it had no password field at all,
+  // so a forgotten password was unrecoverable from inside the app.
+  testWidgets('editing a unit can set a new password', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'units', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.text('أحمد علي').first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    final edit = find.text('تعديل');
+    if (edit.evaluate().isEmpty) return;
+    await tester.tap(edit.first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('كلمة مرور جديدة'), findsOneWidget);
+  });
+
+  // ─────────── The freeze trap + the silent-lie class ───────────
+
+  // THE WORST FAILURE MODE, and the one a green test suite hides: a blockers list
+  // is recomputed only when the field's onChanged calls setState. If it doesn't,
+  // the user types a perfectly valid value and the button STAYS DEAD forever while
+  // the hint keeps insisting something is missing. That is worse than the original
+  // bug. This test types into a gated field and demands the blocker clears.
+  testWidgets('typing a valid value actually clears the blocker (no freeze)',
+      (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(initialScreen: 'login', initialRole: AppRole.admin)));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('• أدخل كلمة المرور'), findsOneWidget);
+    await tester.enterText(
+        find.descendant(
+            of: find.widgetWithText(Field, 'كلمة المرور'), matching: find.byType(TextField)),
+        'secret6');
+    await tester.pump(const Duration(milliseconds: 200));
+    // The reason is gone — the list re-evaluated, so the field is wired to a rebuild.
+    expect(find.text('• أدخل كلمة المرور'), findsNothing);
+
+    await tester.enterText(
+        find.descendant(
+            of: find.widgetWithText(Field, 'البريد الإلكتروني أو رقم الجوال'),
+            matching: find.byType(TextField)),
+        'admin@amarati.app');
+    await tester.pump(const Duration(milliseconds: 200));
+    // Both satisfied → no hint at all, and the button is live.
+    expect(find.byType(FormBlockedHint), findsNothing);
+    final btn = find.ancestor(of: find.text('دخول'), matching: find.byType(AppButton));
+    expect(tester.widget<AppButton>(btn).disabled, isFalse);
+  });
+
+  // #36 regression: a multi-month payment to الجميع/مجموعة has NO single unit, so
+  // the monthly fee is 0. The guard `fee > 0 && perMonth >= fee` made that false
+  // forever — the save button could never enable, while the hint demanded a minimum
+  // of zero the user had already exceeded. An unsatisfiable form.
+  testWidgets('a multi-month payment to الجميع is not permanently blocked',
+      (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'payments', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final ctx = tester.widget<PaymentsScreen>(find.byType(PaymentsScreen)).ctx;
+
+    await tester.pumpWidget(_wrap(Scaffold(body: AddPaymentSheet(ctx: ctx))));
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.tap(find.text('الجميع'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.takeException(), isNull);
+
+    // Whatever else is outstanding, it must NEVER be the impossible zero-minimum.
+    expect(find.textContaining('الحد الأدنى'), findsNothing);
+  });
+
+  // Arabic counts months properly: 2 → شهرين, 3-10 → أشهر, 11+ → شهراً.
+  test('month counts read as real Arabic, not "2 أشهر"', () {
+    expect(monthsCountLabel(1), 'شهر واحد');
+    expect(monthsCountLabel(2), 'شهرين');
+    expect(monthsCountLabel(3), '3 أشهر');
+    expect(monthsCountLabel(10), '10 أشهر');
+    expect(monthsCountLabel(11), '11 شهراً');
+  });
 }

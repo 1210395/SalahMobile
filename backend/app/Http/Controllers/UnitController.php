@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
 // عمارتي — unit CRUD (admin only). Adding/editing/removing apartments or shops,
@@ -67,6 +68,9 @@ class UnitController extends Controller
             // When true, seed the opening debt as (sub × whole months since the
             // contract start) — "احتساب الإيجار من بداية العقد".
             'back_debt' => 'nullable|boolean',
+            // Creating the renter's login in the SAME request as the unit, so a
+            // rejected phone can't leave a unit stranded without an account.
+            'password' => 'nullable|string|min:6',
         ];
     }
 
@@ -80,6 +84,18 @@ class UnitController extends Controller
             Unit::where('building_id', $this->buildingId($r))->where('no', $data['no'])->exists(),
             422, 'رقم الوحدة مستخدم بالفعل'
         );
+
+        // The renter's login is created in the same request as the unit (below), so
+        // validate the phone BEFORE writing anything — otherwise a phone already in
+        // use would leave a unit behind with no account attached to it.
+        $wantsLogin = ! empty($data['password']);
+        $phone = trim((string) ($data['phone'] ?? ''));
+        if ($wantsLogin) {
+            abort_if($phone === '' || $phone === '—', 422,
+                'أضف رقم موبايل — هو اسم المستخدم لحساب الدخول');
+            abort_if(User::where('phone', $phone)->exists(), 422,
+                'رقم الموبايل مستخدم في حساب آخر');
+        }
 
         $vacant = ($data['kind'] ?? null) === 'شاغر' || ($data['status'] ?? null) === 'vacant';
         $sub = (int) ($data['sub'] ?? 0);
@@ -108,7 +124,8 @@ class UnitController extends Controller
                 'الرصيد المحتسب كبير جداً — تحقّق من الدفعة الشهرية وتاريخ بداية العقد');
         }
 
-        $unit = Unit::create([
+        $unit = DB::transaction(function () use ($r, $data, $bk, $vacant, $sub, $balance, $openingBalance, $billingStart, $contractStart, $wantsLogin, $phone) {
+            $unit = Unit::create([
             'building_key' => $bk,
             'building_id' => $this->buildingId($r),
             'ext_id' => strtoupper(substr($bk, 0, 1)).'-'.$data['no'],
@@ -130,7 +147,29 @@ class UnitController extends Controller
             // default end, or the مستمر toggle would be silently overridden.
             'contract_end' => $vacant ? null : ($data['contract_end'] ?? null),
             'notes' => $data['notes'] ?? null,
-        ]);
+            ]);
+
+            // Every renter leaves the add form with a real login: phone + password,
+            // plus a QR code the admin can share over WhatsApp. Same transaction, so
+            // the unit and the account either both exist or neither does.
+            if ($wantsLogin && ! $vacant) {
+                User::where('building_id', $this->buildingId($r))->where('unit_no', $unit->no)
+                    ->update(['unit_no' => null]); // a unit has at most one renter
+
+                User::create([
+                    'name' => $data['resident'] ?? '',
+                    'phone' => $phone,
+                    'password' => Hash::make($data['password']),
+                    'role' => 'resident',
+                    'building_key' => $bk,
+                    'building_id' => $this->buildingId($r),
+                    'unit_no' => $unit->no,
+                    'login_code' => strtoupper(bin2hex(random_bytes(16))),
+                ]);
+            }
+
+            return $unit;
+        });
 
         return response()->json($unit, 201);
     }
@@ -157,7 +196,25 @@ class UnitController extends Controller
             );
         }
 
-        DB::transaction(function () use ($unit, $vacant, $data, $renamed, $oldNo, $newNo) {
+        // The renter's phone IS their username, which the UI promises out loud. If
+        // the admin edits it here it must follow through to the login, or the unit
+        // shows the new number while the renter can still only sign in with the old
+        // one — a divergence nothing in the app could repair.
+        $oldPhone = trim((string) $unit->phone);
+        $newPhone = $vacant ? $oldPhone : trim((string) ($data['phone'] ?? $oldPhone));
+        $rephoned = $newPhone !== '' && $newPhone !== '—' && $newPhone !== $oldPhone;
+        if ($rephoned) {
+            abort_if(
+                User::where('phone', $newPhone)
+                    ->where(fn ($q) => $q->where('unit_no', '!=', $oldNo)
+                        ->orWhereNull('unit_no')
+                        ->orWhere('building_id', '!=', $unit->building_id))
+                    ->exists(),
+                422, 'رقم الموبايل مستخدم في حساب آخر'
+            );
+        }
+
+        DB::transaction(function () use ($unit, $vacant, $data, $renamed, $oldNo, $newNo, $rephoned, $newPhone) {
             $unit->update([
                 'no' => $data['no'],
                 'floor' => $data['floor'],
@@ -184,6 +241,14 @@ class UnitController extends Controller
                     ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
                 User::where('building_id', $unit->building_id)
                     ->where('unit_no', $oldNo)->update(['unit_no' => $newNo]);
+            }
+
+            // …and cascade the phone, which is the renter's username.
+            if ($rephoned) {
+                User::where('building_id', $unit->building_id)
+                    ->where('unit_no', $renamed ? $newNo : $oldNo)
+                    ->where('role', 'resident')
+                    ->update(['phone' => $newPhone]);
             }
 
             // Recompute the DERIVED balance + status cache — sub/vacant may have

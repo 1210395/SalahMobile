@@ -634,9 +634,10 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Field(
-                        // Key on the scanned value so a QR scan remounts the
-                        // field and shows the prefilled number.
-                        key: ValueKey('unit-${f['no']}'),
+                        // No ValueKey here: keying on the LIVE value remounted the
+                        // field on every keystroke, destroying its FocusNode and
+                        // closing the keyboard after each character. `value:` alone
+                        // is enough — Field syncs it in didUpdateWidget (#24).
                         label: ctx.res ? 'رقم الشقة' : 'رقم الوحدة',
                         icon: 'grid',
                         placeholder: '203',
