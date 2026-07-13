@@ -36,6 +36,9 @@ test('resident reads are scoped: own unit only, no login codes, own payments, no
     const exps = await (await T.req('GET', '/expenses?btype=residential', t)).body;
     const workers = await (await T.req('GET', '/workers?btype=residential', t)).body;
     const parking = await (await T.req('GET', '/parking?btype=residential', t)).body;
+    // Building-wide finances are for the manager only.
+    const summary = (await T.req('GET', '/summary?btype=residential', t)).status;
+    const yearSummary = (await T.req('GET', '/year-summary?btype=residential&year=2026', t)).status;
     return {
       unitCount: units.length,
       leaksCode: units.some((u) => u.login_code),
@@ -45,6 +48,8 @@ test('resident reads are scoped: own unit only, no login codes, own payments, no
       expCount: exps.length,
       workerCount: workers.length,
       parkingCount: parking.length,
+      summary,
+      yearSummary,
     };
   });
   expect(r.unitCount).toBe(1);
@@ -55,6 +60,8 @@ test('resident reads are scoped: own unit only, no login codes, own payments, no
   expect(r.expCount).toBe(0);
   expect(r.workerCount).toBe(0);
   expect(r.parkingCount).toBe(0);
+  expect(r.summary).toBe(403); // financials are admin-only
+  expect(r.yearSummary).toBe(403);
 });
 
 test('a resident cannot perform admin writes (create payment / unit / expense)', async ({ page }) => {
@@ -95,21 +102,33 @@ test('a manager cannot touch another building\'s data (cross-building IDOR)', as
   expect(r.pay).toBe(403);
 });
 
-test('a unit has one resident: reassigning unlinks the previous tenant (no payment leak)', async ({ page }) => {
+// Replacing a tenant doesn't merely unlink the old one — it DISABLES their login
+// entirely: their live session is revoked and their QR stops redeeming. A
+// moved-out tenant keeps no way into the building.
+test('reassigning a unit disables the previous tenant (revoked session, dead QR, no leak)', async ({ page }) => {
   const r = await page.evaluate(async ({ no }) => {
     const T = window.T; const tok = await T.adminToken(); const rand = () => Math.floor(Math.random() * 1e7);
     await T.req('POST', '/units?btype=residential', tok, { no, floor: 1, sub: 100, status: 'ok' });
     const a = (await T.req('POST', '/residents?btype=residential', tok, { name: 'A', phone: '+9705' + rand(), unit_no: no, password: 'secret6' })).body;
+
+    // A signs in while still the tenant.
+    const tA = (await T.req('POST', '/auth/redeem-code', null, { code: a.login_code })).body.token;
+    const aBefore = (await T.req('GET', '/me/payments', tA)).status;
+
+    // B takes over the unit → A is disabled.
     const b = (await T.req('POST', '/residents?btype=residential', tok, { name: 'B', phone: '+9705' + rand(), unit_no: no, password: 'secret6' })).body;
     await T.req('POST', '/payments?btype=residential', tok, { unit_no: no, amount: 500, kind: 'k', month: 0, year: 2026, date: '2026-01-05', method: 'x' });
-    const tA = (await T.req('POST', '/auth/redeem-code', null, { code: a.login_code })).body.token;
+
+    const aAfter = (await T.req('GET', '/me/payments', tA)).status;             // A's session revoked
+    const aReplay = (await T.req('POST', '/auth/redeem-code', null, { code: a.login_code })).status; // A's QR dead
     const tB = (await T.req('POST', '/auth/redeem-code', null, { code: b.login_code })).body.token;
-    const payA = await (await T.req('GET', '/me/payments', tA)).body;
     const payB = await (await T.req('GET', '/me/payments', tB)).body;
-    return { aSees: payA.length, bSees: payB.length };
+    return { aBefore, aAfter, aReplay, bSees: payB.length };
   }, { no: 'SH' + Math.floor(Math.random() * 1e7) });
-  expect(r.aSees).toBe(0); // previous tenant unlinked — sees nothing
-  expect(r.bSees).toBe(1); // current tenant sees the unit's payment
+  expect(r.aBefore).toBe(200);  // A worked while the tenant
+  expect(r.aAfter).toBe(401);   // reassignment revoked A's live session
+  expect(r.aReplay).toBe(422);  // A's QR no longer redeems
+  expect(r.bSees).toBe(1);      // the current tenant sees the unit's payment
 });
 
 test('super-admin endpoints reject a regular admin and accept the super-admin', async ({ page }) => {
