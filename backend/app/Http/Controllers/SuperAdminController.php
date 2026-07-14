@@ -39,16 +39,31 @@ class SuperAdminController extends Controller
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:6',
             'building_key' => 'required|in:residential,commercial',
+            // WHICH building this admin runs. A btype is not a building: several
+            // share one, and resolving by type alone made every new admin an admin
+            // of building #1 regardless of intent.
+            'building_id' => 'nullable|integer|exists:buildings,id',
         ]);
 
-        $building = Building::where('key', $data['building_key'])->firstOrFail();
+        if (! empty($data['building_id'])) {
+            $building = Building::findOrFail($data['building_id']);
+        } else {
+            // No id given: only safe while the type identifies exactly one
+            // building. Otherwise refuse rather than guess.
+            $matches = Building::where('key', $data['building_key'])->orderBy('id')->get();
+            abort_if($matches->count() > 1, 422,
+                'حدّد المبنى — يوجد أكثر من مبنى بهذا النوع');
+            $building = $matches->first();
+            abort_unless($building, 404, 'لا يوجد مبنى بهذا النوع');
+        }
+
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
             'role' => 'admin',
             'building_id' => $building->id,
-            'building_key' => $data['building_key'],
+            'building_key' => $building->key,
         ]);
 
         return response()->json(
@@ -62,38 +77,41 @@ class SuperAdminController extends Controller
     {
         $this->requireSuperAdmin($r);
         $month = $r->filled('month') ? (int) $r->query('month') : null;
-        $keys = in_array($r->query('btype'), ['residential', 'commercial'])
-            ? [$r->query('btype')]
-            : ['residential', 'commercial'];
+
+        // EVERY building — not "the first one of each type". This loop used to run
+        // over the two type KEYS and resolve each with idForKey(), so the platform
+        // owner's report silently covered 2 buildings no matter how many existed.
+        $q = Building::query()->orderBy('id');
+        if (in_array($r->query('btype'), ['residential', 'commercial'])) {
+            $q->where('key', $r->query('btype'));
+        }
 
         $buildings = [];
         $totCollected = $totExpenses = $totUnits = $totLate = $totOpening = 0;
 
-        foreach ($keys as $bk) {
-            $b = Building::where('key', $bk)->first();
-            if (! $b) {
-                continue;
-            }
-            $payQ = Payment::where('building_id', Building::idForKey($bk));
+        foreach ($q->get() as $b) {
+            $bid = (int) $b->id;
+            $payQ = Payment::where('building_id', $bid);
             if ($month !== null) {
                 $payQ->where('month', $month);
             }
             $collected = (int) $payQ->sum('amount');
             $payCount = $payQ->count();
-            $expenses = (int) Expense::where('building_id', Building::idForKey($bk))->sum('amount');
+            $expenses = (int) Expense::where('building_id', $bid)->sum('amount');
             // Genesis opening so the per-building balance reflects true cash on
             // hand (consistent with the dashboard's opening + revenue − expenses).
-            $opening = (int) (\App\Models\YearSummary::where('building_id', Building::idForKey($bk))
+            $opening = (int) (\App\Models\YearSummary::where('building_id', $bid)
                 ->orderBy('year')->value('opening_balance') ?? 0);
             // Refresh the cached balance/status first — it drifts stale between
             // writes as dues accrue, so a raw "late" count under-reports.
-            Unit::refreshLedgerCache(Building::idForKey($bk));
-            $units = Unit::where('building_id', Building::idForKey($bk))->where('status', '!=', 'vacant')->count();
-            $late = Unit::where('building_id', Building::idForKey($bk))->where('status', 'late')->count();
-            $admins = User::where('building_id', Building::idForKey($bk))->where('role', 'admin')->count();
+            Unit::refreshLedgerCache($bid);
+            $units = Unit::where('building_id', $bid)->where('status', '!=', 'vacant')->count();
+            $late = Unit::where('building_id', $bid)->where('status', 'late')->count();
+            $admins = User::where('building_id', $bid)->where('role', 'admin')->count();
 
             $buildings[] = [
-                'key' => $bk,
+                'id' => $bid,
+                'key' => $b->key,
                 'name' => $b->name,
                 'type' => $b->type,
                 'currency' => $b->currency,

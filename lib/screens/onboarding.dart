@@ -520,6 +520,46 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
   final f = {'name': '', 'phone': '', 'floor': '', 'no': '', 'email': ''};
   bool _sending = false;
 
+  // WHICH building is being joined. A type ('سكني') is not an identity — several
+  // buildings share one — so the resident picks the actual building. Before this,
+  // the server was left to guess and filed every request into the first building
+  // of that type: a stranger's.
+  List<Map<String, dynamic>> _buildings = [];
+  int? _target;
+  bool _loadingBuildings = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBuildings();
+  }
+
+  Future<void> _loadBuildings() async {
+    try {
+      final all = await Api.I.listBuildings();
+      final key = btypeKey(widget.ctx.btype);
+      if (!mounted) return;
+      setState(() {
+        _buildings = all.where((b) => b['key'] == key).toList();
+        // Only one to choose from — pick it, so nobody is asked a question with
+        // a single answer.
+        if (_buildings.length == 1) _target = _buildings.first['id'] as int;
+        _loadingBuildings = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingBuildings = false);
+      widget.ctx.toast(apiErrorText(e), tone: 'late');
+    }
+  }
+
+  String get _targetName {
+    for (final b in _buildings) {
+      if (b['id'] == _target) return '${b['name']}';
+    }
+    return '';
+  }
+
   bool get _valid => _blockers.isEmpty;
 
   /// What is still stopping "إرسال طلب الانضمام" — spelled out rather than left
@@ -527,6 +567,7 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
   List<String> get _blockers {
     final ctx = widget.ctx;
     return [
+      if (_target == null) 'اختر العمارة',
       if (f['name']!.trim().isEmpty) 'الاسم الكامل',
       if (f['phone']!.trim().isEmpty) 'رقم الموبايل',
       if (f['no']!.trim().isEmpty) 'رقم ${ctx.res ? 'الشقة' : 'الوحدة'}',
@@ -563,6 +604,10 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
     setState(() => _sending = true);
     try {
       await Api.I.createJoinRequest(ctx.btype, {
+        // Name the building being joined. A btype alone can't: several buildings
+        // share one, so the server used to file the request into whichever was
+        // first of that type — a stranger's building.
+        'building_id': _target,
         'name': f['name']!.trim(),
         'phone': f['phone']!.trim(),
         'floor': _i(f['floor']!),
@@ -583,7 +628,7 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
     return ScreenScaffold(
       header: AppHeader(
         title: 'الانضمام إلى العمارة',
-        subtitle: ctx.building.name,
+        subtitle: _targetName,
         onBack: ctx.back,
       ),
       children: [
@@ -594,11 +639,37 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
             const IconChip(icon: 'building2', tone: 'navy', size: 42),
             const SizedBox(width: 12),
             Expanded(
-              child: Text('أنت على وشك الانضمام إلى «${ctx.building.name}». بعد إرسال الطلب '
-                  'سيقوم مسؤول العمارة بالموافقة عليه.',
+              child: Text(
+                  _target == null
+                      ? 'اختر العمارة التي تريد الانضمام إليها. بعد إرسال الطلب سيقوم '
+                          'مسؤول العمارة بالموافقة عليه.'
+                      : 'أنت على وشك الانضمام إلى «$_targetName». بعد إرسال الطلب '
+                          'سيقوم مسؤول العمارة بالموافقة عليه.',
                   style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.ink700, height: 1.6)),
             ),
           ]),
+        ),
+        const SizedBox(height: 16),
+        const SectionTitle(text: 'العمارة'),
+        AppCard(
+          child: _loadingBuildings
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              : _buildings.isEmpty
+                  ? Text('لا توجد عمارات مسجّلة بعد — اطلب من مسؤول عمارتك رابط/رمز الانضمام.',
+                      style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.ink700, height: 1.6))
+                  : SelectField(
+                      label: 'اختر العمارة',
+                      icon: 'building2',
+                      value: _target,
+                      options: [
+                        for (final b in _buildings)
+                          SelectOption(b['id'] as int, '${b['name']}'),
+                      ],
+                      onChanged: (v) => setState(() => _target = v as int),
+                    ),
         ),
         const SizedBox(height: 16),
         const SectionTitle(text: 'بياناتك'),

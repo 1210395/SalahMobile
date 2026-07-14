@@ -54,7 +54,6 @@ class AuthController extends Controller
             'whatsapp' => 'nullable|string|max:32',
             'password' => 'required|string|min:6',
             'email_code' => 'nullable|string',
-            'building_key' => 'in:residential,commercial',
         ]);
         // Validation above (unique email/phone) has already passed, so a
         // duplicate never reaches — and thus never consumes — the email code.
@@ -78,10 +77,11 @@ class AuthController extends Controller
             'password' => Hash::make($data['password']),
             'role' => 'resident',
             // Multi-building: a fresh registrant is a pending manager with NO
-            // building yet — they create their own at building-setup. Leaving
-            // building_key/id null keeps them from being scoped into someone
-            // else's building.
-            'building_key' => $data['building_key'] ?? null,
+            // building yet — they create their own at building-setup. building_key
+            // is deliberately NOT accepted from the request: it is a type, not a
+            // building, and honouring it would scope the new account into whatever
+            // building happened to be first of that type (a stranger's).
+            'building_key' => null,
             'email_verified_at' => $emailVerified ? now() : null,
         ]);
 

@@ -154,6 +154,7 @@ int _int(Object? v) => v is int ? v : int.tryParse('${v ?? 0}') ?? 0;
 
 class Building {
   const Building({
+    this.id = 0,
     required this.name,
     required this.address,
     required this.units,
@@ -171,6 +172,11 @@ class Building {
     this.elevatorCheckNotify = false,
     this.elevatorCheckInterval = 6,
   });
+
+  /// Server id. A building type ('سكني'/'تجاري') is NOT an identity — several
+  /// buildings share one — so anything targeting a building (a join request)
+  /// must carry this. 0 = the local sample/offline building.
+  final int id;
   final String name;
   final String address;
   final int units;
@@ -190,6 +196,7 @@ class Building {
   final int elevatorCheckInterval;    // months between periodic checks
 
   factory Building.fromJson(Map<String, dynamic> j) => Building(
+        id: _int(j['id']),
         name: j['name'] ?? '',
         address: j['address'] ?? '',
         units: _int(j['units_count']),

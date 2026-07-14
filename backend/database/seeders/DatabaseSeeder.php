@@ -255,17 +255,12 @@ class DatabaseSeeder extends Seeder
     }
 
     /// The default fee items every building starts with (needed by the payment
-    /// sheet). Shared by the demo seed and the clean production seed.
+    /// sheet). Per BUILDING — the catalogue used to be global, so one admin's
+    /// edit rewrote every other building's fees.
     private function seedPayTypes(): void
     {
-        foreach ([
-            ['sub', 'الاشتراك الشهري', 40, true, false],
-            ['elev', 'رسوم المصعد', 0, true, false],
-            ['guard', 'أجرة الحارس', 0, true, true],
-            ['park', 'أجرة الباركينج', 0, false, true],
-        ] as $i => $p) {
-            PayType::create(['key' => $p[0], 'label' => $p[1], 'amount' => $p[2],
-                'enabled' => $p[3], 'optional' => $p[4], 'sort' => $i]);
+        foreach (Building::pluck('id') as $id) {
+            PayType::seedDefaults((int) $id);
         }
     }
 

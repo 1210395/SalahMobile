@@ -41,6 +41,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/summary', [ApiController::class, 'summary']);
     Route::get('/wa-templates', [ApiController::class, 'waTemplates']);
 
+    // The building directory a signed-in user picks from (join / create-admin).
+    // Behind auth: a building's existence is not public information.
+    Route::get('/buildings', [ApiController::class, 'buildings']);
+
     // Building data (reads scoped to the user's building; admin may pass ?btype)
     Route::get('/units', [ApiController::class, 'units']);
     Route::post('/units', [UnitController::class, 'store']);

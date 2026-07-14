@@ -20,12 +20,13 @@ class NoteController extends Controller
         return $r->query('btype') === 'commercial' ? 'commercial' : 'residential';
     }
 
-    /// The building this request is scoped to — the acting user's own building.
+    /// The building this request is scoped to — the acting user's own building, or
+    /// NOTHING. Never "the first building of this type": that is a stranger's.
     private function buildingId(Request $r): ?int
     {
-        $u = $r->user();
+        $u = $this->actor($r);
 
-        return $u && $u->building_id ? (int) $u->building_id : Building::idForKey($this->bk($r));
+        return $u && $u->building_id ? (int) $u->building_id : null;
     }
 
     public function store(Request $r)

@@ -177,7 +177,10 @@ class GuestHome extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('ملخص عام — ${ctx.building.name}',
+              // A guest belongs to no building, so the server sends an empty shell
+              // rather than some other customer's building. Show the app's own
+              // name instead of a dangling "ملخص عام — ".
+              Text('ملخص عام — ${ctx.building.name.trim().isEmpty ? Brand.appName : ctx.building.name}',
                   style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.gold400)),
               const SizedBox(height: 14),
               Row(

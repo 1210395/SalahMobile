@@ -218,6 +218,10 @@ class AdminsScreen extends StatefulWidget {
 
 class _AdminsScreenState extends State<AdminsScreen> {
   List<Map<String, dynamic>>? _admins;
+  // WHICH building each admin runs. A btype is not a building — several share one
+  // — so the super-admin picks the actual building rather than a type (which used
+  // to attach every new admin to whichever building came first).
+  List<Map<String, dynamic>> _buildings = [];
   String? _error;
 
   @override
@@ -229,10 +233,30 @@ class _AdminsScreenState extends State<AdminsScreen> {
   Future<void> _load() async {
     try {
       final list = await Api.I.listAdmins();
-      if (mounted) setState(() => _admins = list);
+      final buildings = await Api.I.listBuildings();
+      if (mounted) {
+        setState(() {
+          _admins = list;
+          _buildings = buildings;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = apiErrorText(e));
     }
+  }
+
+  String _buildingName(Object? id) {
+    for (final b in _buildings) {
+      if (b['id'] == id) return '${b['name']}';
+    }
+    return '—';
+  }
+
+  String _buildingKey(Object? id) {
+    for (final b in _buildings) {
+      if (b['id'] == id) return '${b['key']}';
+    }
+    return 'residential';
   }
 
   @override
@@ -275,8 +299,10 @@ class _AdminsScreenState extends State<AdminsScreen> {
                         ],
                       ),
                     ),
+                    // The BUILDING they run — a type badge ('سكني') can't tell two
+                    // residential buildings apart, which is the whole point now.
                     AppBadge(
-                        label: a['building_key'] == 'commercial' ? 'تجاري' : 'سكني',
+                        label: _buildingName(a['building_id']),
                         tone: 'gold', small: true),
                   ]),
                 ),
@@ -287,7 +313,8 @@ class _AdminsScreenState extends State<AdminsScreen> {
 
   void _openCreate(Ctx ctx) {
     final f = {'name': '', 'email': '', 'password': ''};
-    Object building = 'residential';
+    // The BUILDING this admin will run — not merely its type.
+    int? buildingId = _buildings.length == 1 ? _buildings.first['id'] as int : null;
     showAppSheet(
       context,
       StatefulBuilder(
@@ -296,6 +323,7 @@ class _AdminsScreenState extends State<AdminsScreen> {
             if (f['name']!.trim().isEmpty) 'اسم المسؤول',
             if (f['email']!.trim().isEmpty) 'البريد الإلكتروني',
             if (f['password']!.trim().length < 6) 'كلمة مرور من 6 أحرف على الأقل',
+            if (buildingId == null) 'اختر المبنى',
           ];
           return SheetShell(
           title: 'إنشاء مسؤول مبنى',
@@ -319,7 +347,8 @@ class _AdminsScreenState extends State<AdminsScreen> {
                       'name': f['name']!.trim(),
                       'email': f['email']!.trim(),
                       'password': f['password']!.trim(),
-                      'building_key': building,
+                      'building_id': buildingId,
+                      'building_key': _buildingKey(buildingId),
                     });
                     ctx.toast('تم إنشاء المسؤول');
                     await _load();
@@ -346,19 +375,21 @@ class _AdminsScreenState extends State<AdminsScreen> {
                 ltr: true,
                 obscure: true,
                 onChanged: (v) => setS(() => f['password'] = v)),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text('المبنى',
-                  style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-            ),
-            Segmented(
-              value: building,
-              onChanged: (v) => setS(() => building = v),
-              options: const [
-                SegOption('residential', 'سكني (شقق)', icon: 'building'),
-                SegOption('commercial', 'تجاري (وحدات)', icon: 'store'),
-              ],
-            ),
+            if (_buildings.isEmpty)
+              Text('لا توجد مبانٍ بعد — لا يمكن إنشاء مسؤول قبل إعداد مبنى.',
+                  style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.ink700, height: 1.6))
+            else
+              SelectField(
+                label: 'المبنى',
+                icon: 'building2',
+                value: buildingId,
+                options: [
+                  for (final b in _buildings)
+                    SelectOption(b['id'] as int,
+                        '${b['name']} — ${b['key'] == 'commercial' ? 'تجاري' : 'سكني'}'),
+                ],
+                onChanged: (v) => setS(() => buildingId = v as int),
+              ),
           ],
           );
         },

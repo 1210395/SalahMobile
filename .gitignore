@@ -58,3 +58,7 @@ v[0-9]*.png
 
 # Never commit backend backup snapshots
 backend-backup-*/
+
+# Playwright run artifacts (screenshots, traces, error contexts)
+test-results/
+e2e/test-results/

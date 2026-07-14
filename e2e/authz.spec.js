@@ -8,6 +8,8 @@ test('guest can read only branding endpoints; financials + data require auth', a
   const r = await page.evaluate(async () => {
     return {
       building: (await window.T.req('GET', '/building')).status, // public (branding)
+      buildingBody: (await window.T.req('GET', '/building')).body,
+      buildings: (await window.T.req('GET', '/buildings')).status, // directory → protected
       settings: (await window.T.req('GET', '/settings')).status, // public (branding)
       payTypes: (await window.T.req('GET', '/pay-types')).status, // public (onboarding)
       summary: (await window.T.req('GET', '/summary')).status, // financials → protected
@@ -15,6 +17,12 @@ test('guest can read only branding endpoints; financials + data require auth', a
     };
   });
   expect(r.building).toBe(200);
+  // ...but 200 must not mean "here is somebody's building": a guest owns none, so
+  // the shell carries no tenant's name, address or elevator phone.
+  expect(r.buildingBody.name).toBe('');
+  expect(r.buildingBody.address).toBe('');
+  expect(r.buildingBody.elevator_phone).toBe('');
+  expect(r.buildings).toBe(401); // the building directory is not public
   expect(r.settings).toBe(200);
   expect(r.payTypes).toBe(200);
   expect(r.summary).toBe(401); // real financials are not public

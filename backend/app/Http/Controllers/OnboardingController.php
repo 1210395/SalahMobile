@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Building;
 use App\Models\JoinRequest;
+use App\Models\PayType;
 use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -16,7 +17,7 @@ class OnboardingController extends Controller
 {
     private function bk(Request $r): string
     {
-        $u = $r->user();
+        $u = $this->actor($r);
         if ($u && $u->role !== 'admin') {
             return $u->building_key === 'commercial' ? 'commercial' : 'residential';
         }
@@ -25,12 +26,13 @@ class OnboardingController extends Controller
             ? 'commercial' : 'residential';
     }
 
-    /// The building this request is scoped to — the acting user's own building.
+    /// The building this request is scoped to — the acting user's own building, or
+    /// NOTHING. Never "the first building of this type": that is a stranger's.
     private function buildingId(Request $r): ?int
     {
-        $u = $r->user();
+        $u = $this->actor($r);
 
-        return $u && $u->building_id ? (int) $u->building_id : Building::idForKey($this->bk($r));
+        return $u && $u->building_id ? (int) $u->building_id : null;
     }
 
     private function userPayload(User $u): array
@@ -52,7 +54,8 @@ class OnboardingController extends Controller
 
     public function subscription(Request $r)
     {
-        $u = $r->user();
+        // PUBLIC route: resolve the token holder explicitly — see Controller::actor().
+        $u = $this->actor($r);
         // A manager's subscription is tied to THEIR building. Before they've set
         // one up, they simply aren't subscribed yet.
         if ($u && $u->building_id) {
@@ -125,6 +128,10 @@ class OnboardingController extends Controller
                 'elevator_fee' => 0,
                 'summary' => [],
             ]);
+            // A building needs its OWN fee catalogue — the payment sheet is built
+            // from it, and it must not be shared with anyone else's building.
+            PayType::seedDefaults($building->id);
+
             // The manager "paid" in the subscribe step — activate this building's
             // subscription (simulated).
             Subscription::create([
@@ -155,16 +162,23 @@ class OnboardingController extends Controller
     {
         $data = $r->validate([
             'btype' => 'required|in:residential,commercial',
+            // WHICH building is being joined. Several buildings share a btype, so
+            // the type alone cannot identify one: without this every request was
+            // filed into the first building of that type — a stranger's building,
+            // which both leaked the applicant's name/phone to its admin and hid
+            // the request from the admin who was supposed to see it.
+            'building_id' => 'required|integer|exists:buildings,id',
             'floor' => 'nullable|integer|min:-50|max:300',
             'unit_no' => 'nullable|string|max:20',
             'name' => 'nullable|string|max:120',
             'phone' => 'nullable|string|max:32',
             'note' => 'nullable|string|max:200',
         ]);
-        $u = $r->user();
-        // building_id is auto-derived from building_key by the model trait.
+        $u = $this->actor($r);
+        $target = Building::findOrFail($data['building_id']);
         $jr = JoinRequest::create([
-            'building_key' => $data['btype'],
+            'building_id' => $target->id,
+            'building_key' => $target->key,
             'user_id' => $u?->id,
             'name' => $data['name'] ?? $u?->name ?? 'ساكن',
             'phone' => $data['phone'] ?? $u?->phone,

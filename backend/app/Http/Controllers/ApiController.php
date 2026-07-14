@@ -40,7 +40,7 @@ class ApiController extends Controller
     /// - Admins (and public/guest endpoints with no user) may select via ?btype=.
     private function bk(Request $r): string
     {
-        $user = $r->user();
+        $user = $this->actor($r);
         // Admins + super-admins may select the building; everyone else is locked
         // to their own (prevents cross-tenant IDOR).
         if ($user && ! in_array($user->role, ['admin', 'superadmin'])) {
@@ -60,7 +60,7 @@ class ApiController extends Controller
     /// list reads so residents can't see building-wide data (or login codes).
     private function isAdmin(Request $r): bool
     {
-        return in_array(optional($r->user())->role, ['admin', 'superadmin']);
+        return in_array(optional($this->actor($r))->role, ['admin', 'superadmin']);
     }
 
     /// The building this request is scoped to (multi-building).
@@ -70,12 +70,13 @@ class ApiController extends Controller
     /// - A guest/public request resolves by type (first building of that type).
     private function buildingId(Request $r): ?int
     {
-        $u = $r->user();
-        if ($u) {
-            return $u->building_id ? (int) $u->building_id : null;
-        }
+        $u = $this->actor($r);
 
-        return Building::idForKey($this->bk($r));
+        // No actor, or an actor with no building yet (a manager mid-onboarding):
+        // they are scoped to NOTHING. This used to fall back to
+        // Building::idForKey() — "the first building of this type" — which served
+        // a real customer's building to strangers.
+        return $u && $u->building_id ? (int) $u->building_id : null;
     }
 
     /// A short, unique, uppercase login code (QR / shareable) for a resident.
@@ -92,14 +93,50 @@ class ApiController extends Controller
 
     public function building(Request $r)
     {
-        // An authenticated user gets THEIR building; a guest gets the first of
-        // the requested type (for the public preview / branding).
         $id = $this->buildingId($r);
         if ($id) {
             return Building::findOrFail($id);
         }
 
-        return Building::where('key', $this->bk($r))->firstOrFail();
+        // Nobody's building. A guest (or a manager who hasn't set one up) used to
+        // be handed the first building of the requested type — so `curl /building`
+        // with no token at all returned a real customer's name, address and
+        // elevator phone. Hand back an empty shell instead: a caller with no
+        // building has no building to see.
+        return response()->json($this->publicShell($this->bk($r)));
+    }
+
+    /// A tenant-free building shell — the app's shape, none of anyone's data.
+    private function publicShell(string $bk): array
+    {
+        return [
+            'id' => 0,
+            'key' => $bk,
+            'name' => '',
+            'address' => '',
+            'type' => $bk === 'commercial' ? 'تجاري' : 'سكني',
+            'subscription' => 0,
+            'currency' => 'NIS',
+            'floors' => 0,
+            'units_count' => 0,
+            'exchange_rate' => 3.75,
+            'elevator_fee' => 0,
+            'elevator_phone' => '',
+            'elevator_company' => '',
+            'summary' => [],
+        ];
+    }
+
+    /// The buildings a signed-in user may pick from — the join screen's picker and
+    /// the super-admin's "which building does this admin run?". Deliberately thin:
+    /// id/name/type only, so the directory can't be mined for addresses or phones.
+    /// Nameless shells (never set up) are excluded — there is nothing to join.
+    public function buildings(Request $r)
+    {
+        return Building::query()
+            ->whereNotNull('name')->where('name', '!=', '')
+            ->orderBy('id')
+            ->get(['id', 'key', 'name', 'type']);
     }
 
     public function summary(Request $r)
@@ -559,6 +596,12 @@ class ApiController extends Controller
     public function updatePayType(Request $r, PayType $payType)
     {
         $this->requireAdmin($r);
+        // Route-model binding hands us ANY fee row by id — check it is ours, or an
+        // admin can edit another building's fees straight through the URL.
+        abort_unless(
+            $this->buildingId($r) && (int) $payType->building_id === $this->buildingId($r),
+            403, 'هذا البند لا يخص مبناك',
+        );
         $data = $r->validate([
             'label' => 'nullable|string|max:120',
             'amount' => 'nullable|integer|min:0|max:'.self::MONEY_MAX,
@@ -732,9 +775,12 @@ class ApiController extends Controller
         return $q->orderByDesc('date')->get();
     }
 
-    public function payTypes()
+    /// The caller's own fee catalogue. (Public route: a guest gets the public
+    /// preview building's, same as GET /building.)
+    public function payTypes(Request $r)
     {
-        return PayType::orderBy('sort')->get();
+        return PayType::where('building_id', $this->buildingId($r))
+            ->orderBy('sort')->get();
     }
 
     public function expenses(Request $r)

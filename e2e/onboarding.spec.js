@@ -37,12 +37,15 @@ test('a resident cannot take over a building via setup (403)', async ({ page }) 
   expect(status).toBe(403);
 });
 
-test('the subscription status endpoint is reachable', async ({ page }) => {
+// Asserting the SHAPE of this response ("has a status key") is what let a real
+// bug through: /subscription is a public route, so $r->user() was null and every
+// admin — subscription active and paid — was told "inactive". Assert the VALUE.
+test('the subscription status reflects the caller\'s own building', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const tok = await window.T.adminToken();
     return (await window.T.req('GET', '/subscription?btype=residential', tok)).body;
   });
-  expect(r).toHaveProperty('status');
+  expect(r.status).toBe('active');
 });
 
 test('a join request is listed for the admin, and approving it admits the resident', async ({ page }) => {
@@ -51,7 +54,11 @@ test('a join request is listed for the admin, and approving it admits the reside
     // fresh user submits a join request for unit 101
     const email = 'jr' + Math.floor(Math.random() * 1e9) + '@e2e.app';
     const applicant = (await window.T.req('POST', '/auth/register', null, { name: 'منضم', email, password: 'secret123' })).body;
-    await window.T.req('POST', '/join-requests', applicant.token, { btype: 'residential', unit_no: '101', name: 'منضم' });
+    // A join request must NAME the building it targets: several buildings share a
+    // btype, so the type alone can't identify one (it used to be filed against
+    // whichever building happened to be first of that type).
+    const target = (await window.T.req('GET', '/building?btype=residential', tok)).body;
+    await window.T.req('POST', '/join-requests', applicant.token, { btype: 'residential', building_id: target.id, unit_no: '101', name: 'منضم' });
     // admin sees it pending
     let list = await (await window.T.req('GET', '/join-requests?btype=residential', tok)).body;
     const jr = list.find((x) => x.user_id === applicant.user.id);
@@ -72,7 +79,8 @@ test('rejecting a join request marks it rejected', async ({ page }) => {
     const tok = await window.T.adminToken();
     const email = 'jx' + Math.floor(Math.random() * 1e9) + '@e2e.app';
     const applicant = (await window.T.req('POST', '/auth/register', null, { name: 'منضم', email, password: 'secret123' })).body;
-    const jr = (await window.T.req('POST', '/join-requests', applicant.token, { btype: 'residential', unit_no: '102' })).body;
+    const target = (await window.T.req('GET', '/building?btype=residential', tok)).body;
+    const jr = (await window.T.req('POST', '/join-requests', applicant.token, { btype: 'residential', building_id: target.id, unit_no: '102' })).body;
     const rej = await window.T.req('POST', '/join-requests/' + jr.id + '/reject?btype=residential', tok);
     return rej.body && rej.body.status;
   });

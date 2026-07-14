@@ -29,9 +29,13 @@ test('app boots and renders against the live backend', async ({ page }) => {
   await page.goto('/');
   await page.waitForTimeout(600);
   await expect(page).toHaveTitle(/عمارتي/);
+  // Liveness probe on the SHAPE, not on a name: a guest belongs to no building,
+  // so the public route returns an empty shell. It used to answer with the first
+  // building in the table — a real customer's — which is what made `!!b.name`
+  // pass here while leaking that customer's data to anyone with curl.
   const ok = await page.evaluate(async ({ API }) => {
     const b = await (await fetch(API + '/building')).json();
-    return !!b.name;
+    return !!b.key;
   }, { API });
   expect(ok).toBeTruthy();
 });

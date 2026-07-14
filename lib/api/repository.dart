@@ -257,6 +257,12 @@ class Api {
     return _obj(data);
   }
 
+  /// The buildings a signed-in user may pick from: {id, key, name, type}. Needed
+  /// because a building TYPE ('سكني') is not an identity — several buildings share
+  /// one — so joining a building, or creating its admin, must name it by id.
+  Future<List<Map<String, dynamic>>> listBuildings() async =>
+      _list((await _dio.get('/buildings')).data);
+
   Future<List<Map<String, dynamic>>> listAdmins() async =>
       _list((await _dio.get('/admins')).data);
 
