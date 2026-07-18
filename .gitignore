@@ -62,3 +62,6 @@ backend-backup-*/
 # Playwright run artifacts (screenshots, traces, error contexts)
 test-results/
 e2e/test-results/
+
+# Build logs (the *.log pattern above doesn't catch the .txt variant)
+build_log.txt
