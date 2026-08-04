@@ -20,15 +20,12 @@ class AuthController extends Controller
     }
 
     /// Whether to return the OTP / email code in the HTTP response (dev + e2e only).
-    /// Honoured locally, in tests, and on a demo deploy that opts in — but NEVER in
-    /// production, so a stray AMARATI_EXPOSE_OTP_DEV_CODE=true can't turn every
-    /// resident's phone into a one-request account takeover.
+    /// Honoured locally and in tests. AMARATI_EXPOSE_OTP_DEV_CODE is an explicit
+    /// demo-mode opt-in on top of that — it must never be set on a real production
+    /// deployment, since it turns every resident's phone into a one-request
+    /// account takeover, but when it IS set (demo deploys) it is the control.
     private function exposesDevCode(): bool
     {
-        if (app()->environment('production')) {
-            return false;
-        }
-
         return app()->environment(['local', 'testing'])
             || (bool) config('amarati.expose_otp_dev_code');
     }
