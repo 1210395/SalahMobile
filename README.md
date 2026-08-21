@@ -99,6 +99,16 @@ For local web review you can deep-link: `/?demo=admin` performs a real login, or
   the in-app role-switcher sheet.
 - Currency is the building's chosen base (NIS/USD/…); per-payment foreign
   currency is converted to the base via the entered exchange rate.
+- **ذمم and اشتراكات are two separate ledgers.** Every payment settles exactly
+  one pot — `bucket` = `sub` (اشتراك شهري), `dues` (ذمم سابقة) or `none`
+  (إيراد فقط: income that settles nothing). The two are reported side by side and
+  never summed, so a resident who is ahead on the subscription while still owing
+  an old ذمة reads as **late**, not "credit". Tapping a resident opens **ملف
+  الساكن** — their record, their login, both pots, and a dated statement of the
+  two that can be shared or saved as PDF.
+- **A person may hold an account in several buildings.** Phone/email are unique
+  *within* a building; when one identifier opens more than one, sign-in asks
+  which building.
 
 ## Redesign overhaul (notes.docx)
 
