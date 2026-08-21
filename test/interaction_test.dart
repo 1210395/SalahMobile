@@ -11,6 +11,8 @@ import 'package:amarati/app.dart';
 import 'package:amarati/common.dart';
 import 'package:amarati/api/auth_store.dart' show AuthUser;
 import 'package:amarati/screens/admin_finance.dart' show AddPaymentSheet, PaymentsScreen;
+import 'package:amarati/screens/admin_units.dart' show UnitsScreen;
+import 'package:amarati/screens/resident_file.dart' show ResidentFileScreen;
 
 Widget _wrap(Widget child) => MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -953,5 +955,28 @@ void main() {
     // Building-wide income/expense cards are gone from the resident home.
     expect(find.text('إيرادات الشهر'), findsNothing);
     expect(find.text('مصروفات الشهر'), findsNothing);
+  });
+
+  // ملف الساكن: the screen builds, shows the resident in its header, and fails
+  // SOFT when the statement can't be fetched (there is no network in a widget
+  // test) — rather than throwing a red screen onto the manager's phone.
+  testWidgets('resident file screen builds and degrades to a message offline', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'units', initialRole: AppRole.admin, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 150));
+    final ctx = tester.widget<UnitsScreen>(find.byType(UnitsScreen)).ctx;
+
+    const u = Unit(
+      id: 'A5', no: '5', floor: 1, resident: 'سالم', kind: 'مستأجر', phone: '0599000001',
+      sub: 100, status: 'late', balance: -400, payer: 'الساكن',
+      duesBalance: -700, subBalance: 300, openingBalance: -700, dbId: 7,
+    );
+    await tester.pumpWidget(_wrap(ResidentFileScreen(ctx: ctx, unit: u, res: true)));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    expect(find.text('سالم'), findsWidgets);
+    // Let the failed fetch land: an Arabic message, still no exception.
+    await tester.pump(const Duration(seconds: 1));
+    expect(tester.takeException(), isNull);
   });
 }
