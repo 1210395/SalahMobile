@@ -137,9 +137,10 @@ class ResidentHome extends StatelessWidget {
               if (!paid)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  // balance is negative when owing; show the overdue amount as a
-                  // positive figure ("المتأخر: $80", not "-$80").
-                  child: NumText('المتأخر: ${fmtUSD(me.balance.abs())}',
+                  // What is owed across BOTH pots, as a positive figure
+                  // ("المتأخر: 80", not "-80"). A credit on one pot must not
+                  // shrink what the resident is actually being chased for.
+                  child: NumText('المتأخر: ${fmtUSD(me.owed)}',
                       style: AppType.num(size: 14, weight: FontWeight.w700, color: Colors.white)),
                 ),
               const SizedBox(height: 14),
@@ -343,7 +344,10 @@ class _ResidentReportState extends State<ResidentReport> {
               DetailGrid(rows: [
                 DetailRow('wallet', 'المطلوب ($selYear)', fmtUSD(me.sub * 12)),
                 DetailRow('checkCircle', 'المسدّد', fmtUSD(paidYear), tone: 'ok'),
-                DetailRow('dollar', 'الرصيد', fmtUSD(me.balance), tone: me.balance < 0 ? 'late' : 'ok'),
+                DetailRow('dollar', 'ذمم سابقة', fmtUSD(me.duesBalance),
+                    tone: me.duesBalance < 0 ? 'late' : 'ok'),
+                DetailRow('wallet', 'اشتراكات شهرية', fmtUSD(me.subBalance),
+                    tone: me.subBalance < 0 ? 'late' : 'ok'),
                 DetailRow('calendar', 'آخر دفعة', myPays.isNotEmpty ? myPays.first.date : '—', ltr: true),
               ]),
             ],
@@ -473,7 +477,7 @@ class ResidentElevator extends StatelessWidget {
                 const SizedBox(height: 14),
                 const AppBadge(label: 'الوصول للمصعد موقوف', tone: 'late', icon: 'alert'),
                 const SizedBox(height: 14),
-                Text('يوجد مبلغ متأخر بقيمة ${fmtUSD(me.balance)}',
+                Text('يوجد مبلغ متأخر بقيمة ${fmtUSD(me.owed)}',
                     textAlign: TextAlign.center,
                     style: AppType.base(size: 14.5, weight: FontWeight.w700, color: AppColors.ink700)),
                 const SizedBox(height: 6),

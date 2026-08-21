@@ -59,6 +59,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // logins were mandatory had no way to ever get one, and a forgotten password
     // could not be reset from anywhere.
     Route::post('/units/{unit}/password', [ApiController::class, 'setUnitPassword']);
+    // كشف حساب الساكن — personal record + both pots + a dated statement.
+    Route::get('/units/{unit}/statement', [ApiController::class, 'unitStatement']);
     Route::post('/co-admins', [ApiController::class, 'createCoAdmin']);
 
     Route::get('/payments', [ApiController::class, 'payments']);

@@ -61,6 +61,11 @@ class UnitController extends Controller
             'sub' => 'nullable|integer|min:0|max:100000000',
             'status' => ['nullable', Rule::in(['ok', 'late', 'credit', 'vacant'])],
             'balance' => 'nullable|integer|min:-2000000000|max:2000000000', // frontend pre-negates ذمم سابقة
+            // The ذمة itself, editable after the fact (same pre-negated
+            // convention as `balance` on create). Sending it rewrites the ذمم pot
+            // WITHOUT touching a single recorded payment — correcting a typo in
+            // the opening debt used to be impossible once the unit was saved.
+            'opening_balance' => 'nullable|integer|min:-2000000000|max:2000000000',
             'payer' => 'nullable|string|max:60',
             'contract_start' => 'nullable|date',
             // A lease can't end before it starts (open-ended = null end is fine).
@@ -94,8 +99,9 @@ class UnitController extends Controller
         if ($wantsLogin) {
             abort_if($phone === '' || $phone === '—', 422,
                 'أضف رقم موبايل — هو اسم المستخدم لحساب الدخول');
-            abort_if(User::where('phone', $phone)->exists(), 422,
-                'رقم الموبايل مستخدم في حساب آخر');
+            abort_if(User::where('building_id', $this->buildingId($r))
+                ->where('phone', $phone)->exists(), 422,
+                'رقم الموبايل مستخدم في حساب آخر بهذا المبنى');
         }
 
         $vacant = ($data['kind'] ?? null) === 'شاغر' || ($data['status'] ?? null) === 'vacant';
@@ -112,6 +118,7 @@ class UnitController extends Controller
             : ((($data['back_debt'] ?? false) && $contractStart) ? $contractStart : now()->startOfMonth()->toDateString());
 
         $balance = 0;
+        $months = 0;
         if (! $vacant) {
             $start = Carbon::parse($billingStart)->startOfMonth();
             $nowM = now()->startOfMonth();
@@ -125,7 +132,7 @@ class UnitController extends Controller
                 'الرصيد المحتسب كبير جداً — تحقّق من الدفعة الشهرية وتاريخ بداية العقد');
         }
 
-        $unit = DB::transaction(function () use ($r, $data, $bk, $vacant, $sub, $balance, $openingBalance, $billingStart, $contractStart, $wantsLogin, $phone) {
+        $unit = DB::transaction(function () use ($r, $data, $bk, $vacant, $sub, $months, $balance, $openingBalance, $billingStart, $contractStart, $wantsLogin, $phone) {
             $unit = Unit::create([
             'building_key' => $bk,
             'building_id' => $this->buildingId($r),
@@ -138,7 +145,9 @@ class UnitController extends Controller
             'sub' => $sub,
             // Status follows the balance (a unit with back-debt is 'late', not
             // 'ok') so the badge never contradicts what's owed. Vacant is manual.
-            'status' => $vacant ? 'vacant' : self::statusForBalance($balance),
+            // Late when EITHER pot is owed — the entered ذمة or the accrued
+            // subscription — never the netted total.
+            'status' => $vacant ? 'vacant' : Unit::statusForBuckets($openingBalance, -$sub * $months),
             'balance' => $balance,
             'opening_balance' => $openingBalance,
             'billing_start' => $billingStart,
@@ -216,11 +225,12 @@ class UnitController extends Controller
         if ($rephoned) {
             abort_if(
                 User::where('phone', $newPhone)
-                    ->where(fn ($q) => $q->where('unit_no', '!=', $oldNo)
-                        ->orWhereNull('unit_no')
-                        ->orWhere('building_id', '!=', $unit->building_id))
+                    // Only a clash INSIDE this building matters now — the same
+                    // person may legitimately hold an account elsewhere.
+                    ->where('building_id', $unit->building_id)
+                    ->where(fn ($q) => $q->where('unit_no', '!=', $oldNo)->orWhereNull('unit_no'))
                     ->exists(),
-                422, 'رقم الموبايل مستخدم في حساب آخر'
+                422, 'رقم الموبايل مستخدم في حساب آخر بهذا المبنى'
             );
         }
 
@@ -240,6 +250,12 @@ class UnitController extends Controller
                     ? null
                     : (array_key_exists('contract_end', $data) ? $data['contract_end'] : $unit->contract_end),
                 'notes' => $data['notes'] ?? $unit->notes,
+                // An edited ذمة سابقة (pre-negated). Absent key = unchanged.
+                'opening_balance' => $vacant
+                    ? $unit->opening_balance
+                    : (array_key_exists('opening_balance', $data) && $data['opening_balance'] !== null
+                        ? $data['opening_balance']
+                        : $unit->opening_balance),
                 // Vacancy is a REVERSIBLE exclusion ("شاغر — مستبعد من الحسابات"):
                 // a vacant unit is already dropped from dues by its status, so we
                 // PRESERVE billing_start. Nulling it here meant un-vacating never
@@ -290,12 +306,15 @@ class UnitController extends Controller
             if ($vacant) {
                 $unit->update(['status' => 'vacant', 'balance' => 0]);
             } else {
-                // Only dues-settling payments reduce charges (an "أخرى" line is
+                // Each pot settles only from its own payments (an "أخرى" line is
                 // income only — #28).
-                $paid = (int) Payment::where('building_id', $unit->building_id)
-                    ->where('unit_no', $unit->no)->where('applies_to_dues', true)->sum('amount');
-                $bal = $unit->derivedBalance($paid);
-                $unit->update(['balance' => $bal, 'status' => self::statusForBalance($bal)]);
+                $paid = Payment::sumsByBucket($unit->building_id);
+                $dues = $unit->duesBalance((int) ($paid['dues'][$unit->no] ?? 0));
+                $sub = $unit->subBalance((int) ($paid['sub'][$unit->no] ?? 0));
+                $unit->update([
+                    'balance' => $dues + $sub,
+                    'status' => Unit::statusForBuckets($dues, $sub),
+                ]);
             }
         });
 

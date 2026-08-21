@@ -7,6 +7,7 @@ use App\Models\OtpCode;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -15,8 +16,28 @@ class AuthController extends Controller
     {
         return [
             'token' => $user->createToken('amarati')->plainTextToken,
-            'user' => $user->only(['id', 'name', 'email', 'phone', 'role', 'building_id', 'building_key', 'unit_no']),
+            'user' => $user->only(['id', 'name', 'email', 'phone', 'role', 'building_id', 'building_key', 'unit_no'])
+                // The same person can hold an account in several buildings, so a
+                // session must say which building it is for.
+                + ['building_name' => $user->building?->name],
         ];
+    }
+
+    /// The "which building?" answer when one identifier matches accounts in more
+    /// than one building. The client re-sends the same credentials plus the
+    /// chosen building_id. Deliberately thin — it is returned before the caller
+    /// has proven anything beyond the password matching that specific account.
+    private function chooseBuilding($candidates)
+    {
+        return response()->json([
+            'choose' => $candidates->map(fn (User $u) => [
+                'building_id' => $u->building_id,
+                'building_name' => $u->building?->name ?? '',
+                'building_key' => $u->building_key,
+                'role' => $u->role,
+                'unit_no' => $u->unit_no,
+            ])->values(),
+        ]);
     }
 
     /// Whether to return the OTP / email code in the HTTP response (dev + e2e only).
@@ -46,8 +67,12 @@ class AuthController extends Controller
     {
         $data = $r->validate([
             'name' => 'required|string|max:120',
-            'email' => 'required|email|unique:users,email',
-            'phone' => 'nullable|string|max:32|unique:users,phone',
+            // Identity is unique WITHIN a building. A self-registering manager
+            // has no building yet, so they are checked against the other
+            // building-less accounts only — the same person may already be a
+            // resident somewhere, and that must not block them.
+            'email' => ['required', 'email', Rule::unique('users', 'email')->whereNull('building_id')],
+            'phone' => ['nullable', 'string', 'max:32', Rule::unique('users', 'phone')->whereNull('building_id')],
             'whatsapp' => 'nullable|string|max:32',
             'password' => 'required|string|min:6',
             'email_code' => 'nullable|string',
@@ -92,16 +117,29 @@ class AuthController extends Controller
             'email' => 'required_without:phone|email',
             'phone' => 'required_without:email|string|max:32',
             'password' => 'required|string|max:200',
+            // Set on the second call when the first returned a `choose` list.
+            'building_id' => 'nullable|integer',
         ]);
-        $user = isset($data['email'])
-            ? User::where('email', $data['email'])->first()
-            : User::where('phone', $data['phone'])->first();
-        if (! $user || $user->isDisabled() || ! $user->password
-            || ! Hash::check($data['password'], $user->password)) {
-            throw ValidationException::withMessages(['email' => ['بيانات الدخول غير صحيحة']]);
+        $q = isset($data['email'])
+            ? User::where('email', $data['email'])
+            : User::where('phone', $data['phone']);
+        if (! empty($data['building_id'])) {
+            $q->where('building_id', $data['building_id']);
         }
 
-        return response()->json($this->payload($user));
+        // Every account this identifier + password opens. One person may hold an
+        // account in several buildings, each with its own password.
+        $candidates = $q->get()->filter(fn (User $u) => ! $u->isDisabled()
+            && $u->password && Hash::check($data['password'], $u->password))->values();
+
+        if ($candidates->isEmpty()) {
+            throw ValidationException::withMessages(['email' => ['بيانات الدخول غير صحيحة']]);
+        }
+        if ($candidates->count() > 1) {
+            return $this->chooseBuilding($candidates);
+        }
+
+        return response()->json($this->payload($candidates->first()));
     }
 
     public function requestEmailCode(Request $r)
@@ -225,6 +263,8 @@ class AuthController extends Controller
             'phone' => 'required|string|max:32',
             'code' => 'required|string|max:64',
             'building_key' => 'in:residential,commercial',
+            // Which building's account to open, when the number matches several.
+            'building_id' => 'nullable|integer',
             // Optional full name captured on first sign-up (used only when the
             // phone-only account is created; never overwrites an existing one).
             'name' => 'nullable|string|max:120',
@@ -252,7 +292,20 @@ class AuthController extends Controller
             $invalid();
         }
 
-        $user = User::where('phone', $data['phone'])->first();
+        $accounts = User::where('phone', $data['phone'])->get()
+            ->filter(fn (User $u) => ! $u->isDisabled())->values();
+        if ($r->filled('building_id')) {
+            $accounts = $accounts->where('building_id', (int) $r->input('building_id'))->values();
+        }
+        // Password-holders can't be opened by OTP (below), so the choice is only
+        // ever between the passwordless accounts.
+        $passwordless = $accounts->filter(fn (User $u) => ! $u->password)->values();
+        if ($passwordless->count() > 1) {
+            // Return the picker WITHOUT consuming the code — the client re-sends
+            // the same code with a building_id, and it is still valid.
+            return $this->chooseBuilding($passwordless);
+        }
+        $user = $passwordless->first() ?? $accounts->first();
 
         // Renters never self-register: an account only exists if a manager issued
         // a QR/invite or approved a join request. An OTP for an unknown phone is

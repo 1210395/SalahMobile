@@ -68,10 +68,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return d != null && d.year == selYear && (selMonth == -1 || d.month - 1 == selMonth);
       }).fold<int>(0, (s, e) => s + e.amount);
 
-  /// Outstanding dues across late units of the active building type.
+  /// Outstanding dues across the active building type — ذمم AND اشتراكات. Both
+  /// pots are counted; netting them first let a subscription credit erase an
+  /// open ذمة (and drop the unit off the "المتأخرون" list entirely).
   int _monthDue(Ctx ctx) => (ctx.res ? kApartments : kShops)
-      .where((u) => u.balance < 0)
-      .fold<int>(0, (s, u) => s + -u.balance);
+      .fold<int>(0, (s, u) => s + u.owed);
 
   /// Monthly chart built from LIVE figures (was static Summary.bars): collected
   /// vs expenses vs dues — recomputes whenever month/year/building changes.
@@ -329,8 +330,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
           final required = u.sub * 12;
           cells.add(xlsx.IntCellValue(paidYear));
           cells.add(xlsx.IntCellValue(required));
-          cells.add(xlsx.IntCellValue(u.balance)); // − = مدين/owes, + = دائن/credit
-          cells.add(xlsx.TextCellValue(u.balance >= 0 ? 'نعم' : 'لا'));
+          // The two pots are exported apart — a single netted number hid an
+          // open ذمة behind a subscription credit.
+          cells.add(xlsx.IntCellValue(u.duesBalance)); // ذمم: − = مدين
+          cells.add(xlsx.IntCellValue(u.subBalance));  // اشتراكات: − = متأخر
+          cells.add(xlsx.TextCellValue(u.owed == 0 ? 'نعم' : 'لا'));
           sheet.appendRow(cells);
           paidAll += paidYear;
           reqAll += required;
@@ -338,7 +342,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           // الذمم — signed balances would let a credited unit cancel a debtor's
           // dues (owe 500 + credit 300 → misleading −200 instead of 500). The
           // per-row column keeps the signed balance above.
-          remAll += u.balance < 0 ? -u.balance : 0;
+          remAll += u.owed;
         }
         // Trailing totals row: per-month column sums + the grand totals.
         sheet.appendRow([
@@ -386,8 +390,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ['المصروفات', '${_monthExpenses()}'],
           ['الذمم', '${_monthDue(ctx)}'],
           [],
-          ['المتأخرون', unitWord, 'الرصيد'],
-          for (final u in lateUnits) [u.resident, u.no, '${u.balance}'],
+          ['المتأخرون', unitWord, 'ذمم سابقة', 'اشتراكات'],
+          for (final u in lateUnits) [u.resident, u.no, '${u.duesOwed}', '${u.subOwed}'],
         ];
       case 'annual':
         return [
@@ -410,7 +414,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           [],
           ['البند', 'القيمة'],
           ['المطلوب سنوياً', '${u.sub * 12}'],
-          ['الرصيد', '${u.balance}'],
+          ['رصيد الذمم السابقة', '${u.duesBalance}'],
+          ['رصيد الاشتراكات', '${u.subBalance}'],
           [],
           ['التاريخ', 'المبلغ', 'النوع', 'الطريقة'],
           for (final p in kPayments.where((p) => p.unit == u.no))
@@ -602,7 +607,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     title: u.resident,
                     sub: '$unitWord ${u.no}',
                     dividerBelow: i < lateUnits.length - 1,
-                    trailing: NumText(fmtUSD(u.balance),
+                    trailing: NumText(fmtUSD(-u.owed),
                         style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.late700)),
                   );
                 }),
@@ -710,8 +715,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
             DetailGrid(rows: [
               DetailRow('wallet', 'المطلوب سنوياً', fmtUSD(required)),
               DetailRow('checkCircle', 'المسدّد', fmtUSD(paid), tone: 'ok'),
-              DetailRow('dollar', 'الرصيد', fmtUSD(u.balance),
-                  tone: u.balance < 0 ? 'late' : u.balance > 0 ? 'credit' : 'ok'),
+              DetailRow('dollar', 'ذمم سابقة', fmtUSD(u.duesBalance),
+                  tone: u.duesBalance < 0 ? 'late' : u.duesBalance > 0 ? 'credit' : 'ok'),
+              DetailRow('wallet', 'اشتراكات شهرية', fmtUSD(u.subBalance),
+                  tone: u.subBalance < 0 ? 'late' : u.subBalance > 0 ? 'credit' : 'ok'),
               DetailRow('calendar', 'آخر دفعة', pays.isNotEmpty ? pays.first.date : '—', ltr: true),
             ]),
           ],
@@ -1015,7 +1022,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
           final recips = target == 'unit'
               ? units.where((u) => u.no == unitNo).toList()
               : target == 'late'
-                  ? units.where((u) => u.balance < 0).toList()
+                  ? units.where((u) => u.owed > 0).toList()
                   : target == 'floor'
                       ? units.where((u) => u.floor == selFloor).toList()
                       : units;

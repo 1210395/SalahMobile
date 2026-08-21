@@ -434,7 +434,9 @@ class AmaratiOverhaulTest extends TestCase
     }
 
     // Payments settle the OLDEST debt first: clearing last year's 1200 leaves only
-    // this year's own charges standing.
+    // this year's own charges standing. The debt here is unpaid SUBSCRIPTION, so
+    // it takes a subscription payment — a "ذمم" line settles the ذمم pot, which
+    // this unit does not have (the two pots never net against each other).
     public function test_a_payment_this_year_clears_the_carried_over_dues_first(): void
     {
         $this->seedBuilding();
@@ -445,7 +447,7 @@ class AmaratiOverhaulTest extends TestCase
             'billing_start' => ($year - 1).'-01-01',
         ]);
         $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
-            'unit_no' => '101', 'amount' => 1200, 'kind' => 'ذمم', 'month' => 0,
+            'unit_no' => '101', 'amount' => 1200, 'kind' => 'دفعة شهرية', 'month' => 0,
             'year' => $year, 'date' => now()->toDateString(), 'method' => 'نقداً',
         ])->assertCreated();
 
@@ -998,10 +1000,11 @@ class AmaratiOverhaulTest extends TestCase
         // generating an overdue alert — status must track the balance.
         $this->seedBuilding();
         $admin = $this->admin();
+        // The unit's debt is an entered ذمة, so it is settled from the ذمم pot.
         $unit = $this->makeUnit(['no' => '101', 'status' => 'late', 'balance' => -100]);
 
         $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
-            'unit_no' => '101', 'amount' => 100, 'kind' => 'اشتراك', 'month' => 0,
+            'unit_no' => '101', 'amount' => 100, 'kind' => 'ذمم', 'month' => 0,
             'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
         ])->assertCreated();
 
@@ -1035,7 +1038,7 @@ class AmaratiOverhaulTest extends TestCase
         $unit = $this->makeUnit(['no' => '101', 'status' => 'late', 'balance' => -100]);
 
         $pay = $this->actingAs($admin, 'sanctum')->postJson('/api/payments', [
-            'unit_no' => '101', 'amount' => 150, 'kind' => 'k', 'month' => 0,
+            'unit_no' => '101', 'amount' => 150, 'kind' => 'ذمم', 'month' => 0,
             'year' => 2026, 'date' => '2026-01-05', 'method' => 'نقداً',
         ])->json();
         $this->assertSame('credit', $unit->fresh()->status); // +50 → credit

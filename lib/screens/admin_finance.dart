@@ -184,7 +184,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   void _openAdd(Ctx ctx) => showAppSheet(context, AddPaymentSheet(ctx: ctx));
 
   void _openEdit(Ctx ctx, Payment p) {
-    final f = {'amount': '${p.amount}', 'kind': p.kind, 'method': p.method};
+    final f = {'amount': '${p.amount}', 'kind': p.kind, 'method': p.method, 'bucket': p.bucket};
     showAppSheet(
       context,
       StatefulBuilder(
@@ -217,6 +217,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   'amount': amount,
                   'kind': f['kind'],
                   'method': f['method'],
+                  // A payment filed against the wrong pot is corrected here.
+                  if (p.unit.isNotEmpty) 'bucket': f['bucket'],
                 });
                 await ctx.reload();
                 ctx.toast('تم حفظ التعديلات');
@@ -243,6 +245,24 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 onChanged: (v) => setS(() => f['amount'] = v)),
             Field(label: 'النوع', icon: 'receipt', value: f['kind']!, onChanged: (v) => f['kind'] = v),
             Field(label: 'طريقة الدفع', icon: 'wallet', value: f['method']!, onChanged: (v) => f['method'] = v),
+            // إيراد خاص has no renter, so it can never settle a pot.
+            if (p.unit.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('تُخصم من',
+                  style: AppType.base(size: 12, weight: FontWeight.w700, color: AppColors.ink600)),
+              const SizedBox(height: 6),
+              Segmented(
+                small: true,
+                value: f['bucket']!,
+                onChanged: (v) => setS(() => f['bucket'] = v as String),
+                options: const [
+                  SegOption('sub', 'اشتراك شهري'),
+                  SegOption('dues', 'ذمم سابقة'),
+                  SegOption('none', 'إيراد فقط'),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
             const SizedBox(height: 6),
             AppButton(
               label: 'حذف الدفعة',
@@ -284,6 +304,12 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             if (!special) DetailRow('building', unitWord, p.unit),
             DetailRow('wallet', 'المبلغ', fmtUSD(p.amount)),
             DetailRow('receipt', 'البند', _kindNoGuard(p.kind)),
+            if (!special)
+              DetailRow('wallet', 'تُخصم من', switch (p.bucket) {
+                'dues' => 'ذمم سابقة',
+                'none' => 'إيراد فقط (لا تُخصم)',
+                _ => 'اشتراك شهري',
+              }),
             DetailRow('calendar', 'الشهر المدفوع عنه', '${monthLabelNum(p.month)} ${p.year}'),
             DetailRow('calendar', 'تاريخ الدفع', p.date, ltr: true),
             DetailRow('dollar', 'طريقة الدفع', p.method),
@@ -842,7 +868,8 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
         if (sel != null && item == PayItem.dues)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _infoNote('الذمم المستحقة: ${fmtMoney(dues, activeCurrency)}.'),
+            child: _infoNote('الذمم السابقة المستحقة: ${fmtMoney(dues, activeCurrency)}'
+                '${subOwedOf(sel) > 0 ? ' · متأخر اشتراكات: ${fmtMoney(subOwedOf(sel), activeCurrency)}' : ''}.'),
           ),
         if (!special && item == PayItem.other)
           Padding(
@@ -1155,6 +1182,12 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
             'date': dateIso,
             'method': method as String,
             'applies_to_dues': appliesToDues,
+            // Which pot this settles — ذمم and اشتراكات are tracked apart.
+            'bucket': switch (item) {
+              PayItem.monthly => 'sub',
+              PayItem.dues => 'dues',
+              PayItem.other => 'none',
+            },
             if (method == 'شيك') 'cheque_date': chequeDate,
             if (method == 'شيك') 'cheque_number': chequeNumber.trim(),
           });

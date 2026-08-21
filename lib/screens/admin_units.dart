@@ -6,6 +6,31 @@ import 'package:flutter/services.dart';
 import '../common.dart';
 import '../api/repository.dart';
 import 'admin_finance.dart' show AddPaymentSheet;
+import 'resident_file.dart' show openResidentFile;
+
+/// One pot's figure beside a unit's name: "ذمم −700". The two pots are shown
+/// as two numbers, never added together — a subscription credit must not make
+/// an open ذمة disappear from the list.
+Widget _potChip(String label, int value) {
+  if (value == 0) return const SizedBox.shrink();
+  final owes = value < 0;
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 2),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label,
+            style: AppType.base(size: 9.5, weight: FontWeight.w600, color: AppColors.ink400)),
+        const SizedBox(width: 4),
+        NumText(fmtUSD(value),
+            style: AppType.num(
+                size: 12,
+                weight: FontWeight.w800,
+                color: owes ? AppColors.late700 : AppColors.credit700)),
+      ],
+    ),
+  );
+}
 
 class UnitsScreen extends StatefulWidget {
   const UnitsScreen({super.key, required this.ctx});
@@ -150,12 +175,12 @@ class _UnitsScreenState extends State<UnitsScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (u.balance != 0)
-                NumText(fmtUSD(u.balance),
-                    style: AppType.num(
-                        size: 13.5,
-                        weight: FontWeight.w800,
-                        color: u.balance < 0 ? AppColors.late700 : AppColors.credit700)),
+              // ذمم and اشتراكات are shown as two figures. Adding them up (the
+              // old single "balance") let a subscription credit hide an open ذمة.
+              if (!vacant) ...[
+                _potChip('ذمم', u.duesBalance),
+                _potChip('اشتراك', u.subBalance),
+              ],
               const SizedBox(height: 2),
               const AppIcon('chevronL', size: 18, color: AppColors.ink300),
             ],
@@ -232,8 +257,10 @@ class _UnitsScreenState extends State<UnitsScreen> {
             DetailRow('phone', 'الجوال / واتساب', u.phone, ltr: true),
             DetailRow('user', 'نوع العقار', u.kind),
             DetailRow('wallet', 'الدفعة الشهرية', fmtUSD(u.sub)),
-            DetailRow('dollar', 'الرصيد', fmtUSD(u.balance),
-                tone: u.balance < 0 ? 'late' : u.balance > 0 ? 'credit' : 'ok'),
+            DetailRow('dollar', 'ذمم سابقة', fmtUSD(u.duesBalance),
+                tone: u.duesBalance < 0 ? 'late' : u.duesBalance > 0 ? 'credit' : 'ok'),
+            DetailRow('wallet', 'اشتراكات شهرية', fmtUSD(u.subBalance),
+                tone: u.subBalance < 0 ? 'late' : u.subBalance > 0 ? 'credit' : 'ok'),
             DetailRow('calendar', 'بداية العقد',
                 u.contractStart.isEmpty ? '—' : u.contractStart, ltr: u.contractStart.isNotEmpty),
             DetailRow('calendar', 'نهاية العقد',
@@ -256,6 +283,20 @@ class _UnitsScreenState extends State<UnitsScreen> {
               },
             ),
           ],
+          const SizedBox(height: 10),
+          AppButton(
+            label: 'ملف الساكن الكامل',
+            full: true,
+            size: BtnSize.lg,
+            icon: 'user',
+            onTap: () {
+              Navigator.of(context).pop();
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                openResidentFile(context, ctx, u, res);
+              });
+            },
+          ),
           const SizedBox(height: 10),
           AppButton(
             label: 'تعديل بيانات ${res ? 'الشقة' : 'الوحدة'}',
@@ -542,6 +583,9 @@ class _UnitsScreenState extends State<UnitsScreen> {
       'floor': '${u.floor}',
       'no': u.no,
       'sub': '${u.sub}',
+      // ذمم سابقة as a positive figure (stored pre-negated). Editable now: a
+      // typo in the opening debt could never be corrected once saved.
+      'prev': '${u.openingBalance == 0 ? '' : -u.openingBalance}',
       'password': '', // blank = leave the existing login alone
     };
     String kind = u.kind == 'مالك' || u.kind == 'مستأجر' ? u.kind : 'مالك';
@@ -596,6 +640,9 @@ class _UnitsScreenState extends State<UnitsScreen> {
                         'phone': f['phone'],
                         'kind': kind,
                         'sub': int.tryParse(f['sub']!.trim()) ?? 0,
+                        // The ذمة itself (pre-negated). It moves ONLY the ذمم
+                        // pot — no recorded payment is touched.
+                        'opening_balance': -(int.tryParse(f['prev']!.trim()) ?? 0),
                         'contract_start': start,
                         'contract_end': ongoing ? '' : end,
                         // #18/#19: balance is set only via payments/back-debt; only the
@@ -671,6 +718,17 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 keyboardType: TextInputType.number,
                 inputFormatters: digitsOnly,
                 onChanged: (v) => setS(() => f['sub'] = v)),
+            Field(
+                label: 'ذمم سابقة',
+                icon: 'dollar',
+                value: f['prev']!,
+                ltr: true,
+                suffix: currencySymbol(activeCurrency),
+                keyboardType: TextInputType.number,
+                inputFormatters: digitsOnly,
+                onChanged: (v) => setS(() => f['prev'] = v)),
+            _notes('الذمم السابقة تُحسب وتُسدَّد بمعزل عن الاشتراك الشهري — '
+                'تعديل هذا الرقم لا يمسّ أي دفعة مُسجَّلة.'),
             DateField(
                 label: 'تاريخ بداية العقد',
                 value: start,

@@ -40,14 +40,26 @@ class AlertGenerator
 
         $created = [];
 
-        // 1) Overdue subscriptions — derived from current unit balances.
+        // 1) Overdue units — the two pots are reported apart, and the amount is
+        // what is actually OWED: netting a subscription credit against an open
+        // ذمة would understate the debt the message is chasing.
+        $paid = Payment::sumsByBucket($buildingId);
         $late = Unit::where('building_id', $buildingId)
             ->where('status', 'late')->orderBy('no')->get();
         foreach ($late as $u) {
+            $owedDues = max(0, -$u->duesBalance((int) ($paid['dues'][$u->no] ?? 0)));
+            $owedSub = max(0, -$u->subBalance((int) ($paid['sub'][$u->no] ?? 0)));
+            $parts = [];
+            if ($owedSub > 0) {
+                $parts[] = 'اشتراكات '.$money($owedSub);
+            }
+            if ($owedDues > 0) {
+                $parts[] = 'ذمم سابقة '.$money($owedDues);
+            }
             $created[] = $this->make($buildingId, [
                 'type' => 'subscription', 'icon' => 'wallet', 'tone' => 'late',
-                'title' => 'اشتراك متأخر — وحدة '.$u->no,
-                'body' => $u->resident.' متأخر عن السداد بمبلغ '.$money((int) abs($u->balance)).'.',
+                'title' => 'مستحقات متأخرة — وحدة '.$u->no,
+                'body' => $u->resident.' عليه '.implode(' + ', $parts).'.',
                 'time_label' => 'الآن', 'channel' => 'whatsapp',
                 // Addressed to that unit only — a resident must never see a
                 // neighbour's name + debt in their own notifications.

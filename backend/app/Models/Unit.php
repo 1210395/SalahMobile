@@ -58,20 +58,45 @@ class Unit extends Model
         return $this->chargesThrough(now());
     }
 
-    /// The derived balance given the unit's total payments (base currency).
-    /// Vacant units are excluded from dues (always 0).
-    public function derivedBalance(int $paymentsSum): int
+    /// ذمم سابقة: the debt entered when the unit was added, less the payments
+    /// booked against it. Negative = still owed. Never touched by a monthly
+    /// subscription payment.
+    public function duesBalance(int $duesPaid): int
     {
-        if ($this->status === 'vacant') {
-            return 0;
-        }
-        return (int) $this->opening_balance - $this->charges() + $paymentsSum;
+        return $this->status === 'vacant' ? 0 : (int) $this->opening_balance + $duesPaid;
+    }
+
+    /// اشتراكات شهرية: the monthly fee accrued since billing_start, less the
+    /// payments booked against it. Negative = behind on the subscription.
+    public function subBalance(int $subPaid): int
+    {
+        return $this->status === 'vacant' ? 0 : $subPaid - $this->charges();
+    }
+
+    /// The two pots combined — the building's cash view of a unit. Reported as a
+    /// total ONLY (dashboards, totals); the unit itself is always shown as two
+    /// separate figures, because a subscription credit must not mask an old debt.
+    public function derivedBalance(int $subPaid, int $duesPaid = 0): int
+    {
+        return $this->duesBalance($duesPaid) + $this->subBalance($subPaid);
     }
 
     /// Status implied by a balance: owes → late, credit → credit, settled → ok.
     public static function statusForBalance(int $balance): string
     {
         return $balance < 0 ? 'late' : ($balance > 0 ? 'credit' : 'ok');
+    }
+
+    /// Status across BOTH pots: a unit is late when EITHER pot is owed, even if
+    /// the other is in credit. Summing first (the old behaviour) let a resident
+    /// who prepaid the subscription read as "credit" while old ذمم stood open.
+    public static function statusForBuckets(int $duesBalance, int $subBalance): string
+    {
+        if ($duesBalance < 0 || $subBalance < 0) {
+            return 'late';
+        }
+
+        return ($duesBalance + $subBalance) > 0 ? 'credit' : 'ok';
     }
 
     /// Recompute + persist the cached balance/status for every non-vacant unit in a
@@ -84,16 +109,14 @@ class Unit extends Model
         if (! $buildingId) {
             return;
         }
-        $paid = Payment::where('building_id', $buildingId)
-            ->where('applies_to_dues', true)
-            ->selectRaw('unit_no, SUM(amount) as s')
-            ->groupBy('unit_no')->pluck('s', 'unit_no');
+        $paid = Payment::sumsByBucket($buildingId);
 
         foreach (self::where('building_id', $buildingId)->where('status', '!=', 'vacant')->get() as $u) {
-            $bal = $u->derivedBalance((int) ($paid[$u->no] ?? 0));
-            $status = self::statusForBalance($bal);
-            if ((int) $u->balance !== $bal || $u->status !== $status) {
-                $u->update(['balance' => $bal, 'status' => $status]);
+            $dues = $u->duesBalance((int) ($paid['dues'][$u->no] ?? 0));
+            $sub = $u->subBalance((int) ($paid['sub'][$u->no] ?? 0));
+            $status = self::statusForBuckets($dues, $sub);
+            if ((int) $u->balance !== $dues + $sub || $u->status !== $status) {
+                $u->update(['balance' => $dues + $sub, 'status' => $status]);
             }
         }
     }

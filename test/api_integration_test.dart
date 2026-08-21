@@ -100,4 +100,50 @@ void main() {
     final sorted = [...kYears]..sort();
     expect(kYears, sorted);
   });
+
+  // ─────────── ذمم vs اشتراكات: two pots, never one number ───────────
+
+  test('a unit carries its two pots apart, and owes on either', () {
+    final u = Unit.fromJson({
+      'no': '5', 'floor': 1, 'resident': 'ساكن', 'kind': 'مستأجر', 'sub': 100,
+      'status': 'late', 'balance': -400, 'opening_balance': -700,
+      'dues_balance': -700, 'sub_balance': 300,
+    });
+    expect(u.duesBalance, -700);
+    expect(u.subBalance, 300);
+    expect(u.duesOwed, 700);
+    expect(u.subOwed, 0);
+    // The subscription credit must NOT reduce what is owed on the ذمم.
+    expect(u.owed, 700);
+    expect(u.openingBalance, -700);
+  });
+
+  test('a server without the split is read as subscription-only', () {
+    final u = Unit.fromJson({'no': '5', 'floor': 1, 'sub': 100, 'balance': -250});
+    expect(u.duesBalance, 0);
+    expect(u.subBalance, -250);
+    expect(u.owed, 250);
+  });
+
+  test('a payment names the pot it settles, old rows included', () {
+    Payment p(Map<String, dynamic> j) => Payment.fromJson({'id': 1, 'unit_no': '5', 'amount': 100, 'month': 0, 'year': 2026, 'date': '2026-01-01', ...j});
+
+    expect(p({'bucket': 'dues'}).bucket, 'dues');
+    expect(p({'bucket': 'none'}).bucket, 'none');
+    // No bucket (a row written before the split): read it off what it does say.
+    expect(p({'kind': 'ذمم'}).bucket, 'dues');
+    expect(p({'kind': 'أخرى', 'applies_to_dues': false}).bucket, 'none');
+    expect(p({'kind': 'دفعة شهرية'}).bucket, 'sub');
+  });
+
+  test('only a subscription payment settles a month', () {
+    final s = DataStore.I;
+    s.loadedBtype = BType.residential;
+    s.payments = [
+      Payment.fromJson({'id': 1, 'unit_no': '5', 'amount': 100, 'kind': 'ذمم', 'bucket': 'dues', 'month': 0, 'year': 2026, 'date': '2026-01-05'}),
+      Payment.fromJson({'id': 2, 'unit_no': '5', 'amount': 40, 'kind': 'دفعة شهرية', 'bucket': 'sub', 'month': 0, 'year': 2026, 'date': '2026-01-05'}),
+    ];
+    // The ذمم payment is not part of January's subscription collection.
+    expect(paidForMonth('5', 0, 2026), 40);
+  });
 }

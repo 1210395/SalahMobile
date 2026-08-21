@@ -87,10 +87,11 @@ String monthsCountLabel(int n) {
 
 // ───────────── Derived ledger helpers (month settlement) ─────────────
 
-/// Dues-settling amount already paid for a unit's given month/year. An "أخرى"
-/// line is income only and never counts toward settling a month (#28).
+/// Subscription amount already paid for a unit's given month/year. Only a
+/// اشتراك شهري line settles a month — an "أخرى" line is income (#28) and a ذمم
+/// line pays down old debt, not this month.
 int paidForMonth(String unitNo, int month, int year) => kPayments
-    .where((p) => p.unit == unitNo && p.month == month && p.year == year && p.appliesToDues)
+    .where((p) => p.unit == unitNo && p.month == month && p.year == year && p.isSub)
     .fold<int>(0, (s, p) => s + p.amount);
 
 /// A month is SETTLED once its dues-settling payments cover the monthly fee.
@@ -98,8 +99,15 @@ int paidForMonth(String unitNo, int month, int year) => kPayments
 bool monthSettled(Unit u, int month, int year) =>
     u.sub > 0 && paidForMonth(u.no, month, year) >= u.sub;
 
-/// What a unit currently owes (0 when settled or in credit).
-int duesOf(Unit u) => u.balance < 0 ? -u.balance : 0;
+/// Outstanding ذمم سابقة for a unit (the ذمم pot only — paying a subscription
+/// never reduces this).
+int duesOf(Unit u) => u.duesOwed;
+
+/// Outstanding اشتراكات شهرية for a unit (the subscription pot only).
+int subOwedOf(Unit u) => u.subOwed;
+
+/// Everything a unit owes across both pots.
+int owedOf(Unit u) => u.owed;
 
 /// All month labels as numbered "شهر N" strings (0-based index → label).
 List<String> get arMonthsNum =>
@@ -230,6 +238,10 @@ class Unit {
     required this.status,
     required this.balance,
     required this.payer,
+    this.duesBalance = 0,
+    this.subBalance = 0,
+    this.openingBalance = 0,
+    this.subCharges = 0,
     this.contractStart = '',
     this.contractEnd = '',
     this.loginCode = '',
@@ -243,7 +255,23 @@ class Unit {
   final String phone;
   final int sub;
   final String status;
+  /// The two pots, kept apart on purpose (a subscription credit must never
+  /// cancel an open ذمة). [balance] is their total — for cash views only.
   final int balance;
+
+  /// ذمم سابقة: the debt entered for this unit, less what was paid against it.
+  /// Negative = still owed.
+  final int duesBalance;
+
+  /// اشتراكات شهرية: what has accrued since billing started, less what was paid.
+  /// Negative = behind.
+  final int subBalance;
+
+  /// The ذمة as originally entered (negative = owed) — what the edit form shows.
+  final int openingBalance;
+
+  /// Total subscription accrued to date (monthly fee × months billed).
+  final int subCharges;
   final String payer;
   final String contractStart; // ISO date, '' if none
   final String contractEnd;   // ISO date, '' = open-ended / مستمر
@@ -252,6 +280,16 @@ class Unit {
 
   /// True when the contract has no end date (ongoing / مستمر).
   bool get ongoing => contractEnd.trim().isEmpty;
+
+  /// Outstanding ذمم (0 when settled or in credit).
+  int get duesOwed => duesBalance < 0 ? -duesBalance : 0;
+
+  /// Outstanding اشتراكات (0 when settled or in credit).
+  int get subOwed => subBalance < 0 ? -subBalance : 0;
+
+  /// Everything the resident owes across BOTH pots — never the netted balance,
+  /// which a credit on one side would quietly shrink.
+  int get owed => duesOwed + subOwed;
 
   factory Unit.fromJson(Map<String, dynamic> j) => Unit(
         id: '${j['ext_id'] ?? j['id']}',
@@ -264,6 +302,12 @@ class Unit {
         sub: _int(j['sub']),
         status: j['status'] ?? 'ok',
         balance: _int(j['balance']),
+        // A server that predates the split sends neither field: treat the whole
+        // balance as the subscription pot so nothing renders as a phantom ذمة.
+        duesBalance: j.containsKey('dues_balance') ? _int(j['dues_balance']) : 0,
+        subBalance: j.containsKey('sub_balance') ? _int(j['sub_balance']) : _int(j['balance']),
+        openingBalance: _int(j['opening_balance']),
+        subCharges: _int(j['sub_charges']),
         payer: j['payer'] ?? '—',
         contractStart: _dateStr(j['contract_start']),
         contractEnd: _dateStr(j['contract_end']),
@@ -291,6 +335,7 @@ class Payment {
     required this.date,
     required this.method,
     this.appliesToDues = true,
+    this.bucket = 'sub',
     this.chequeDate = '',
     this.chequeNumber = '',
   });
@@ -306,6 +351,13 @@ class Payment {
 
   /// False for an "أخرى" line: recorded as income but does NOT settle dues (#28).
   final bool appliesToDues;
+
+  /// The pot this payment settles: 'sub' (اشتراك شهري) | 'dues' (ذمم سابقة) |
+  /// 'none' (إيراد فقط). The two money pots are reported separately.
+  final String bucket;
+
+  bool get isDues => bucket == 'dues';
+  bool get isSub => bucket == 'sub';
   final String chequeDate;   // future due-date when the method is شيك (#26)
   final String chequeNumber;
 
@@ -324,6 +376,13 @@ class Payment {
         appliesToDues: j['applies_to_dues'] == null
             ? true
             : (j['applies_to_dues'] == true || j['applies_to_dues'] == 1),
+        bucket: () {
+          final b = '${j['bucket'] ?? ''}';
+          if (b == 'sub' || b == 'dues' || b == 'none') return b;
+          // Older row/server: read the pot off what it does say.
+          if ('${j['kind'] ?? ''}'.trim() == 'ذمم') return 'dues';
+          return (j['applies_to_dues'] == false || j['applies_to_dues'] == 0) ? 'none' : 'sub';
+        }(),
         chequeDate: _dateStr(j['cheque_date']),
         chequeNumber: '${j['cheque_number'] ?? ''}',
       );

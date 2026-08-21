@@ -46,6 +46,30 @@ class AuthUser {
       );
 }
 
+/// One of the buildings an identifier opens an account in.
+class BuildingChoice {
+  const BuildingChoice({required this.id, required this.name, this.role = '', this.unitNo});
+  final int id;
+  final String name;
+  final String role;
+  final String? unitNo;
+
+  factory BuildingChoice.fromJson(Map<String, dynamic> j) => BuildingChoice(
+        id: j['building_id'] is int ? j['building_id'] : int.tryParse('${j['building_id']}') ?? 0,
+        name: '${j['building_name'] ?? ''}',
+        role: '${j['role'] ?? ''}',
+        unitNo: j['unit_no'] == null ? null : '${j['unit_no']}',
+      );
+}
+
+/// The same person may hold an account in several buildings (they rent in one
+/// and own in another). When the credentials open more than one, the server
+/// answers with the list instead of a token and the app asks which building.
+class MultipleBuildingsException implements Exception {
+  const MultipleBuildingsException(this.choices);
+  final List<BuildingChoice> choices;
+}
+
 class AuthStore {
   AuthStore._();
   static final AuthStore I = AuthStore._();
@@ -85,6 +109,14 @@ class AuthStore {
   }
 
   Future<void> _persist(Map<String, dynamic> data) async {
+    // No token + a `choose` list: the credentials matched accounts in several
+    // buildings and the caller must name one.
+    final choose = data['choose'];
+    if (data['token'] == null && choose is List) {
+      throw MultipleBuildingsException(
+        [for (final c in choose) BuildingChoice.fromJson(Map<String, dynamic>.from(c))],
+      );
+    }
     token = data['token'];
     user = AuthUser.fromJson(Map<String, dynamic>.from(data['user']));
     ApiClient.I.setToken(token);
@@ -92,8 +124,9 @@ class AuthStore {
     await prefs.setString(_tokenKey, token!);
   }
 
-  Future<AuthUser> loginEmail(String email, String password) async {
-    final res = await _dio.post('/auth/login', data: {'email': email, 'password': password});
+  Future<AuthUser> loginEmail(String email, String password, {int? buildingId}) async {
+    final res = await _dio.post('/auth/login',
+        data: {'email': email, 'password': password, 'building_id': ?buildingId});
     await _persist(Map<String, dynamic>.from(res.data));
     return user!;
   }
@@ -101,9 +134,10 @@ class AuthStore {
   /// Sign in with an identifier that may be an email OR a mobile number plus a
   /// password (the backend's `login` now accepts either). Sends `email` when the
   /// identifier looks like an email, otherwise `phone`.
-  Future<AuthUser> loginIdentifier(String identifier, String password) async {
+  Future<AuthUser> loginIdentifier(String identifier, String password, {int? buildingId}) async {
     final key = identifier.contains('@') ? 'email' : 'phone';
-    final res = await _dio.post('/auth/login', data: {key: identifier, 'password': password});
+    final res = await _dio.post('/auth/login',
+        data: {key: identifier, 'password': password, 'building_id': ?buildingId});
     await _persist(Map<String, dynamic>.from(res.data));
     return user!;
   }
@@ -161,10 +195,13 @@ class AuthStore {
   }
 
   Future<AuthUser> verifyOtp(String phone, String code,
-      {String? role, String? buildingKey, String? name}) async {
+      {String? role, String? buildingKey, String? name, int? buildingId}) async {
     final res = await _dio.post('/auth/verify-otp', data: {
       'phone': phone,
       'code': code,
+      // Which building's account, when the number opens more than one. The code
+      // is NOT consumed while choosing, so the same one is re-sent here.
+      'building_id': ?buildingId,
       'role': ?role,
       'building_key': ?buildingKey,
       // Optional full name captured on first sign-up (ignored by the backend if

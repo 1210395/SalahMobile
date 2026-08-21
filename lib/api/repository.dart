@@ -152,9 +152,22 @@ class Api {
       _dio.post('/co-admins', queryParameters: {'btype': btypeKey(b)}, data: body);
 
   /// Set (or create) the login for the renter on a unit; reissues their QR code.
-  Future<void> setUnitPassword(BType b, int unitId, String password) =>
-      _dio.post('/units/$unitId/password',
-          queryParameters: {'btype': btypeKey(b)}, data: {'password': password});
+  /// كشف حساب الساكن — personal record, both pots, and the dated statement.
+  /// Assembled server-side so the screen, a PDF and an export always agree.
+  Future<Map<String, dynamic>> unitStatement(BType b, int unitId) async {
+    final r = await _dio.get('/units/$unitId/statement',
+        queryParameters: {'btype': btypeKey(b)});
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  /// Set the renter's password (this also reissues their QR). Returns the
+  /// updated resident record so the caller can show the new login code — the
+  /// password itself is only ever known here, at the moment it is set.
+  Future<Map<String, dynamic>> setUnitPassword(BType b, int unitId, String password) async {
+    final r = await _dio.post('/units/$unitId/password',
+        queryParameters: {'btype': btypeKey(b)}, data: {'password': password});
+    return Map<String, dynamic>.from(r.data);
+  }
 
   // ───────────── Payments / expenses edit + delete ─────────────
   Future<void> updatePayment(BType b, int id, Map<String, dynamic> body) =>

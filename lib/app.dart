@@ -248,6 +248,9 @@ class _AmaratiAppState extends State<AmaratiApp> {
     String? code,
     String? name,
     bool codeLogin = false,
+    // Set on the retry after the building picker: which of the person's
+    // accounts to open (the same identifier can exist in several buildings).
+    int? buildingId,
     required AppRole role,
     required BType btype,
   }) async {
@@ -258,12 +261,12 @@ class _AmaratiAppState extends State<AmaratiApp> {
         await AuthStore.I.redeemCode(code ?? '');
       } else if (phone != null && code != null) {
         await AuthStore.I.verifyOtp(phone, code,
-            role: role.name, buildingKey: btypeKey(btype), name: name);
+            role: role.name, buildingKey: btypeKey(btype), name: name, buildingId: buildingId);
       } else if (phone != null && password != null) {
         // Mobile-number identifier + password.
-        await AuthStore.I.loginIdentifier(phone, password);
+        await AuthStore.I.loginIdentifier(phone, password, buildingId: buildingId);
       } else {
-        await AuthStore.I.loginEmail(email ?? '', password ?? '');
+        await AuthStore.I.loginEmail(email ?? '', password ?? '', buildingId: buildingId);
       }
       final u = AuthStore.I.user!;
       final r = _roleFromString(u.role);
@@ -294,6 +297,16 @@ class _AmaratiAppState extends State<AmaratiApp> {
                 : _homeFor(r);
       });
       return null;
+    } on MultipleBuildingsException catch (e) {
+      // These credentials open an account in more than one building — ask which,
+      // then sign in again naming it.
+      if (mounted) setState(() => _busy = false);
+      final picked = await _pickBuilding(e.choices);
+      if (picked == null) return null; // dismissed — not an error
+      return _signIn(
+        email: email, password: password, phone: phone, code: code, name: name,
+        codeLogin: codeLogin, buildingId: picked, role: role, btype: btype,
+      );
     } catch (e) {
       if (mounted) setState(() => _busy = false);
       return _errText(e);
@@ -329,6 +342,38 @@ class _AmaratiAppState extends State<AmaratiApp> {
       if (mounted) setState(() => _busy = false);
       return _errText(e);
     }
+  }
+
+  /// Ask which building to sign in to when one identifier opens several. Returns
+  /// the chosen building id, or null if the sheet was dismissed.
+  Future<int?> _pickBuilding(List<BuildingChoice> choices) async {
+    int? picked;
+    await showAppSheet(
+      context,
+      SheetShell(
+        title: 'اختر البناية',
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text('لهذا الحساب أكثر من بناية — اختر البناية التي تريد الدخول إليها:',
+                style: AppType.base(
+                    size: 12.5, weight: FontWeight.w600, color: AppColors.ink600, height: 1.6)),
+          ),
+          ...choices.map((c) => ListRow(
+                title: c.name.trim().isEmpty ? 'بناية ${c.id}' : c.name,
+                sub: c.role == 'admin'
+                    ? 'مسؤول'
+                    : (c.unitNo == null ? 'ساكن' : 'ساكن · وحدة ${c.unitNo}'),
+                chevron: true,
+                onTap: () {
+                  picked = c.id;
+                  Navigator.of(context).pop();
+                },
+              )),
+        ],
+      ),
+    );
+    return picked;
   }
 
   Future<void> _signOut() async {

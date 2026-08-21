@@ -9,6 +9,7 @@ use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 // عمارتي — super-admin (platform owner): create building admins and view a
 // global report across all buildings with filters.
@@ -36,7 +37,10 @@ class SuperAdminController extends Controller
         $this->requireSuperAdmin($r);
         $data = $r->validate([
             'name' => 'required|string|max:120',
-            'email' => 'required|email|unique:users,email',
+            // Unique within the building this admin will run (the same person
+            // may already be an admin or a resident of another building).
+            'email' => ['required', 'email',
+                Rule::unique('users', 'email')->where('building_id', $r->input('building_id'))],
             'password' => 'required|string|min:6',
             'building_key' => 'required|in:residential,commercial',
             // WHICH building this admin runs. A btype is not a building: several
