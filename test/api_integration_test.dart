@@ -8,6 +8,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:amarati/data/sample_data.dart';
+import 'package:amarati/screens/report_pdf.dart' show reportBlocks;
 
 void main() {
   setUp(() => DataStore.I.clear());
@@ -145,5 +146,59 @@ void main() {
     ];
     // The ذمم payment is not part of January's subscription collection.
     expect(paidForMonth('5', 0, 2026), 40);
+  });
+
+  // ─────────── report layout: one table per block, not one for all ───────────
+
+  test('a report splits into a table per block', () {
+    // A unit report: a four-column summary, then a five-column payment list.
+    // Rendered as one table, the summary's header governed both and the payment
+    // columns were crushed — the client's "the report's shape needs fixing".
+    final rows = <List<String>>[
+      ['البند', 'المطلوب', 'المسدّد', 'المتبقي'],
+      ['اشتراكات 2026', '600', '150', '450'],
+      [],
+      ['التاريخ', 'المبلغ', 'البند', 'يُخصم من', 'الطريقة'],
+      ['2026-01-05', '150', 'دفعة شهرية', 'اشتراك شهري', 'نقداً'],
+    ];
+
+    final blocks = reportBlocks(rows);
+    expect(blocks.length, 2);
+    expect(blocks.first.first.length, 4);   // the summary keeps four columns
+    expect(blocks.last.first.length, 5);    // the payments keep five
+    expect(blocks.first.first.last, 'المتبقي');
+  });
+
+  test('blank and whitespace-only rows both end a block', () {
+    final blocks = reportBlocks(<List<String>>[
+      ['a'],
+      [],
+      ['b'],
+      ['  ', ''],
+      ['c'],
+    ]);
+    expect(blocks.length, 3);
+  });
+
+  // ─────────── a unit report names the right person, or nobody ───────────
+
+  test('a report never falls back to a different resident', () {
+    Unit u(String no, String name) => Unit.fromJson({
+          'no': no, 'floor': 1, 'resident': name, 'kind': 'مستأجر', 'sub': 100,
+          'status': 'ok', 'balance': 0,
+        });
+    final units = [u('1', 'موفق عليان'), u('2', 'بلال الفارس')];
+
+    // The one that was asked for.
+    expect(resolveReportUnit(units, '2')?.resident, 'بلال الفارس');
+
+    // Nothing picked yet: the first, which the picker is showing.
+    expect(resolveReportUnit(units, null)?.resident, 'موفق عليان');
+
+    // The picked unit is gone (renamed, vacated, other building type). This used
+    // to hand back units.first — so a report asked for بلال arrived carrying
+    // موفق's name and payments.
+    expect(resolveReportUnit(units, '99'), isNull);
+    expect(resolveReportUnit(const [], '2'), isNull);
   });
 }

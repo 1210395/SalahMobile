@@ -113,6 +113,22 @@ int owedOf(Unit u) => u.owed;
 List<String> get arMonthsNum =>
     [for (var i = 0; i < 12; i++) monthLabelNum(i)];
 
+/// The unit a per-unit report is FOR, given what the picker last chose.
+///
+/// Returns null when the choice no longer matches anything — a renamed unit, a
+/// switch between سكني and تجاري, a unit marked vacant. The screen and the
+/// export both used `orElse: () => units.first` instead, so a report asked for
+/// one resident silently came out in another resident's name, carrying their
+/// payments. A report that cannot name the right person must name nobody.
+Unit? resolveReportUnit(List<Unit> units, String? wanted) {
+  if (units.isEmpty) return null;
+  if (wanted == null) return units.first; // nothing picked yet; the picker shows which
+  for (final u in units) {
+    if (u.no == wanted) return u;
+  }
+  return null;
+}
+
 /// Right-hand square label for a unit row: "طابق 1 شقة 1" (residential) /
 /// "طابق 1 وحدة 1" (commercial), derived from the unit's own floor + number.
 String floorUnitLabel(Unit u, bool residential) =>

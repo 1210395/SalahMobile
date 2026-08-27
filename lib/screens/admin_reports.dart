@@ -378,6 +378,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String _csvCell(String v) =>
       v.contains(',') || v.contains('"') || v.contains('\n') ? '"${v.replaceAll('"', '""')}"' : v;
 
+  /// What this report IS, for the PDF's centred heading. A unit report must say
+  /// whose it is: the resident asked for one man's statement and got another
+  /// man's name at the top, because the title was the same generic phrase for
+  /// every report the screen could produce.
+  String _reportTitle(Ctx ctx) {
+    final unitWord = ctx.res ? 'شقة' : 'وحدة';
+    switch (tab) {
+      case 'monthly':
+        return selMonth == -1
+            ? 'التقرير الشهري — كل أشهر $selYear'
+            : 'التقرير الشهري — ${monthLabelNum(selMonth)} $selYear';
+      case 'annual':
+        return 'التقرير السنوي — $selYear';
+      case 'unit':
+        final u = _selectedUnit(ctx);
+        return u == null
+            ? 'تقرير ${ctx.res ? 'الشقة' : 'الوحدة'}'
+            : 'كشف حساب — ${u.resident} · $unitWord ${u.no}';
+      default:
+        return 'تقرير المصروفات — $selYear';
+    }
+  }
+
   List<List<String>> _reportRows(Ctx ctx, List<Unit> lateUnits) {
     final unitWord = ctx.res ? 'الشقة' : 'الوحدة';
     switch (tab) {
@@ -408,18 +431,42 @@ class _ReportsScreenState extends State<ReportsScreen> {
         if (units.isEmpty) {
           return [['تقرير ${ctx.res ? 'الشقة' : 'الوحدة'}', '—']];
         }
-        final u = units.firstWhere((x) => x.no == (selUnitNo ?? units.first.no), orElse: () => units.first);
+        // A stale or unmatched selection used to fall back to units.first, so a
+        // report asked for one resident came out carrying another one's name and
+        // payments. Say nothing rather than say someone else.
+        final u = _selectedUnit(ctx);
+        if (u == null) {
+          return [['اختر ${ctx.res ? 'الشقة' : 'الوحدة'} أولاً']];
+        }
+
+        final subRequired = u.sub * 12;
+        final subPaid = kPayments
+            .where((p) => p.unit == u.no && p.year == selYear && p.isSub)
+            .fold<int>(0, (t, p) => t + p.amount);
+        final duesEntered = -u.openingBalance; // stored pre-negated
+        final duesPaid = kPayments
+            .where((p) => p.unit == u.no && p.isDues)
+            .fold<int>(0, (t, p) => t + p.amount);
+        final subLeft = subRequired - subPaid > 0 ? subRequired - subPaid : 0;
+        final duesLeft = duesEntered - duesPaid > 0 ? duesEntered - duesPaid : 0;
+
         return [
-          ['تقرير ${ctx.res ? 'الشقة' : 'الوحدة'}', '${u.no} — ${u.resident}'],
+          // Block 1 — the figures, with المتبقي as a column of its own.
+          ['البند', 'المطلوب', 'المسدّد', 'المتبقي'],
+          ['اشتراكات $selYear', '$subRequired', '$subPaid', '$subLeft'],
+          ['ذمم سابقة', '$duesEntered', '$duesPaid', '$duesLeft'],
+          ['الإجمالي', '${subRequired + duesEntered}', '${subPaid + duesPaid}', '${subLeft + duesLeft}'],
           [],
-          ['البند', 'القيمة'],
-          ['المطلوب سنوياً', '${u.sub * 12}'],
-          ['رصيد الذمم السابقة', '${u.duesBalance}'],
-          ['رصيد الاشتراكات', '${u.subBalance}'],
-          [],
-          ['التاريخ', 'المبلغ', 'النوع', 'الطريقة'],
+          // Block 2 — the payments, in their own table with their own headers.
+          ['التاريخ', 'المبلغ', 'البند', 'يُخصم من', 'الطريقة'],
           for (final p in kPayments.where((p) => p.unit == u.no))
-            [p.date, '${p.amount}', p.kind, p.method],
+            [
+              p.date,
+              '${p.amount}',
+              p.kind,
+              p.isDues ? 'ذمم سابقة' : (p.isSub ? 'اشتراك شهري' : 'إيراد فقط'),
+              p.method,
+            ],
         ];
       default:
         return [
@@ -470,7 +517,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           const SizedBox(width: 8),
           RoundBtn(
               icon: 'download',
-              onTap: () => _exportSheet(ctx, 'تصدير التقرير', _reportRows(ctx, lateUnits))),
+              onTap: () => _exportSheet(ctx, _reportTitle(ctx), _reportRows(ctx, lateUnits))),
         ]),
       ),
       nav: ctx.adminNav,
@@ -508,7 +555,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 icon: 'file',
                 onTap: () async {
                   try {
-                    await exportReportPdf('تصدير التقرير', _reportRows(ctx, lateUnits),
+                    await exportReportPdf(_reportTitle(ctx), _reportRows(ctx, lateUnits),
                         buildingName: ctx.building.name);
                   } catch (e) {
                     ctx.toast(apiErrorText(e), tone: 'late');
@@ -663,21 +710,54 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ];
   }
 
+  /// The unit a unit-report is FOR — never a fallback to somebody else.
+  ///
+  /// The screen and the export both used `orElse: () => units.first`, so a
+  /// selection that no longer matched (a renamed unit, a switch between سكني and
+  /// تجاري, a unit marked vacant) silently produced a report carrying another
+  /// resident's name and payments. Returning null makes that state visible.
+  Unit? _selectedUnit(Ctx ctx) => resolveReportUnit(
+        (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList(),
+        selUnitNo,
+      );
+
   List<Widget> _unit(Ctx ctx) {
     final units = (ctx.res ? kApartments : kShops).where((u) => u.status != 'vacant').toList();
     if (units.isEmpty) {
       return [EmptyState(icon: 'building', title: ctx.res ? 'لا توجد شقق فعّالة' : 'لا توجد وحدات فعّالة')];
     }
-    final no = selUnitNo ?? units.first.no;
-    final u = units.firstWhere((x) => x.no == no, orElse: () => units.first);
+    final picked = _selectedUnit(ctx);
+    if (picked == null) {
+      return [
+        SelectField(
+          label: 'اختر الوحدة',
+          icon: 'building',
+          options: units.map((x) => SelectOption(x.no, '${x.no} — ${x.resident}')).toList(),
+          value: units.first.no,
+          onChanged: (v) => setState(() => selUnitNo = v as String),
+        ),
+        const EmptyState(
+            icon: 'building',
+            title: 'الوحدة المختارة لم تعد موجودة',
+            sub: 'اختر وحدة من القائمة أعلاه'),
+      ];
+    }
+    final u = picked;
     final s = kStatusMap[u.status]!;
     final pays = kPayments.where((p) => p.unit == u.no).toList();
     final required = u.sub * 12;
-    // "المسدّد" = the unit's ACTUAL payments for the selected year, not
-    // required+balance (which over-counted a credited unit — the 909 bug).
-    final paid = kPayments
-        .where((p) => p.unit == u.no && p.year == selYear)
+    // "المسدّد" = the unit's ACTUAL payments, not required+balance (which
+    // over-counted a credited unit — the 909 bug). Each pot counts only its own
+    // payments: a ذمم payment does not settle a month's subscription.
+    final subPaidYear = kPayments
+        .where((p) => p.unit == u.no && p.year == selYear && p.isSub)
         .fold<int>(0, (sum, p) => sum + p.amount);
+    final duesEntered = -u.openingBalance;
+    final duesPaidAll = kPayments
+        .where((p) => p.unit == u.no && p.isDues)
+        .fold<int>(0, (sum, p) => sum + p.amount);
+    final subLeft = required - subPaidYear > 0 ? required - subPaidYear : 0;
+    final duesLeft = duesEntered - duesPaidAll > 0 ? duesEntered - duesPaidAll : 0;
 
     return [
       SelectField(
@@ -713,12 +793,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 14),
             DetailGrid(rows: [
-              DetailRow('wallet', 'المطلوب سنوياً', fmtUSD(required)),
-              DetailRow('checkCircle', 'المسدّد', fmtUSD(paid), tone: 'ok'),
-              DetailRow('dollar', 'ذمم سابقة', fmtUSD(u.duesBalance),
-                  tone: u.duesBalance < 0 ? 'late' : u.duesBalance > 0 ? 'credit' : 'ok'),
-              DetailRow('wallet', 'اشتراكات شهرية', fmtUSD(u.subBalance),
-                  tone: u.subBalance < 0 ? 'late' : u.subBalance > 0 ? 'credit' : 'ok'),
+              DetailRow('wallet', 'اشتراكات $selYear المطلوبة', fmtUSD(required)),
+              DetailRow('checkCircle', 'المسدّد من الاشتراكات', fmtUSD(subPaidYear), tone: 'ok'),
+              // The figure a manager reads out to a resident: what is still owed,
+              // per pot, and then the two together.
+              DetailRow('dollar', 'المتبقي من الاشتراكات', fmtUSD(subLeft),
+                  tone: subLeft > 0 ? 'late' : 'ok'),
+              DetailRow('wallet', 'ذمم سابقة', fmtUSD(duesEntered)),
+              DetailRow('checkCircle', 'المسدّد من الذمم', fmtUSD(duesPaidAll), tone: 'ok'),
+              DetailRow('dollar', 'المتبقي من الذمم', fmtUSD(duesLeft),
+                  tone: duesLeft > 0 ? 'late' : 'ok'),
+              DetailRow('dollar', 'إجمالي المتبقي', fmtUSD(subLeft + duesLeft),
+                  tone: (subLeft + duesLeft) > 0 ? 'late' : 'ok'),
               DetailRow('calendar', 'آخر دفعة', pays.isNotEmpty ? pays.first.date : '—', ltr: true),
             ]),
           ],

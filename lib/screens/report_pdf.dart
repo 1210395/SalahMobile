@@ -26,6 +26,33 @@ Future<String> saveReportPdf(String title, List<List<String>> rows,
   return saveToDownloads(fileName, bytes);
 }
 
+/// Split the flat row list into tables: a blank row ends the current block, and
+/// each block's first row is its own header.
+///
+/// Reports are built as one flat list of rows with blank separators. Rendering
+/// that as a SINGLE table made the very first row the header for everything, so
+/// a unit report's five payment columns were squeezed into the two its summary
+/// needed — which is what "the report's shape needs fixing" meant.
+List<List<List<String>>> reportBlocks(List<List<String>> rows) {
+  final blocks = <List<List<String>>>[];
+  var current = <List<String>>[];
+  for (final r in rows) {
+    if (r.isEmpty || r.every((c) => c.trim().isEmpty)) {
+      if (current.isNotEmpty) blocks.add(current);
+      current = <List<String>>[];
+      continue;
+    }
+    current.add(r);
+  }
+  if (current.isNotEmpty) blocks.add(current);
+  return blocks;
+}
+
+String _today() {
+  final d = DateTime.now();
+  return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
 Future<Uint8List> buildReportPdf(String title, List<List<String>> rows,
     {String? buildingName}) async {
   final base = await PdfGoogleFonts.cairoRegular();
@@ -48,34 +75,44 @@ Future<Uint8List> buildReportPdf(String title, List<List<String>> rows,
       theme: pw.ThemeData.withFont(base: base, bold: bold),
       margin: const pw.EdgeInsets.all(28),
       header: (ctx) => pw.Container(
-        margin: const pw.EdgeInsets.only(bottom: 14),
+        margin: const pw.EdgeInsets.only(bottom: 16),
         child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
           children: [
+            // The building's name and the report's title, centred and large
+            // enough to read across a desk — these are printed and handed to
+            // people, not skimmed on a screen.
             pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.center,
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
                 if (logo != null) ...[
-                  pw.Image(pw.MemoryImage(logo), width: 42, height: 42),
-                  pw.SizedBox(width: 10),
+                  pw.Image(pw.MemoryImage(logo), width: 46, height: 46),
+                  pw.SizedBox(width: 12),
                 ],
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('عمارتي',
-                          style: pw.TextStyle(font: bold, fontSize: 20, color: PdfColor.fromInt(0xFF232858))),
-                      if (building.isNotEmpty)
-                        pw.Text(building,
-                            style: pw.TextStyle(font: bold, fontSize: 13, color: PdfColor.fromInt(0xFF232858))),
-                    ],
-                  ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    if (building.isNotEmpty)
+                      pw.Text(building,
+                          style: pw.TextStyle(
+                              font: bold, fontSize: 22, color: PdfColor.fromInt(0xFF232858))),
+                    pw.Text('عمارتي',
+                        style: pw.TextStyle(
+                            font: base, fontSize: 12, color: PdfColor.fromInt(0xFFA8873A))),
+                  ],
                 ),
               ],
             ),
+            pw.SizedBox(height: 10),
+            pw.Text(title,
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(font: bold, fontSize: 16, color: PdfColors.black)),
             pw.SizedBox(height: 4),
-            pw.Text(title, style: pw.TextStyle(font: base, fontSize: 12, color: PdfColors.grey600)),
-            pw.Divider(color: PdfColor.fromInt(0xFFC2A24E), thickness: 1.2),
+            pw.Text('تاريخ الإصدار: ${_today()}',
+                style: pw.TextStyle(font: base, fontSize: 10, color: PdfColors.grey600)),
+            pw.SizedBox(height: 8),
+            pw.Divider(color: PdfColor.fromInt(0xFFC2A24E), thickness: 1.4),
           ],
         ),
       ),
@@ -85,14 +122,19 @@ Future<Uint8List> buildReportPdf(String title, List<List<String>> rows,
             style: pw.TextStyle(font: base, fontSize: 9, color: PdfColors.grey500)),
       ),
       build: (ctx) => [
-        if (rows.isNotEmpty)
+        // Each blank row starts a NEW table, and each table carries its own
+        // header row. Everything used to be forced into a single table whose
+        // header was the title line, so a unit report's five payment columns
+        // were crushed into the two the summary needed.
+        for (final block in reportBlocks(rows)) ...[
           pw.TableHelper.fromTextArray(
-            headers: rows.first,
-            data: rows.skip(1).toList(),
+            headers: block.first,
+            data: block.skip(1).toList(),
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-            headerStyle: pw.TextStyle(font: bold, fontSize: 10, color: PdfColors.white),
+            headerStyle: pw.TextStyle(font: bold, fontSize: 12, color: PdfColors.white),
             headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF232858)),
-            cellStyle: pw.TextStyle(font: base, fontSize: 10),
+            cellStyle: pw.TextStyle(font: base, fontSize: 11.5),
+            cellHeight: 24,
             cellAlignment: pw.Alignment.centerRight,
             headerAlignment: pw.Alignment.centerRight,
             rowDecoration: const pw.BoxDecoration(
@@ -100,6 +142,8 @@ Future<Uint8List> buildReportPdf(String title, List<List<String>> rows,
             ),
             oddRowDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFFAFBFD)),
           ),
+          pw.SizedBox(height: 18),
+        ],
       ],
     ),
   );
