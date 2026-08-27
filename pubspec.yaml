@@ -2,7 +2,7 @@ name: amarati
 description: "عمارتي — إدارة المباني السكنية والتجارية. Building & commercial-complex management app (Arabic, RTL)."
 publish_to: 'none'
 
-version: 1.5.2+15
+version: 1.5.3+16
 
 environment:
   sdk: ^3.11.4
