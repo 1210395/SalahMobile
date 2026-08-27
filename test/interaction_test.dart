@@ -979,4 +979,23 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(tester.takeException(), isNull);
   });
+
+  // The server refuses a registration whose e-mail was never confirmed, so the
+  // form must ASK for the code — otherwise the user meets a server error after
+  // filling everything in.
+  testWidgets('register demands the email confirmation code', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'register', initialRole: AppRole.guest, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('رمز التأكيد'), findsWidgets);
+  });
+
+  // A manager who forgets their password must have a way back in.
+  testWidgets('login offers password recovery', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'login', initialRole: AppRole.guest, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('نسيت كلمة المرور؟'), findsOneWidget);
+  });
 }

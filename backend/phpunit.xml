@@ -28,6 +28,10 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- The suite's many register calls predate mandatory e-mail
+             confirmation; the requirement itself is covered explicitly in
+             VerificationDeliveryTest, which turns it back on. -->
+        <env name="AMARATI_REQUIRE_EMAIL_VERIFICATION" value="false"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

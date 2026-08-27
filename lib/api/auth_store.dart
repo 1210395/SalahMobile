@@ -212,6 +212,28 @@ class AuthStore {
     return user!;
   }
 
+  /// Ask for a password-reset code. Returns the dev code when the deployment has
+  /// no mailer (so the flow stays usable), else null — the code went by e-mail.
+  Future<String?> forgotPassword(String email) async {
+    final res = await _dio.post('/auth/forgot-password', data: {'email': email});
+    return res.data['dev_code'] as String?;
+  }
+
+  /// Consume the code, set the new password, and open the session it returns.
+  /// Throws [MultipleBuildingsException] when the address opens accounts in more
+  /// than one building — the code is NOT consumed then, so the retry works.
+  Future<AuthUser> resetPassword(String email, String code, String password,
+      {int? buildingId}) async {
+    final res = await _dio.post('/auth/reset-password', data: {
+      'email': email,
+      'code': code,
+      'password': password,
+      'building_id': ?buildingId,
+    });
+    await _persist(Map<String, dynamic>.from(res.data));
+    return user!;
+  }
+
   Future<void> logout() async {
     try {
       if (token != null) await _dio.post('/auth/logout');

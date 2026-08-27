@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api/auth_store.dart';
+import '../api/repository.dart' show apiErrorText;
 import '../common.dart';
 
 class SplashScreen extends StatelessWidget {
@@ -318,6 +319,122 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<String?> _redeemCode() =>
       widget.ctx.signIn(code: loginCode.trim(), codeLogin: true, role: AppRole.resident, btype: btype);
 
+  /// Password recovery for a manager: mail a code, then set a new password and
+  /// sign straight in with it. Residents don't need this — their manager can
+  /// reissue their password and QR from the resident's file.
+  void _openForgotPassword() {
+    final f = {'email': val.contains('@') ? val.trim() : '', 'code': '', 'pass': ''};
+    String? devCode;
+    bool sent = false;
+
+    showAppSheet(
+      context,
+      StatefulBuilder(builder: (sheetCtx, setS) {
+        final emailOk = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(f['email']!.trim());
+        final blockers = <String>[
+          if (!emailOk) 'بريد إلكتروني صحيح',
+          if (sent && f['code']!.trim().length < 4) 'رمز التأكيد المُرسَل إلى بريدك',
+          if (sent && f['pass']!.length < 6) 'كلمة مرور جديدة من 6 أحرف على الأقل',
+        ];
+
+        return SheetShell(
+          title: 'استعادة كلمة المرور',
+          footer: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (blockers.isNotEmpty) ...[
+              FormBlockedHint(reasons: blockers, title: 'لمتابعة الاستعادة:'),
+              const SizedBox(height: 10),
+            ],
+            AppButton(
+              label: sent ? 'تعيين كلمة المرور والدخول' : 'إرسال رمز الاستعادة',
+              full: true,
+              size: BtnSize.lg,
+              icon: sent ? 'check' : 'mail',
+              disabled: blockers.isNotEmpty,
+              onTap: () async {
+                final ctx = widget.ctx;
+                if (!sent) {
+                  try {
+                    final dev = await AuthStore.I.forgotPassword(f['email']!.trim());
+                    setS(() {
+                      sent = true;
+                      devCode = dev;
+                    });
+                    ctx.toast(dev == null
+                        ? 'إن كان البريد مسجلاً لدينا فستصلك رسالة بالرمز'
+                        : 'تم إنشاء الرمز');
+                  } catch (e) {
+                    ctx.toast(apiErrorText(e), tone: 'late');
+                  }
+                  return;
+                }
+                Navigator.of(sheetCtx).pop();
+                try {
+                  await AuthStore.I.resetPassword(
+                      f['email']!.trim(), f['code']!.trim(), f['pass']!);
+                  // Reuse the normal sign-in path so the session, the building
+                  // bundle and the landing screen are set up exactly as usual.
+                  final err = await ctx.signIn(
+                      email: f['email']!.trim(),
+                      password: f['pass']!,
+                      role: AppRole.admin,
+                      btype: btype);
+                  ctx.toast(err ?? 'تم تعيين كلمة المرور الجديدة');
+                } catch (e) {
+                  ctx.toast(apiErrorText(e), tone: 'late');
+                }
+              },
+            ),
+          ]),
+          children: [
+            Text('أدخل بريدك الإلكتروني المسجَّل، ونرسل لك رمزاً لتعيين كلمة مرور جديدة.',
+                style: AppType.base(
+                    size: 12.5, weight: FontWeight.w600, color: AppColors.ink600, height: 1.6)),
+            const SizedBox(height: 12),
+            Field(
+              label: 'البريد الإلكتروني',
+              icon: 'mail',
+              value: f['email']!,
+              ltr: true,
+              keyboardType: TextInputType.emailAddress,
+              onChanged: (v) => setS(() => f['email'] = v),
+            ),
+            if (sent) ...[
+              if (devCode != null) ...[
+                // Only ever present on a deployment with no mail provider.
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                      color: AppColors.gold100, borderRadius: BorderRadius.circular(12)),
+                  child: Text('رمز الاستعادة (وضع التجربة): $devCode',
+                      style: AppType.base(
+                          size: 13, weight: FontWeight.w800, color: AppColors.ink900)),
+                ),
+                const SizedBox(height: 12),
+              ],
+              Field(
+                label: 'رمز الاستعادة',
+                icon: 'lock',
+                value: f['code']!,
+                ltr: true,
+                keyboardType: TextInputType.number,
+                onChanged: (v) => setS(() => f['code'] = v),
+              ),
+              Field(
+                label: 'كلمة المرور الجديدة',
+                icon: 'lock',
+                obscure: true,
+                ltr: true,
+                value: f['pass']!,
+                onChanged: (v) => setS(() => f['pass'] = v),
+              ),
+            ],
+          ],
+        );
+      }),
+    );
+  }
+
   Future<void> _scanCode() async {
     final ctx = widget.ctx;
     final raw = await scanQr(context);
@@ -405,6 +522,17 @@ class _LoginScreenState extends State<LoginScreen> {
             ltr: true,
             marginBottom: 0,
             onChanged: (v) => setState(() => pass = v),
+          ),
+          // A manager who forgot their password had no way back into their own
+          // building — no reset existed anywhere in the app.
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              onPressed: _openForgotPassword,
+              child: Text('نسيت كلمة المرور؟',
+                  style: AppType.base(
+                      size: 12.5, weight: FontWeight.w700, color: AppColors.navy700)),
+            ),
           ),
         ],
         const SizedBox(height: 22),
@@ -506,15 +634,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (f['password']!.length < 6) 'كلمة سر من 6 أحرف على الأقل',
         if (f['password']!.length >= 6 && f['password'] != f['confirm'])
           'تطابق كلمة السر مع تأكيدها',
+        // The server will not create an account with an unconfirmed address, so
+        // the form asks for the code instead of letting the user submit into a
+        // server error.
+        if (f['code']!.trim().length < 4) 'رمز التأكيد المُرسَل إلى بريدك',
       ];
 
   // Email verification is OPTIONAL — a manager can create the account with just
   // the base fields. If they DID enter a code, it must be a plausible length so a
   // half-typed code isn't submitted. (Email delivery isn't wired yet; once it is,
   // the code simply becomes a real verification step with no other change.)
-  bool get _valid =>
-      _fieldsValid &&
-      (f['code']!.trim().isEmpty || f['code']!.trim().length >= 4);
+  bool get _valid => _fieldsValid;
 
   Future<void> _sendCode() async {
     final ctx = widget.ctx;

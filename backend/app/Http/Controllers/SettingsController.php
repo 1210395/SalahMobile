@@ -56,7 +56,9 @@ class SettingsController extends Controller
         // Platform branding (app name, logo, colours) is shared by EVERY building, so
         // only the super-admin may change it — not an individual building manager.
         abort_unless($r->user()->role === 'superadmin', 403, 'يتطلب صلاحية المسؤول العام');
-        $r->validate(['logo' => 'required|image|max:4096']);
+        // NOT a bare `image` rule: that accepts SVG, which is an XSS payload
+        // served from our own origin once it lands on the public disk.
+        $r->validate(['logo' => 'required|image|mimes:jpg,jpeg,png,webp|max:4096']);
         $path = $r->file('logo')->store('brand', 'public');
         $url = Storage::disk('public')->url($path);
         Setting::put('logo_url', $url);

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\EmailCode;
 use App\Models\OtpCode;
 use App\Models\User;
+use App\Services\Notifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -40,15 +41,43 @@ class AuthController extends Controller
         ]);
     }
 
-    /// Whether to return the OTP / email code in the HTTP response (dev + e2e only).
-    /// Honoured locally and in tests. AMARATI_EXPOSE_OTP_DEV_CODE is an explicit
-    /// demo-mode opt-in on top of that — it must never be set on a real production
-    /// deployment, since it turns every resident's phone into a one-request
-    /// account takeover, but when it IS set (demo deploys) it is the control.
-    private function exposesDevCode(): bool
+    /// Whether the generated code may still be echoed in the HTTP response.
+    ///
+    /// A REAL provider on that channel always wins: once SMS or SMTP is
+    /// configured the echo turns itself off, so a hosted deployment cannot be
+    /// left handing out other people's login codes because an env var was
+    /// forgotten. Without a provider, the echo is what keeps the flow usable in
+    /// development and on a demo box.
+    private function exposesDevCode(string $channel): bool
     {
+        if (Notifier::channelIsLive($channel)) {
+            return false;
+        }
+
         return app()->environment(['local', 'testing'])
             || (bool) config('amarati.expose_otp_dev_code');
+    }
+
+    /// Whether a manager must confirm their e-mail to register: only when the
+    /// code can actually reach them (a live mailer, or the dev echo).
+    private function emailVerificationRequired(): bool
+    {
+        return (bool) config('amarati.require_email_verification')
+            && (Notifier::channelIsLive('mail') || $this->exposesDevCode('mail'));
+    }
+
+    /// Issue + store a fresh 6-digit code, invalidating any outstanding one.
+    private function issueCode(string $model, string $key, string $value): string
+    {
+        $model::where($key, $value)->where('used', false)->update(['used' => true]);
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $model::create([
+            $key => $value,
+            'code' => Hash::make($code),   // stored hashed - never in the clear
+            'expires_at' => now()->addMinutes((int) config('amarati.code_ttl_minutes', 10)),
+        ]);
+
+        return $code;
     }
 
     /// A short, unique, uppercase login code (QR / shareable). 8 hex chars.
@@ -75,7 +104,18 @@ class AuthController extends Controller
             'phone' => ['nullable', 'string', 'max:32', Rule::unique('users', 'phone')->whereNull('building_id')],
             'whatsapp' => 'nullable|string|max:32',
             'password' => 'required|string|min:6',
-            'email_code' => 'nullable|string',
+            // Required as soon as a code can actually reach the person — through a
+            // real mailer, or the dev echo on a box without one. A deployment with
+            // neither can still register (nobody could ever confirm).
+            'email_code' => [
+                $this->emailVerificationRequired() ? 'required' : 'nullable',
+                'string', 'max:64',
+            ],
+        ], [
+            // Arabic, like every other message the app surfaces — an APK already
+            // in the field shows this text verbatim in its toast.
+            'email_code.required' => 'أدخل رمز التأكيد المُرسَل إلى بريدك الإلكتروني',
+            'email_code.max' => 'رمز التأكيد غير صحيح',
         ]);
         // Validation above (unique email/phone) has already passed, so a
         // duplicate never reaches — and thus never consumes — the email code.
@@ -142,27 +182,21 @@ class AuthController extends Controller
         return response()->json($this->payload($candidates->first()));
     }
 
-    public function requestEmailCode(Request $r)
+    public function requestEmailCode(Request $r, Notifier $notifier)
     {
         $data = $r->validate(['email' => 'required|email']);
 
-        // Invalidate any outstanding codes for this email, then issue one fresh
-        // 6-digit code stored only as a hash.
-        EmailCode::where('email', $data['email'])->where('used', false)->update(['used' => true]);
-        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-        EmailCode::create([
-            'email' => $data['email'],
-            'code' => Hash::make($code),
-            'expires_at' => now()->addMinutes(10),
-        ]);
+        $code = $this->issueCode(EmailCode::class, 'email', $data['email']);
+        $sent = $notifier->sendEmailCode($data['email'], $code);
 
-        // In production this is sent over SMTP. Locally — or on a demo deploy with
-        // AMARATI_EXPOSE_OTP_DEV_CODE=true — we return it so the email-verify flow
-        // is testable without a mail provider.
-        $body = ['sent' => true];
-        if ($this->exposesDevCode()) {
+        $body = ['sent' => $sent];
+        if ($this->exposesDevCode('mail')) {
             $body['dev_code'] = $code;
         }
+        // Nothing delivered it and nothing echoed it - say so, instead of leaving
+        // the user waiting for a mail that will never arrive.
+        abort_if(! $sent && ! isset($body['dev_code']), 503,
+            'تعذّر إرسال رمز التحقق حالياً — حاول مرة أخرى بعد قليل');
 
         return response()->json($body);
     }
@@ -232,27 +266,19 @@ class AuthController extends Controller
         return response()->json($payload);
     }
 
-    public function requestOtp(Request $r)
+    public function requestOtp(Request $r, Notifier $notifier)
     {
         $data = $r->validate(['phone' => 'required|string|max:32']);
 
-        // Invalidate any outstanding codes for this phone, then issue one fresh
-        // 6-digit code stored only as a hash.
-        OtpCode::where('phone', $data['phone'])->where('used', false)->update(['used' => true]);
-        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-        OtpCode::create([
-            'phone' => $data['phone'],
-            'code' => Hash::make($code),
-            'expires_at' => now()->addMinutes(10),
-        ]);
+        $code = $this->issueCode(OtpCode::class, 'phone', $data['phone']);
+        $sent = $notifier->sendSmsCode($data['phone'], $code);
 
-        // In production this is sent over SMS. Locally — or on a demo deploy with
-        // AMARATI_EXPOSE_OTP_DEV_CODE=true — we return it so the phone-login flow
-        // is testable without an SMS provider.
-        $body = ['sent' => true];
-        if ($this->exposesDevCode()) {
+        $body = ['sent' => $sent];
+        if ($this->exposesDevCode('sms')) {
             $body['dev_code'] = $code;
         }
+        abort_if(! $sent && ! isset($body['dev_code']), 503,
+            'تعذّر إرسال رمز التحقق حالياً — حاول لاحقاً أو سجّل الدخول بكلمة المرور');
 
         return response()->json($body);
     }
@@ -329,6 +355,73 @@ class AuthController extends Controller
 
         // All checks passed — now consume the code.
         $otp->update(['used' => true]);
+
+        return response()->json($this->payload($user));
+    }
+
+    /// Step 1 of password recovery: mail a code to the address.
+    ///
+    /// The answer is the SAME whether or not an account exists — otherwise this
+    /// endpoint becomes a way to enumerate who is registered.
+    public function forgotPassword(Request $r, Notifier $notifier)
+    {
+        $data = $r->validate(['email' => 'required|email']);
+
+        $exists = User::where('email', $data['email'])->whereNotNull('password')->exists();
+        $body = ['sent' => true];
+
+        if ($exists) {
+            $code = $this->issueCode(EmailCode::class, 'email', $data['email']);
+            $notifier->sendEmailCode($data['email'], $code, 'reset');
+            if ($this->exposesDevCode('mail')) {
+                $body['dev_code'] = $code;
+            }
+        }
+
+        return response()->json($body);
+    }
+
+    /// Step 2: consume the code and set a new password.
+    ///
+    /// Every existing session of that account is revoked — a reset is what you
+    /// do when you fear someone else has the old password, so their tokens must
+    /// die with it. One address can belong to accounts in several buildings, so
+    /// the caller names which (or is asked).
+    public function resetPassword(Request $r)
+    {
+        $data = $r->validate([
+            'email' => 'required|email',
+            'code' => 'required|string|max:64',
+            'password' => 'required|string|min:6',
+            'building_id' => 'nullable|integer',
+        ]);
+
+        $q = User::where('email', $data['email'])->whereNotNull('password');
+        if (! empty($data['building_id'])) {
+            $q->where('building_id', $data['building_id']);
+        }
+        $accounts = $q->get();
+
+        if ($accounts->isEmpty()) {
+            throw ValidationException::withMessages(['email' => ['لا يوجد حساب بهذا البريد']]);
+        }
+        if ($accounts->count() > 1) {
+            // Ask which building BEFORE consuming the code, so the same code
+            // still works on the second call.
+            return $this->chooseBuilding($accounts);
+        }
+
+        $this->consumeEmailCodeOrFail($data['email'], $data['code']);
+
+        $user = $accounts->first();
+        $user->tokens()->delete();
+        $user->forceFill([
+            'password' => Hash::make($data['password']),
+            'email_verified_at' => $user->email_verified_at ?? now(),
+            // A reset also lifts a disabled flag: it is the owner proving control
+            // of the address on file.
+            'disabled_at' => null,
+        ])->save();
 
         return response()->json($this->payload($user));
     }

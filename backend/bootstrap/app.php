@@ -29,6 +29,14 @@ return Application::configure(basePath: dirname(__DIR__))
             | Request::HEADER_X_FORWARDED_HOST
             | Request::HEADER_X_FORWARDED_PORT
             | Request::HEADER_X_FORWARDED_PROTO);
+        // An unauthenticated API call must answer 401. Laravel's default tries
+        // to redirect a guest to a `login` ROUTE, which an API-only app has no
+        // reason to define — so every token-less request that did not happen to
+        // send `Accept: application/json` blew up as a 500 and wrote a full stack
+        // trace to the log (110 of them so far). Returning null here makes the
+        // middleware throw AuthenticationException instead, which the JSON
+        // renderer below turns into a clean 401.
+        $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') ? null : '/');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

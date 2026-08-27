@@ -20,6 +20,11 @@ Route::middleware('throttle:'.config('amarati.auth_rate', 6).',1')->group(functi
     Route::post('/auth/request-email-code', [AuthController::class, 'requestEmailCode']);
     Route::post('/auth/verify-email-code', [AuthController::class, 'verifyEmailCode']);
     Route::post('/auth/redeem-code', [AuthController::class, 'redeemCode']);
+    // Password recovery for a manager — the only account type that signs in with
+    // a password it chose itself. Without this, a forgotten password locked the
+    // building's manager out permanently.
+    Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 });
 
 // ───────────── Public (brand theming + onboarding only) ─────────────
