@@ -536,7 +536,7 @@ class AmaratiOverhaulTest extends TestCase
         $admin = $this->admin();
         $this->addRenter($admin, '101', '+970599666000');
         $token = $this->postJson('/api/auth/login',
-            ['phone' => '+970599666000', 'password' => 'secret6'])->json('token');
+            ['phone' => '+970599666000', 'password' => 'secret6789'])->json('token');
 
         // addRenter() used actingAs(); forget the sticky test guard so the bearer
         // token below actually resolves as the resident, not the admin.
@@ -548,7 +548,7 @@ class AmaratiOverhaulTest extends TestCase
 
     // ───────── Tenant turnover: the old login must stop working ─────────
 
-    private function addRenter(User $admin, string $no, string $phone, string $pw = 'secret6'): array
+    private function addRenter(User $admin, string $no, string $phone, string $pw = 'secret6789'): array
     {
         return $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
             'no' => $no, 'floor' => 1, 'resident' => 'ساكن', 'phone' => $phone,
@@ -562,14 +562,14 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $admin = $this->admin();
         $unit = $this->addRenter($admin, '101', '+970599111000');
-        $this->postJson('/api/auth/login', ['phone' => '+970599111000', 'password' => 'secret6'])->assertOk();
+        $this->postJson('/api/auth/login', ['phone' => '+970599111000', 'password' => 'secret6789'])->assertOk();
 
         $this->actingAs($admin, 'sanctum')->putJson("/api/units/{$unit['id']}", [
             'no' => '101', 'floor' => 1, 'kind' => 'شاغر', 'status' => 'vacant', 'sub' => 100,
         ])->assertOk();
 
         // Neither the password nor an OTP can sign the moved-out tenant back in.
-        $this->postJson('/api/auth/login', ['phone' => '+970599111000', 'password' => 'secret6'])
+        $this->postJson('/api/auth/login', ['phone' => '+970599111000', 'password' => 'secret6789'])
             ->assertStatus(422);
         $req = $this->postJson('/api/auth/request-otp', ['phone' => '+970599111000'])->json();
         $this->postJson('/api/auth/verify-otp',
@@ -588,17 +588,17 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $admin = $this->admin();
         $this->addRenter($admin, '101', '+970599222000'); // tenant A
-        $this->postJson('/api/auth/login', ['phone' => '+970599222000', 'password' => 'secret6'])->assertOk();
+        $this->postJson('/api/auth/login', ['phone' => '+970599222000', 'password' => 'secret6789'])->assertOk();
 
         // Tenant B onto the same unit via /residents.
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'تينانت B', 'phone' => '+970599333000', 'unit_no' => '101', 'password' => 'secret6',
+            'name' => 'تينانت B', 'phone' => '+970599333000', 'unit_no' => '101', 'password' => 'secret6789',
         ])->assertCreated();
 
         // A is out; B is in.
-        $this->postJson('/api/auth/login', ['phone' => '+970599222000', 'password' => 'secret6'])
+        $this->postJson('/api/auth/login', ['phone' => '+970599222000', 'password' => 'secret6789'])
             ->assertStatus(422);
-        $this->postJson('/api/auth/login', ['phone' => '+970599333000', 'password' => 'secret6'])->assertOk();
+        $this->postJson('/api/auth/login', ['phone' => '+970599333000', 'password' => 'secret6789'])->assertOk();
     }
 
     // A disabled tenant's live session is revoked immediately, not just future logins.
@@ -612,7 +612,7 @@ class AmaratiOverhaulTest extends TestCase
         $adminToken = $this->postJson('/api/auth/login',
             ['email' => 'admin@test.app', 'password' => 'password'])->json('token');
         $token = $this->postJson('/api/auth/login',
-            ['phone' => '+970599444000', 'password' => 'secret6'])->json('token');
+            ['phone' => '+970599444000', 'password' => 'secret6789'])->json('token');
 
         // addRenter() used actingAs(), whose sticky test user would mask the bearer
         // token below — forget the guards so /me really resolves via the token.
@@ -636,11 +636,11 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
             'no' => '101', 'floor' => 1, 'resident' => 'سارة', 'kind' => 'مستأجر',
-            'phone' => '+970599111222', 'sub' => 100, 'status' => 'ok', 'password' => 'secret6',
+            'phone' => '+970599111222', 'sub' => 100, 'status' => 'ok', 'password' => 'secret6789',
         ])->assertCreated();
 
         $this->assertDatabaseHas('users', ['unit_no' => '101', 'role' => 'resident']);
-        $this->postJson('/api/auth/login', ['phone' => '+970599111222', 'password' => 'secret6'])
+        $this->postJson('/api/auth/login', ['phone' => '+970599111222', 'password' => 'secret6789'])
             ->assertOk()->assertJsonPath('user.role', 'resident');
     }
 
@@ -652,12 +652,12 @@ class AmaratiOverhaulTest extends TestCase
         $admin = $this->admin();
         $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
             'no' => '101', 'floor' => 1, 'resident' => 'الأول', 'phone' => '+970599111222',
-            'sub' => 100, 'status' => 'ok', 'password' => 'secret6',
+            'sub' => 100, 'status' => 'ok', 'password' => 'secret6789',
         ])->assertCreated();
 
         $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
             'no' => '102', 'floor' => 1, 'resident' => 'الثاني', 'phone' => '+970599111222',
-            'sub' => 100, 'status' => 'ok', 'password' => 'secret6',
+            'sub' => 100, 'status' => 'ok', 'password' => 'secret6789',
         ])->assertStatus(422);
 
         $this->assertDatabaseMissing('units', ['no' => '102']); // no orphaned unit
@@ -669,7 +669,7 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $this->actingAs($this->admin(), 'sanctum')->postJson('/api/units', [
             'no' => '101', 'floor' => 1, 'resident' => 'بلا هاتف', 'sub' => 100,
-            'status' => 'ok', 'password' => 'secret6',
+            'status' => 'ok', 'password' => 'secret6789',
         ])->assertStatus(422);
 
         $this->assertDatabaseMissing('units', ['no' => '101']);
@@ -684,7 +684,7 @@ class AmaratiOverhaulTest extends TestCase
         $admin = $this->admin();
         $unit = $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
             'no' => '101', 'floor' => 1, 'resident' => 'سارة', 'phone' => '+970599111222',
-            'sub' => 100, 'status' => 'ok', 'password' => 'secret6',
+            'sub' => 100, 'status' => 'ok', 'password' => 'secret6789',
         ])->json();
 
         $this->actingAs($admin, 'sanctum')->putJson("/api/units/{$unit['id']}", [
@@ -693,9 +693,9 @@ class AmaratiOverhaulTest extends TestCase
         ])->assertOk();
 
         // The new number signs in; the old one is gone.
-        $this->postJson('/api/auth/login', ['phone' => '+970599999888', 'password' => 'secret6'])
+        $this->postJson('/api/auth/login', ['phone' => '+970599999888', 'password' => 'secret6789'])
             ->assertOk()->assertJsonPath('user.role', 'resident');
-        $this->postJson('/api/auth/login', ['phone' => '+970599111222', 'password' => 'secret6'])
+        $this->postJson('/api/auth/login', ['phone' => '+970599111222', 'password' => 'secret6789'])
             ->assertStatus(422);
     }
 
@@ -705,11 +705,11 @@ class AmaratiOverhaulTest extends TestCase
         $admin = $this->admin();
         $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
             'no' => '101', 'floor' => 1, 'resident' => 'الأول', 'phone' => '+970599111222',
-            'sub' => 100, 'status' => 'ok', 'password' => 'secret6',
+            'sub' => 100, 'status' => 'ok', 'password' => 'secret6789',
         ])->assertCreated();
         $second = $this->actingAs($admin, 'sanctum')->postJson('/api/units', [
             'no' => '102', 'floor' => 1, 'resident' => 'الثاني', 'phone' => '+970599333444',
-            'sub' => 100, 'status' => 'ok', 'password' => 'secret6',
+            'sub' => 100, 'status' => 'ok', 'password' => 'secret6789',
         ])->json();
 
         $this->actingAs($admin, 'sanctum')->putJson("/api/units/{$second['id']}", [
@@ -732,14 +732,14 @@ class AmaratiOverhaulTest extends TestCase
         $this->assertDatabaseMissing('users', ['unit_no' => '101', 'role' => 'resident']);
 
         $res = $this->actingAs($admin, 'sanctum')
-            ->postJson("/api/units/{$unit->id}/password", ['password' => 'secret6'])
+            ->postJson("/api/units/{$unit->id}/password", ['password' => 'secret6789'])
             ->assertOk();
 
         $this->assertSame('101', $res->json('unit_no'));
         $this->assertSame(32, strlen((string) $res->json('login_code'))); // a QR to share
 
         // The renter can now actually sign in with phone + password.
-        $this->postJson('/api/auth/login', ['phone' => '+970599111222', 'password' => 'secret6'])
+        $this->postJson('/api/auth/login', ['phone' => '+970599111222', 'password' => 'secret6789'])
             ->assertOk()->assertJsonPath('user.role', 'resident');
     }
 
@@ -773,7 +773,7 @@ class AmaratiOverhaulTest extends TestCase
 
         // The phone IS the username — without one there is nothing to log in as.
         $this->actingAs($admin, 'sanctum')
-            ->postJson("/api/units/{$noPhone->id}/password", ['password' => 'secret6'])
+            ->postJson("/api/units/{$noPhone->id}/password", ['password' => 'secret6789'])
             ->assertStatus(422);
         $this->actingAs($admin, 'sanctum')
             ->postJson("/api/units/{$ok->id}/password", ['password' => '123'])
@@ -799,7 +799,7 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $this->makeUnit(['no' => '101']);
         $code = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
-            'name' => 'ساكن جديد', 'phone' => '+966500009999', 'unit_no' => '101', 'password' => 'secret6',
+            'name' => 'ساكن جديد', 'phone' => '+966500009999', 'unit_no' => '101', 'password' => 'secret6789',
         ])->json('login_code');
 
         $this->assertSame(32, strlen($code));
@@ -872,10 +872,10 @@ class AmaratiOverhaulTest extends TestCase
         $this->makeUnit(['no' => '101']);
 
         $old = $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'قديم', 'phone' => '+966500000011', 'unit_no' => '101', 'password' => 'secret6',
+            'name' => 'قديم', 'phone' => '+966500000011', 'unit_no' => '101', 'password' => 'secret6789',
         ])->json();
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'جديد', 'phone' => '+966500000022', 'unit_no' => '101', 'password' => 'secret6',
+            'name' => 'جديد', 'phone' => '+966500000022', 'unit_no' => '101', 'password' => 'secret6789',
         ])->assertCreated();
 
         // The old resident is unlinked; only one account remains on unit 101.
@@ -913,10 +913,10 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $admin = $this->admin();
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'أول', 'phone' => '+966500001234', 'password' => 'secret6',
+            'name' => 'أول', 'phone' => '+966500001234', 'password' => 'secret6789',
         ])->assertCreated();
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
-            'name' => 'ثانٍ', 'phone' => '+966500001234', 'password' => 'secret6',
+            'name' => 'ثانٍ', 'phone' => '+966500001234', 'password' => 'secret6789',
         ])->assertStatus(422);
     }
 
@@ -1210,13 +1210,13 @@ class AmaratiOverhaulTest extends TestCase
 
         // 1) register with the DUP phone + correct code → fails, code NOT consumed.
         $this->postJson('/api/auth/register', [
-            'name' => 'جديد', 'email' => 'new@b.com', 'password' => 'secret6',
+            'name' => 'جديد', 'email' => 'new@b.com', 'password' => 'secret6789',
             'phone' => '0599', 'email_code' => $code,
         ])->assertStatus(422);
 
         // 2) retry with a FREE phone + the SAME code → succeeds (code still valid).
         $this->postJson('/api/auth/register', [
-            'name' => 'جديد', 'email' => 'new@b.com', 'password' => 'secret6',
+            'name' => 'جديد', 'email' => 'new@b.com', 'password' => 'secret6789',
             'phone' => '0577', 'email_code' => $code,
         ])->assertCreated();
 
@@ -1230,14 +1230,14 @@ class AmaratiOverhaulTest extends TestCase
         $wrong = $code === '000000' ? '111111' : '000000';
 
         $this->postJson('/api/auth/register', [
-            'name' => 'ز', 'email' => 'z@b.com', 'password' => 'secret6',
+            'name' => 'ز', 'email' => 'z@b.com', 'password' => 'secret6789',
             'phone' => '0588', 'email_code' => $wrong,
         ])->assertStatus(422);
         $this->assertNull(User::where('email', 'z@b.com')->first()); // no half-created account
 
         // The correct code still works afterwards (wrong attempt didn't consume it).
         $this->postJson('/api/auth/register', [
-            'name' => 'ز', 'email' => 'z@b.com', 'password' => 'secret6',
+            'name' => 'ز', 'email' => 'z@b.com', 'password' => 'secret6789',
             'phone' => '0588', 'email_code' => $code,
         ])->assertCreated();
     }
@@ -1310,7 +1310,7 @@ class AmaratiOverhaulTest extends TestCase
     public function test_register_accepts_phone_and_whatsapp(): void
     {
         $res = $this->postJson('/api/auth/register', [
-            'name' => 'جديد', 'email' => 'new@b.com', 'password' => 'secret1',
+            'name' => 'جديد', 'email' => 'new@b.com', 'password' => 'secret1234',
             'phone' => '+966500000099', 'whatsapp' => '+966500000088',
         ]);
         $res->assertCreated();
@@ -1323,12 +1323,12 @@ class AmaratiOverhaulTest extends TestCase
     {
         User::create([
             'name' => 'هاتف', 'phone' => '+966500000077', 'email' => 'p@b.com',
-            'password' => Hash::make('secret1'), 'role' => 'resident',
+            'password' => Hash::make('secret1234'), 'role' => 'resident',
             'building_key' => 'residential',
         ]);
 
         $this->postJson('/api/auth/login', [
-            'phone' => '+966500000077', 'password' => 'secret1',
+            'phone' => '+966500000077', 'password' => 'secret1234',
         ])->assertOk()->assertJsonStructure(['token', 'user']);
     }
 
@@ -1338,7 +1338,7 @@ class AmaratiOverhaulTest extends TestCase
     {
         $this->seedBuilding();
         $res = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
-            'name' => 'ساكن جديد', 'phone' => '+966500001111', 'unit_no' => '101', 'password' => 'secret6',
+            'name' => 'ساكن جديد', 'phone' => '+966500001111', 'unit_no' => '101', 'password' => 'secret6789',
         ]);
         $res->assertCreated();
         $this->assertNotEmpty($res->json('login_code'));
@@ -1829,10 +1829,10 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $this->makeUnit(['no' => '101']);
         $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
-            'name' => 'ساكن', 'phone' => '+966500008888', 'unit_no' => '101', 'password' => 'secret6',
+            'name' => 'ساكن', 'phone' => '+966500008888', 'unit_no' => '101', 'password' => 'secret6789',
         ])->assertCreated();
 
-        $res = $this->postJson('/api/auth/login', ['phone' => '+966500008888', 'password' => 'secret6']);
+        $res = $this->postJson('/api/auth/login', ['phone' => '+966500008888', 'password' => 'secret6789']);
         $res->assertOk();
         $this->assertNotEmpty($res->json('token'));
         $this->assertSame('resident', $res->json('user.role'));
@@ -1845,7 +1845,7 @@ class AmaratiOverhaulTest extends TestCase
         $this->seedBuilding();
         $this->makeUnit(['no' => '101']);
         $code = $this->actingAs($this->admin(), 'sanctum')->postJson('/api/residents', [
-            'name' => 'ساكن', 'phone' => '+966500006666', 'unit_no' => '101', 'password' => 'secret6',
+            'name' => 'ساكن', 'phone' => '+966500006666', 'unit_no' => '101', 'password' => 'secret6789',
         ])->json('login_code');
 
         $this->postJson('/api/auth/redeem-code', ['code' => $code])->assertOk();     // first use works

@@ -65,3 +65,8 @@ e2e/test-results/
 
 # Build logs (the *.log pattern above doesn't catch the .txt variant)
 build_log.txt
+
+# Release signing — the keystore and its passwords never enter the repo.
+/android/key.properties
+*.jks
+*.keystore

@@ -386,7 +386,9 @@ class ApiController extends Controller
             'name' => 'required|string|max:120',
             'email' => ['required', 'email',
                 Rule::unique('users', 'email')->where('building_id', $this->buildingId($r))],
-            'password' => 'required|string|min:6',
+            // A co-admin can move the building's money — six characters is a
+            // renter's password, not one for that.
+            'password' => 'required|string|min:8',
         ]);
 
         $user = User::create([
@@ -1001,7 +1003,9 @@ class ApiController extends Controller
 
     public function craftsmen(Request $r)
     {
-        $q = Craftsman::query();
+        // The caller's OWN building's directory. It used to be one global table,
+        // so every manager wrote into every other building's list.
+        $q = Craftsman::where('building_id', $this->buildingId($r));
         if ($r->filled('job') && $r->query('job') !== 'all') {
             $q->where('job', $r->query('job'));
         }
@@ -1022,8 +1026,21 @@ class ApiController extends Controller
             'phone' => 'required|string|max:32',
             'note' => 'nullable|string|max:200',
         ]);
+        $data['building_id'] = $this->buildingId($r);
 
         return response()->json(Craftsman::create($data), 201);
+    }
+
+    /// Remove an entry from the building's directory — a wrong number could
+    /// never be taken out before.
+    public function destroyCraftsman(Request $r, Craftsman $craftsman)
+    {
+        $this->requireAdmin($r);
+        abort_unless($this->buildingId($r) && $craftsman->building_id === $this->buildingId($r),
+            403, 'هذا السجل لا يخص مبناك');
+        $craftsman->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     public function alerts(Request $r)

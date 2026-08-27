@@ -41,7 +41,7 @@ class SuperAdminController extends Controller
             // may already be an admin or a resident of another building).
             'email' => ['required', 'email',
                 Rule::unique('users', 'email')->where('building_id', $r->input('building_id'))],
-            'password' => 'required|string|min:6',
+            'password' => 'required|string|min:8',
             'building_key' => 'required|in:residential,commercial',
             // WHICH building this admin runs. A btype is not a building: several
             // share one, and resolving by type alone made every new admin an admin

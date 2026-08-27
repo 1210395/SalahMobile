@@ -94,6 +94,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/craftsmen', [ApiController::class, 'craftsmen']);
     Route::post('/craftsmen', [ApiController::class, 'storeCraftsman']);
+    Route::delete('/craftsmen/{craftsman}', [ApiController::class, 'destroyCraftsman']);
 
     Route::get('/alerts', [ApiController::class, 'alerts']);
     Route::post('/alerts/regenerate', [ApiController::class, 'regenerateAlerts']);

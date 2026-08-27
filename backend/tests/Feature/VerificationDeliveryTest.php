@@ -185,4 +185,23 @@ class VerificationDeliveryTest extends TestCase
         $this->assertTrue(Hash::check('password',
             User::where('email', 'shared@test.app')->where('building_id', $a->id)->value('password')));
     }
+
+    public function test_the_sms_echo_can_be_closed_while_email_stays_usable(): void
+    {
+        // The live shape after this audit: no provider on either channel, but the
+        // SMS echo (the account-takeover path) switched off on its own.
+        config([
+            'amarati.expose_sms_dev_code' => false,
+            'amarati.expose_email_dev_code' => true,
+            'amarati.sms.driver' => 'log',
+            'mail.default' => 'array',
+        ]);
+        $this->app['env'] = 'production';   // the echo's local/testing shortcut is off
+
+        $this->postJson('/api/auth/request-otp', ['phone' => '0599111222'])
+            ->assertOk()->assertJsonMissingPath('dev_code');
+
+        $this->postJson('/api/auth/request-email-code', ['email' => 'x@test.app'])
+            ->assertOk()->assertJsonStructure(['sent', 'dev_code']);
+    }
 }

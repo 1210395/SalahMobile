@@ -130,6 +130,10 @@ class Api {
   Future<void> createCraftsman(Map<String, dynamic> body) =>
       _dio.post('/craftsmen', data: body);
 
+  /// Remove an entry from this building's directory. A wrong number used to be
+  /// permanent — and visible to every other building on the platform.
+  Future<void> deleteCraftsman(int id) => _dio.delete('/craftsmen/$id');
+
   // ───────────── Units CRUD (#2) ─────────────
   Future<void> createUnit(BType b, Map<String, dynamic> body) =>
       _dio.post('/units', queryParameters: {'btype': btypeKey(b)}, data: body);

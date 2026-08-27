@@ -55,7 +55,9 @@ class AuthController extends Controller
         }
 
         return app()->environment(['local', 'testing'])
-            || (bool) config('amarati.expose_otp_dev_code');
+            || (bool) config($channel === 'sms'
+                ? 'amarati.expose_sms_dev_code'
+                : 'amarati.expose_email_dev_code');
     }
 
     /// Whether a manager must confirm their e-mail to register: only when the
@@ -103,7 +105,8 @@ class AuthController extends Controller
             'email' => ['required', 'email', Rule::unique('users', 'email')->whereNull('building_id')],
             'phone' => ['nullable', 'string', 'max:32', Rule::unique('users', 'phone')->whereNull('building_id')],
             'whatsapp' => 'nullable|string|max:32',
-            'password' => 'required|string|min:6',
+            // This account will own a building's finances.
+            'password' => 'required|string|min:8',
             // Required as soon as a code can actually reach the person — through a
             // real mailer, or the dev echo on a box without one. A deployment with
             // neither can still register (nobody could ever confirm).

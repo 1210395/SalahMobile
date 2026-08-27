@@ -595,7 +595,8 @@ class BuildingScreen extends StatelessWidget {
           final blockers = <String>[
             if (f['name']!.trim().isEmpty) 'اسم المسؤول',
             if (f['email']!.trim().isEmpty) 'البريد الإلكتروني',
-            if (f['password']!.trim().length < 6) 'كلمة مرور من 6 أحرف على الأقل',
+            // A co-admin can move the building's money — the server requires 8.
+            if (f['password']!.trim().length < 8) 'كلمة مرور من 8 أحرف على الأقل',
           ];
           return SheetShell(
           title: 'إضافة مسؤول مساعد',

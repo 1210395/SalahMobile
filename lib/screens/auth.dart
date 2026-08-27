@@ -631,8 +631,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (f['whatsapp']!.trim().isNotEmpty && !_phoneValid(f['whatsapp']!))
           'رقم واتساب صحيح',
         if (!_emailValid) 'بريد إلكتروني صحيح',
-        if (f['password']!.length < 6) 'كلمة سر من 6 أحرف على الأقل',
-        if (f['password']!.length >= 6 && f['password'] != f['confirm'])
+        // This account owns a building's finances — the server requires 8.
+        if (f['password']!.length < 8) 'كلمة سر من 8 أحرف على الأقل',
+        if (f['password']!.length >= 8 && f['password'] != f['confirm'])
           'تطابق كلمة السر مع تأكيدها',
         // The server will not create an account with an unconfirmed address, so
         // the form asks for the code instead of letting the user submit into a

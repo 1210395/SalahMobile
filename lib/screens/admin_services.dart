@@ -666,12 +666,62 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
                         child: const AppIcon('phone', size: 22, color: AppColors.ok700),
                       ),
                     ),
+                    // Only the building's own manager may prune the directory —
+                    // a wrong number used to be permanent, and visible to every
+                    // other building on the platform.
+                    if (ctx.role == AppRole.admin) ...[
+                      const SizedBox(width: 6),
+                      Pressable(
+                        onTap: () => _confirmRemove(ctx, c),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                              color: AppColors.lateBg, borderRadius: BorderRadius.circular(14)),
+                          alignment: Alignment.center,
+                          child: const AppIcon('trash', size: 20, color: AppColors.late700),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
             );
           }),
       ],
+    );
+  }
+
+  /// Removing a number is a one-tap mistake otherwise — ask first.
+  void _confirmRemove(Ctx ctx, Craftsman c) {
+    showAppSheet(
+      context,
+      SheetShell(
+        title: 'حذف من الدليل',
+        footer: AppButton(
+          label: 'حذف ${c.name}',
+          full: true,
+          size: BtnSize.lg,
+          icon: 'trash',
+          variant: BtnVariant.outline,
+          onTap: () async {
+            Navigator.of(context).pop();
+            try {
+              await Api.I.deleteCraftsman(c.id);
+              await ctx.reload();
+              ctx.toast('تم حذف ${c.name} من الدليل');
+            } catch (e) {
+              ctx.toast(apiErrorText(e), tone: 'late');
+            }
+          },
+        ),
+        children: [
+          Text('سيُحذف ${c.name} (${c.job}) من دليل الصنايعية الخاص بمبناك. '
+              'لن يؤثر ذلك على أي مبنى آخر.',
+              style: AppType.base(
+                  size: 13, weight: FontWeight.w600, color: AppColors.ink600, height: 1.7)),
+        ],
+      ),
     );
   }
 

@@ -3,14 +3,23 @@
 // عمارتي — app-specific runtime flags.
 return [
 
-    // When true, the OTP / email-code endpoints return the generated code in the
-    // JSON response (`dev_code`) so the flows are testable without a provider.
+    // Echo the generated code back in the API response, per channel.
     //
     // It is IGNORED whenever a real provider is configured for that channel (see
-    // Notifier::channelIsLive) — so wiring SMS or SMTP switches the codes off by
-    // itself, and a hosted deployment cannot be left silently handing out other
-    // people's login codes because someone forgot an env var.
+    // Notifier::channelIsLive), so wiring SMS or SMTP switches the echo off by
+    // itself. The two channels are separate because their risk is not the same:
+    // an echoed SMS code turns any resident's phone NUMBER into a one-request
+    // account takeover, while an echoed e-mail code only lets someone confirm an
+    // address they already typed. A host with no mail provider can therefore keep
+    // registration working without leaving the takeover path open.
+    //
+    // AMARATI_EXPOSE_OTP_DEV_CODE sets both, and stays as the older name so an
+    // existing deployment keeps behaving the way it was configured.
     'expose_otp_dev_code' => env('AMARATI_EXPOSE_OTP_DEV_CODE', false),
+    'expose_sms_dev_code' => env('AMARATI_EXPOSE_SMS_DEV_CODE',
+        env('AMARATI_EXPOSE_OTP_DEV_CODE', false)),
+    'expose_email_dev_code' => env('AMARATI_EXPOSE_EMAIL_DEV_CODE',
+        env('AMARATI_EXPOSE_OTP_DEV_CODE', false)),
 
     // Per-minute request cap on the auth endpoints (login / register / OTP /
     // email-code / redeem) — blunts credential stuffing + code brute force.

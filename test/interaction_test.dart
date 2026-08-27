@@ -764,7 +764,9 @@ void main() {
     expect(find.text('• الاسم الكامل'), findsOneWidget);
     expect(find.text('• رقم جوال صحيح'), findsOneWidget);
     expect(find.text('• بريد إلكتروني صحيح'), findsOneWidget);
-    expect(find.text('• كلمة سر من 6 أحرف على الأقل'), findsOneWidget);
+    expect(find.text('• كلمة سر من 8 أحرف على الأقل'), findsOneWidget);
+    // The e-mail must be confirmed, so the code is a named requirement too.
+    expect(find.text('• رمز التأكيد المُرسَل إلى بريدك'), findsOneWidget);
   });
 
   // The app's front door must never grey out in silence either.

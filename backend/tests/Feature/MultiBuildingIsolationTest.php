@@ -217,7 +217,7 @@ class MultiBuildingIsolationTest extends TestCase
         ]);
 
         $this->actingAs($su, 'sanctum')->postJson('/api/admins', [
-            'name' => 'مسؤول', 'email' => 'newadmin@test.app', 'password' => 'secret1',
+            'name' => 'مسؤول', 'email' => 'newadmin@test.app', 'password' => 'secret1234',
             'building_key' => 'residential', 'building_id' => $target->id,
         ])->assertCreated()->assertJsonPath('building_id', $target->id);
     }
@@ -234,7 +234,7 @@ class MultiBuildingIsolationTest extends TestCase
         ]);
 
         $this->actingAs($su, 'sanctum')->postJson('/api/admins', [
-            'name' => 'مسؤول', 'email' => 'newadmin2@test.app', 'password' => 'secret1',
+            'name' => 'مسؤول', 'email' => 'newadmin2@test.app', 'password' => 'secret1234',
             'building_key' => 'residential',
         ])->assertStatus(422);
 

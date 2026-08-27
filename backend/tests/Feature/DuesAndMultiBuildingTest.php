@@ -261,4 +261,50 @@ class DuesAndMultiBuildingTest extends TestCase
         $this->postJson('/api/auth/login', ['phone' => '0599111222', 'password' => 'nope'])
             ->assertStatus(422);
     }
+
+    // ─────────────── الصنايعية: a building's own directory ───────────────
+
+    public function test_the_craftsmen_directory_is_scoped_to_the_building(): void
+    {
+        $a = $this->building('عمارة أ');
+        $b = $this->building('عمارة ب');
+        $adminA = $this->admin($a, 'a@test.app');
+        $adminB = $this->admin($b, 'b@test.app');
+
+        $made = $this->actingAs($adminA, 'sanctum')->postJson('/api/craftsmen', [
+            'name' => 'أبو علي', 'job' => 'كهربائي', 'phone' => '0599000123',
+        ])->assertCreated()->json();
+
+        // A's entry is A's alone — it used to appear in every building.
+        $this->assertCount(1, $this->actingAs($adminA, 'sanctum')->getJson('/api/craftsmen')->json());
+        $this->assertCount(0, $this->actingAs($adminB, 'sanctum')->getJson('/api/craftsmen')->json());
+
+        // …and B cannot delete it through the URL.
+        $this->actingAs($adminB, 'sanctum')
+            ->deleteJson("/api/craftsmen/{$made['id']}")->assertForbidden();
+
+        // A can — a wrong number was previously permanent.
+        $this->actingAs($adminA, 'sanctum')
+            ->deleteJson("/api/craftsmen/{$made['id']}")->assertOk();
+        $this->assertCount(0, $this->actingAs($adminA, 'sanctum')->getJson('/api/craftsmen')->json());
+    }
+
+    public function test_an_account_holding_the_buildings_money_needs_a_longer_password(): void
+    {
+        $b = $this->building();
+        $admin = $this->admin($b);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/co-admins', [
+            'name' => 'شريك', 'email' => 'partner@test.app', 'password' => 'short1',
+        ])->assertStatus(422)->assertJsonValidationErrors('password');
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/co-admins', [
+            'name' => 'شريك', 'email' => 'partner@test.app', 'password' => 'longenough1',
+        ])->assertCreated();
+
+        // A renter's password stays short on purpose — the manager hands it over.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
+            'name' => 'ساكن', 'phone' => '0599777888', 'password' => 'six123',
+        ])->assertCreated();
+    }
 }
