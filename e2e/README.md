@@ -22,6 +22,12 @@ test at an isolated DB (e.g. `amarati_test`) on a separate port.
    DB_DATABASE=amarati_test AMARATI_EXPOSE_OTP_DEV_CODE=true \
      php artisan serve --host=127.0.0.1 --port=8001
    ```
+   `AMARATI_EXPOSE_OTP_DEV_CODE` still sets BOTH channels; the per-channel
+   `AMARATI_EXPOSE_SMS_DEV_CODE` / `AMARATI_EXPOSE_EMAIL_DEV_CODE` override it
+   individually. The specs read `dev_code` out of the OTP response, so the SMS
+   side has to stay echoed for them to run. Note it is ignored once a real
+   provider is configured — an e2e backend must have none.
+
    (Keep your other DB env vars — `DB_CONNECTION=mysql`, `DB_HOST`, `DB_PORT`,
    `DB_USERNAME`, `DB_PASSWORD` — set for the throwaway DB.)
 

@@ -32,6 +32,10 @@
              confirmation; the requirement itself is covered explicitly in
              VerificationDeliveryTest, which turns it back on. -->
         <env name="AMARATI_REQUIRE_EMAIL_VERIFICATION" value="false"/>
+        <!-- The suite hammers the API far faster than a person; the limits
+             themselves are covered explicitly in VerificationDeliveryTest. -->
+        <env name="AMARATI_API_RATE" value="10000"/>
+        <env name="AMARATI_PUBLIC_RATE" value="10000"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

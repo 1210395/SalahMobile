@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Route;
 // ───────────────────────────── Auth ─────────────────────────────
 // Rate-limited to blunt credential stuffing / OTP brute force (6/min in prod;
 // configurable via AMARATI_AUTH_RATE so automated e2e runs aren't throttled).
-Route::middleware('throttle:'.config('amarati.auth_rate', 6).',1')->group(function () {
+Route::middleware('throttle:amarati-auth')->group(function () {
     Route::post('/auth/register', [AuthController::class, 'register']);
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/request-otp', [AuthController::class, 'requestOtp']);
@@ -30,15 +30,22 @@ Route::middleware('throttle:'.config('amarati.auth_rate', 6).',1')->group(functi
 // ───────────── Public (brand theming + onboarding only) ─────────────
 // Only non-sensitive branding/onboarding data is public — the building shell
 // (name/theme) and the fee catalogue. Financials (/summary) are NOT public.
-Route::get('/building', [ApiController::class, 'building']);
-Route::get('/pay-types', [ApiController::class, 'payTypes']);
-Route::get('/settings', [SettingsController::class, 'index']);
+// Capped per IP: these need no token, so nothing else stops a script from
+// hammering them all day.
+Route::middleware('throttle:amarati-public')->group(function () {
+    Route::get('/building', [ApiController::class, 'building']);
+    Route::get('/pay-types', [ApiController::class, 'payTypes']);
+    Route::get('/settings', [SettingsController::class, 'index']);
 
-// Subscription query only (doesn't need auth)
-Route::get('/subscription', [OnboardingController::class, 'subscription']);
+    // Subscription query only (doesn't need auth)
+    Route::get('/subscription', [OnboardingController::class, 'subscription']);
+});
 
 // ───────────────────── Protected (signed-in users) ─────────────────────
-Route::middleware('auth:sanctum')->group(function () {
+// A generous per-user ceiling: a signed-in session loads its whole bundle in a
+// dozen requests, so this never touches a person using the app — it only stops a
+// stolen token being used to pull the platform's data at machine speed.
+Route::middleware(['auth:sanctum', 'throttle:amarati-api'])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::get('/me/payments', [ApiController::class, 'myPayments']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);

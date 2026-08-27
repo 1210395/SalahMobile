@@ -1,85 +1,124 @@
-# عمارتي — production setup (fresh install)
+# عمارتي — standing up a production instance
 
-This is for standing up a **new production instance** (a real customer), not the
-data-preserving update of an existing server — for that, see `DEPLOY.md`.
+For a **new** server (including the coming host move). To update a server that
+is already running, see [`DEPLOY.md`](DEPLOY.md); for the jobs that run on the
+box around the app, see [`OPS.md`](OPS.md).
 
-## 1. Required environment (`.env` on the server)
-
-These are **security-critical** — the app defaults are dev-friendly and MUST be
-overridden in production:
+## 1. Environment
 
 ```dotenv
+APP_NAME=عمارتي
 APP_ENV=production
-APP_DEBUG=false                 # never true in prod — leaks stack traces / secrets
-APP_URL=https://your-domain     # correct scheme+host (used for logo URLs, etc.)
+APP_DEBUG=false                    # never true in prod — leaks stack traces
+APP_URL=https://your-domain        # https, correct host (logo URLs use it)
+APP_KEY=base64:...                 # COPY FROM THE OLD SERVER, do not generate a
+                                   # new one: existing encrypted values and
+                                   # signed URLs become unreadable without it
 
-# Onboarding data
-SEED_DEMO=false                 # start with EMPTY building shells, not demo data
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=amarati
+DB_USERNAME=amarati
+DB_PASSWORD=...
 
-# Secrets — DO NOT set these two in production:
-#   AMARATI_EXPOSE_OTP_DEV_CODE  → if true, OTP/email codes are returned in the
-#                                  API response (bypasses verification). Leave unset.
-# Platform-owner (super-admin) account — REQUIRED to have a super-admin at all:
-AMARATI_SUPERADMIN_EMAIL=owner@yourcompany.com
-AMARATI_SUPERADMIN_PASSWORD=<a long random password>
+# ── Mail: verification codes and password recovery ride this ──────────────
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.resend.com          # any SMTP provider; Resend is what the
+MAIL_PORT=587                      # sister platform on the old box used
+MAIL_USERNAME=resend
+MAIL_PASSWORD=<the provider's API key / password>
+MAIL_FROM_ADDRESS=no-reply@your-domain
+MAIL_FROM_NAME=عمارتي
 
-# Optional:
-# AMARATI_AUTH_RATE=6              # auth requests/min (default 6; leave default in prod)
-# SANCTUM_EXPIRATION_MINUTES=129600  # token lifetime (90 days). Default: never
-                                     # expires. Set this so a lost-device/leaked
-                                     # token can't live forever; users re-login
-                                     # (trivial via QR/code or password).
-# AMARATI_APP_URL=https://...        # where the /join/CODE invite page's
-                                     # "download the app" button points (default:
-                                     # the GitHub release). Set to your store listing.
+# ── SMS: phone-OTP codes ──────────────────────────────────────────────────
+SMS_DRIVER=log                     # log | twilio | http
+SMS_FROM=Amarati
+# twilio:
+# TWILIO_SID=...
+# TWILIO_TOKEN=...
+# TWILIO_MESSAGING_SERVICE_SID=...  (optional, instead of a from-number)
+# http — any operator gateway, its own field names:
+# SMS_HTTP_URL=https://gateway.example/send
+# SMS_HTTP_METHOD=POST
+# SMS_HTTP_TO_FIELD=to
+# SMS_HTTP_TEXT_FIELD=text
+# SMS_HTTP_FROM_FIELD=from
+# SMS_HTTP_EXTRA=apikey=XXX&account=YYY
+# SMS_HTTP_SUCCESS_CONTAINS=OK      (gateways that answer 200 on failure)
+
+# ── Security ──────────────────────────────────────────────────────────────
+# DO NOT set these on a real deployment. They return verification codes in the
+# API response. They are IGNORED anyway once the matching provider above is
+# configured, but leaving them out is the honest setting:
+#   AMARATI_EXPOSE_SMS_DEV_CODE     — an echoed SMS code turns any resident's
+#                                     phone NUMBER into a one-request takeover
+#   AMARATI_EXPOSE_EMAIL_DEV_CODE   — milder: only confirms an address the
+#                                     caller already typed
+# AMARATI_REQUIRE_EMAIL_VERIFICATION=true   (default) — a manager must confirm
+#                                     their address to register
+# SANCTUM_EXPIRATION_MINUTES=129600 — token lifetime, defaults to 90 days
+# AMARATI_AUTH_RATE=6               — auth requests/minute per IP
+# AMARATI_API_RATE=240              — signed-in requests/minute per ACCOUNT
+# AMARATI_PUBLIC_RATE=60            — unauthenticated reads/minute per IP
+# CORS_ALLOWED_ORIGINS=https://your-domain
+# AMARATI_APP_URL=...               — where /join/CODE points for the download
 ```
 
-With `APP_ENV=production` and no `AMARATI_SUPERADMIN_PASSWORD`, **no super-admin
-is created** (safe by default) — set the two vars above to create yours.
-
-## 2. Database
+## 2. Database and files
 
 ```bash
-php artisan migrate --force
-php artisan db:seed --force      # with SEED_DEMO=false → 2 empty building shells
-                                 # + pay-types + your super-admin. NO demo data.
-php artisan storage:link         # REQUIRED for uploaded brand logos to resolve
+php artisan migrate --force       # additive; NEVER migrate:fresh on real data
+php artisan storage:link          # REQUIRED or uploaded logos 404
 php artisan optimize:clear
 ```
 
-A fresh `SEED_DEMO=false` seed produces: **0 residents, 0 units, 0 payments**,
-two empty building shells (residential + commercial), the pay-type catalogue,
-and — only if you set the env vars — your super-admin. No `admin@amarati.app`,
-no demo apartments.
+Seeding is **not** part of a real install. `php artisan db:seed` exists for
+development; on a server carrying customer data it can only do harm.
 
-## 3. First-run flow for the customer
+## 3. The platform owner account
 
-1. The building manager **registers** (creates a pending-manager account).
-2. **Subscribes** (activates the building's subscription).
-3. **Sets up the building** (name/address/units) → promoted to admin.
-4. Adds units + residents; residents log in by QR/code or phone OTP.
+The super-admin role gates platform branding, the all-buildings report, and
+creating a manager for a new customer. Nothing creates it implicitly:
 
-Renters cannot self-register — they're added by the manager (QR/code) or via an
-approved join request.
+```bash
+php artisan amarati:superadmin --email=owner@your-domain
+```
 
-## 4. Security checklist
+It prints a generated password once. The address must be able to **receive
+mail** — password recovery sends its code there. The command refuses to take
+over an existing non-super-admin account unless you pass `--force`.
 
-- [ ] `APP_DEBUG=false` and `APP_ENV=production`.
-- [ ] `AMARATI_EXPOSE_OTP_DEV_CODE` is **unset** (codes must not appear in API responses).
-- [ ] `AMARATI_SUPERADMIN_PASSWORD` is long + random; the email is yours.
-- [ ] **If migrating an older DB**: an old seed may have created
-      `superadmin@amarati.app` with the password `password`. **Change or delete
-      it** — `firstOrCreate` will not overwrite an existing account.
-- [ ] HTTPS only; `APP_URL` uses `https://`.
-- [ ] `php artisan storage:link` has been run (logos).
-- [ ] Auth endpoints are rate-limited (default 6/min) — do not raise
-      `AMARATI_AUTH_RATE` in production.
+## 4. Prove delivery before you trust it
 
-## 5. The mobile app (APK)
+```bash
+php artisan amarati:test-notify --email=you@example.com --phone=059XXXXXXX
+```
 
-The release APK points at `https://imarty.olive-dev.com` by default. For a
-different production host, rebuild with:
+It prints each channel's driver and whether a real message was accepted. A
+channel reporting **NOT live** is one still echoing codes in API responses.
+
+## 5. The mobile app
+
+The APK points at `https://imarty.olive-dev.com/api` by default. For a different
+host, rebuild:
 
 ```bash
 flutter build apk --release --dart-define=API_BASE=https://your-domain/api
 ```
+
+Release signing is described in [`OPS.md`](OPS.md). The keystore is **not** in
+this repository, and it is not replaceable: Android refuses an update signed
+with a different key.
+
+## 6. Checklist
+
+- [ ] `APP_DEBUG=false`, `APP_ENV=production`, `APP_URL` on https
+- [ ] `APP_KEY` copied from the old server, not regenerated
+- [ ] Mail configured, `amarati:test-notify` accepted a real message
+- [ ] SMS configured, or phone-OTP login knowingly unavailable
+- [ ] No `AMARATI_EXPOSE_*_DEV_CODE` variables set
+- [ ] Super-admin created, and its address receives mail
+- [ ] `storage:link` run
+- [ ] Backups scheduled **off this machine**, and one restore rehearsed
+- [ ] The app rebuilt against the new host and released before the old one goes

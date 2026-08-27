@@ -204,4 +204,31 @@ class VerificationDeliveryTest extends TestCase
         $this->postJson('/api/auth/request-email-code', ['email' => 'x@test.app'])
             ->assertOk()->assertJsonStructure(['sent', 'dev_code']);
     }
+
+    // ─────────────── rate limits outside the auth endpoints ───────────────
+
+    public function test_the_public_endpoints_are_capped_too(): void
+    {
+        // They need no token, so nothing else stops a script pulling them all day.
+        config(['amarati.public_rate' => 3]);
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->getJson('/api/settings')->assertOk();
+        }
+        $this->getJson('/api/settings')->assertStatus(429);
+    }
+
+    public function test_a_signed_in_session_has_a_ceiling_as_well(): void
+    {
+        // Generous enough that a person never meets it — a bundle load is about a
+        // dozen requests — but a stolen token cannot pull the platform at speed.
+        config(['amarati.api_rate' => 3]);
+        $b = $this->building();
+        $user = $this->manager($b);
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->actingAs($user, 'sanctum')->getJson('/api/me')->assertOk();
+        }
+        $this->actingAs($user, 'sanctum')->getJson('/api/me')->assertStatus(429);
+    }
 }

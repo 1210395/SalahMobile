@@ -27,6 +27,12 @@ return [
     // AMARATI_AUTH_RATE (e.g. the e2e suite hammers auth far faster than a human).
     'auth_rate' => (int) env('AMARATI_AUTH_RATE', 6),
 
+    // Everything else. The auth endpoints are the ones worth guessing at, but an
+    // unthrottled API is still a free bulk export to anyone holding one token,
+    // and the unauthenticated reads had no ceiling at all.
+    'api_rate' => (int) env('AMARATI_API_RATE', 240),
+    'public_rate' => (int) env('AMARATI_PUBLIC_RATE', 60),
+
     // A manager's e-mail must be confirmed before the account is created. Turn
     // off only for a deployment with no mail provider at all.
     'require_email_verification' => (bool) env('AMARATI_REQUIRE_EMAIL_VERIFICATION', true),

@@ -1,60 +1,71 @@
-# Deploying عمارتي — keep your existing data
+# عمارتي — updating a running server
 
-Your live backend (`imarty.olive-dev.com`) is running **old code** and is missing
-the new endpoints/columns. These steps update it **without touching the data you
-already have** (no reseed, no wipe).
+Data-preserving update of a server that already carries customer data. For a
+fresh instance see [`PRODUCTION.md`](PRODUCTION.md); for the jobs that run on the
+box see [`OPS.md`](OPS.md).
 
-## ✅ Do this (on the server / Coolify)
+## The update
 
-1. **Get the latest code** onto the server.
-   - Coolify: open the app → **Redeploy** (it pulls `main` from GitHub).
-   - Or manually: `git pull origin main` in the backend directory.
+```bash
+git pull origin main
+php artisan migrate --force      # every migration in this repo is additive
+php artisan optimize:clear       # routes + config are cached; new routes need this
+```
 
-2. **Run migrations — additive only, data-preserving:**
-   ```bash
-   php artisan migrate --force
-   ```
-   This runs one new migration (`..._overhaul_additive_columns`) that ADDS the
-   new columns (expense currency, worker attendance/payment, elevator contract,
-   alert target) using `hasColumn` guards. **Your rows are untouched.**
+On the current host the app is served by `php artisan serve` straight out of the
+working tree, so **pulling changes the running code immediately** — the moment a
+migration is pending, the served code is ahead of the schema. Pull and migrate
+together, in that order, and never leave the pair half-done.
 
-3. **Clear caches** (so the new routes/config load):
-   ```bash
-   php artisan optimize:clear
-   ```
+Verify:
 
-4. Done. Verify a new endpoint responds (401 = deployed, 404 = not):
-   ```bash
-   curl -o /dev/null -w "%{http_code}\n" -X POST https://imarty.olive-dev.com/api/notifications
-   ```
-   `401` (or `422`) = success. `404` = the code didn't deploy — redeploy again.
+```bash
+curl -o /dev/null -w "%{http_code}\n" -H 'Accept: application/json' \
+  https://imarty.olive-dev.com/api/units          # 401 = deployed, 404 = not
+```
 
-## ❌ Do NOT run these (they destroy or pollute your data)
+`Accept: application/json` matters: without it Laravel answers an unauthenticated
+request differently, which is a property of the framework, not of the deploy.
 
-- `php artisan migrate:fresh` — **drops every table** (all your data gone).
-- `php artisan migrate:fresh --seed` — drops everything **and** inserts demo
-  apartments/payments + a demo `admin@amarati.app`.
-- `php artisan db:seed` — would try to add demo data. (It self-skips when a
-  building already exists, but don't rely on it — just don't run it.)
+## Never run these
 
-## Notes
+- `php artisan migrate:fresh` — drops every table
+- `php artisan migrate:fresh --seed` — drops everything, then inserts demo data
+- `php artisan db:seed` — development only; it has no business near real data
 
-- **`SEED_DEMO`**: only matters if you seed. Since you're keeping your data and
-  NOT seeding, you can ignore it. (If you ever set up a *fresh* production DB,
-  put `SEED_DEMO=false` in `.env` first so `--seed` creates empty buildings.)
-- **⚠️ Super-admin password**: an earlier seed may have created
-  `superadmin@amarati.app` with the password `password`. If that account exists,
-  **change its password now** — it can view every building's finances and create
-  admins. New code no longer seeds a weak super-admin (see `PRODUCTION.md`).
-  Check: `php artisan tinker --execute="echo App\Models\User::where('role','superadmin')->pluck('email');"`
-- **Resident login codes**: new codes are 128-bit; any existing 8-char codes
-  still work unchanged — no action needed.
-- **The APK**: install the new `app-release.apk` (built from this branch). It
-  points at `imarty.olive-dev.com` by default, so it works once step 2 is done.
+## Migrations that carry data changes
 
-## If a redeploy still shows old code (404 on `/notifications`)
+Two of the recent ones changed existing rows, and both were rehearsed on a copy
+of the live database before being applied:
 
-Coolify auto-deploy may be disabled or watching the wrong branch. In Coolify:
-- Confirm the app's Git source is `1210395/SalahMobile`, branch `main`.
-- Enable **Auto Deploy** (or hit Redeploy manually after each push).
-- Check the deploy logs for a failed build/migration.
+- `2026_08_21_110000_split_dues_from_subscription` — adds `payments.bucket` and
+  backfills it from what each row already said (`kind = 'ذمم'` → the ذمم pot,
+  income-only → neither).
+- `2026_08_27_100000_production_readiness_indexes_and_fks` — deletes `pay_types`
+  rows whose building no longer exists (28 of them), then adds the foreign key
+  that stops more appearing.
+
+Rehearsing means: dump the live database, restore into a scratch one, run
+`migrate` there, check the counts, and only then run it for real.
+
+## After deploying
+
+- The scheduler task runs `amarati:alerts` daily; nothing else needs restarting.
+- If mail or SMS settings changed, `php artisan amarati:test-notify` says whether
+  delivery still works.
+- `C:\server\_logs\amarati-monitor-status.json` shows the box's own view of
+  health within the hour.
+
+## Older clients keep working
+
+An APK already installed in the field talks to this API. Two behaviours exist
+specifically to keep that true, and should not be "cleaned up":
+
+- a payment that names no `bucket` is filed by its `kind`, exactly as before the
+  two-pot split;
+- `applies_to_dues` is still written alongside `bucket` for readers that predate
+  it.
+
+The one deliberate break is Android signing: **v1.5.2 is signed with a real key,
+so v1.5.1 and earlier must be uninstalled before it can be installed.** Every
+release after v1.5.2 updates normally.

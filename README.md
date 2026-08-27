@@ -131,10 +131,27 @@ for the full spec). Highlights:
 - **Reports** — figures/charts compute from live data per month/year; new
   **تقرير شامل** exports an Excel workbook (one sheet per year, residents × months).
 
-### Simulated / seams (no external credentials in the repo)
-- **Bank payment** is a clean in-app simulation that round-trips and activates the
-  subscription. Real gateway = env keys + a signed webhook (marked in code).
-- **Email codes** mirror the phone-OTP flow: a `dev_code` is returned in local
-  mode (shown in a toast) and sent via `Mail` once `MAIL_*` is configured.
+### Verification codes and recovery
+
+- **E-mail codes** are really sent (`app/Services/Notifier.php` → Laravel's
+  mailer). A manager must confirm their address to register.
+- **SMS codes** go through the same sender, which picks a driver from config:
+  `log` (default), `twilio`, or `http` for any operator gateway whose parameter
+  names are given in env. No provider is chosen yet, so SMS is still on `log`.
+- **A code is echoed in the API response only when its channel has no real
+  provider**, and each channel decides separately — configure SMTP or SMS and the
+  echo for that channel turns itself off, whatever the env flag says.
+- `php artisan amarati:test-notify --email=… --phone=…` reports what each channel
+  is configured with and sends a real test message.
+- **Forgotten manager password** — `POST /auth/forgot-password` then
+  `/auth/reset-password`, and «نسيت كلمة المرور؟» on the login screen.
+
+See [`PRODUCTION.md`](PRODUCTION.md) for the env vars and [`OPS.md`](OPS.md) for
+the backup, monitoring and signing jobs around the app.
+
+### Still simulated
+- **Bank payment** is an in-app simulation that round-trips and activates the
+  subscription. A real gateway means merchant credentials + a signed webhook
+  (the seam is marked in code).
 - **QR scanning** uses `mobile_scanner` (camera) — works on device; can't be
   exercised in headless tests on a desktop without a camera.
