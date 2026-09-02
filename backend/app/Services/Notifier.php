@@ -28,6 +28,38 @@ class Notifier
         return ! in_array(config('mail.default'), ['log', 'array', 'null', '', null], true);
     }
 
+    /// The E.164 prefixes the SMS provider can actually reach, or an empty list
+    /// when it is unrestricted.
+    public static function smsCoverage(): array
+    {
+        return array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) config('amarati.sms.coverage')),
+        )));
+    }
+
+    /// Whether an OTP could ever arrive at this number.
+    ///
+    /// A local operator gateway serves Palestinian and Israeli numbers only. A
+    /// resident abroad would otherwise ask for a code, be told it was sent, and
+    /// wait for a message that was never going to leave the building.
+    public static function coversNumber(string $phone): bool
+    {
+        $prefixes = self::smsCoverage();
+        if ($prefixes === []) {
+            return true;
+        }
+
+        $number = (new self)->normalisePhone($phone);
+        foreach ($prefixes as $prefix) {
+            if (str_starts_with($number, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// Send a verification code by SMS. Returns true when the provider accepted it.
     public function sendSmsCode(string $phone, string $code): bool
     {

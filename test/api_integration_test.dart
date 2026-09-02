@@ -201,4 +201,22 @@ void main() {
     expect(resolveReportUnit(units, '99'), isNull);
     expect(resolveReportUnit(const [], '2'), isNull);
   });
+
+  // ─────────── Brand exposes whether SMS can reach this host at all ───────────
+
+  test('Brand parses the sms coverage block from /settings', () {
+    DataStore.I.applySettingsJson({
+      'app_name': 'عمارتي',
+      'sms': {'available': true, 'coverage': []}, // a global provider, e.g. Twilio
+    });
+    expect(Brand.smsAvailable, isTrue);
+    expect(Brand.smsCoverage, isEmpty); // empty = unrestricted, not "no coverage"
+  });
+
+  test('Brand falls back to the local-gateway default when sms is absent', () {
+    // An older cached response / a host still on the pre-coverage controller.
+    DataStore.I.applySettingsJson({'app_name': 'عمارتي'});
+    expect(Brand.smsAvailable, isFalse);
+    expect(Brand.smsCoverage, ['+970', '+972']);
+  });
 }

@@ -46,6 +46,13 @@ return [
         // http   — any gateway that takes a plain GET/POST (local operators)
         'driver' => env('SMS_DRIVER', 'log'),
 
+        // Which numbers the provider can actually REACH, as E.164 prefixes.
+        // A local operator gateway serves Palestinian and Israeli numbers only,
+        // so anyone abroad requesting an OTP would otherwise wait for a message
+        // that was never going to arrive. Empty = no restriction (a global
+        // provider such as Twilio).
+        'coverage' => env('SMS_COVERAGE', '+970,+972'),
+
         // The name/number the message comes from (Twilio: a purchased number or
         // messaging-service SID; http: usually an approved alphabetic sender).
         'from' => env('SMS_FROM', 'Amarati'),

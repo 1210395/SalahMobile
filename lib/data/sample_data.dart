@@ -753,6 +753,25 @@ class DataStore {
   List<WaTemplate>? waTemplates;
   List<PayType>? payTypes;
   Map<String, String>? settings; // editable brand / app settings
+  // The 'sms' block from /settings, kept separately: it's structured
+  // (bool + list), not a string like every branding key, and null until a
+  // settings payload has actually been parsed (Brand supplies the default).
+  bool? smsAvailable;
+  List<String>? smsCoverage;
+
+  /// Split a raw /settings response into the flat branding map (existing
+  /// shape, every value stringified) and the sms block. Shared by
+  /// loadSettings/updateSettings/uploadLogo so the three don't each hand-roll
+  /// the same parse.
+  void applySettingsJson(dynamic data) {
+    final map = Map<String, dynamic>.from(data);
+    final sms = map.remove('sms');
+    settings = map.map((k, v) => MapEntry(k, '${v ?? ''}'));
+    smsAvailable = sms is Map ? sms['available'] == true : null;
+    smsCoverage = (sms is Map && sms['coverage'] is List)
+        ? List<String>.from((sms['coverage'] as List).map((e) => '$e'))
+        : null;
+  }
 
   bool get loaded => units != null;
 
@@ -854,4 +873,10 @@ class Brand {
       'برنامج متكامل لإدارة شؤون العمارات السكنية والمجمعات التجارية — المستحقات، المصروفات، التقارير والتنبيهات في مكان واحد.');
   static String get tagline => _v('tagline', 'عمارتي … تنظيم اليوم، راحة تدوم');
   static String get logoUrl => _v('logo_url', '');
+
+  // Whether the configured SMS gateway can reach the phone at all, and which
+  // prefixes it covers — a local operator gateway serves +970/+972 only, so
+  // the app can say so BEFORE a login attempt rather than after a silent wait.
+  static bool get smsAvailable => _s.smsAvailable ?? false;
+  static List<String> get smsCoverage => _s.smsCoverage ?? const ['+970', '+972'];
 }

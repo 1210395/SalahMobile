@@ -238,8 +238,7 @@ class Api {
   Future<void> loadSettings() async {
     try {
       final data = (await _dio.get('/settings')).data;
-      DataStore.I.settings = Map<String, dynamic>.from(data)
-          .map((k, v) => MapEntry(k, '${v ?? ''}'));
+      DataStore.I.applySettingsJson(data);
     } catch (_) {
       // keep brand defaults if settings can't be fetched
     }
@@ -247,8 +246,7 @@ class Api {
 
   Future<void> updateSettings(Map<String, dynamic> body) async {
     final data = (await _dio.put('/settings', data: body)).data;
-    DataStore.I.settings =
-        Map<String, dynamic>.from(data).map((k, v) => MapEntry(k, '${v ?? ''}'));
+    DataStore.I.applySettingsJson(data);
   }
 
   Future<void> uploadLogo(List<int> bytes, String filename) async {
@@ -261,8 +259,7 @@ class Api {
       ),
     });
     final data = (await _dio.post('/settings/logo', data: form)).data;
-    DataStore.I.settings =
-        Map<String, dynamic>.from(data).map((k, v) => MapEntry(k, '${v ?? ''}'));
+    DataStore.I.applySettingsJson(data);
   }
 
   // ───────────── Super-admin (#6) ─────────────

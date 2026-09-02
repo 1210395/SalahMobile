@@ -23,8 +23,17 @@ class SettingsController extends Controller
     public function index()
     {
         $stored = Setting::pluck('value', 'key')->toArray();
+        $merged = array_merge(self::DEFAULTS, $stored);
 
-        return response()->json(array_merge(self::DEFAULTS, $stored));
+        // Not a stored setting, and never overridable from the settings table —
+        // it reflects the SMS provider actually configured on this box, so any
+        // client can warn the user up front rather than after a failed OTP.
+        $merged['sms'] = [
+            'available' => \App\Services\Notifier::channelIsLive('sms'),
+            'coverage' => \App\Services\Notifier::smsCoverage(),
+        ];
+
+        return response()->json($merged);
     }
 
     public function update(Request $r)

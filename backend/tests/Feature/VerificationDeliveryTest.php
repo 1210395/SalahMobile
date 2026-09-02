@@ -205,6 +205,35 @@ class VerificationDeliveryTest extends TestCase
             ->assertOk()->assertJsonStructure(['sent', 'dev_code']);
     }
 
+    // ─────────────── SMS gateway coverage (+970 / +972 only) ───────────────
+
+    public function test_an_out_of_coverage_number_is_told_before_anything_is_sent(): void
+    {
+        $this->postJson('/api/auth/request-otp', ['phone' => '+441234567890'])
+            ->assertStatus(422);
+
+        // Nothing was issued for a number the gateway could never reach.
+        $this->assertSame(0, \App\Models\OtpCode::where('phone', '+441234567890')->count());
+    }
+
+    public function test_in_coverage_numbers_pass_the_coverage_check(): void
+    {
+        // Local format, normalised to +970 …
+        $this->postJson('/api/auth/request-otp', ['phone' => '0599111222'])
+            ->assertOk();
+        // … and an already-E.164 +972 number.
+        $this->postJson('/api/auth/request-otp', ['phone' => '+972501234567'])
+            ->assertOk();
+    }
+
+    public function test_clearing_the_coverage_config_lifts_the_restriction(): void
+    {
+        config(['amarati.sms.coverage' => '']);
+
+        $this->postJson('/api/auth/request-otp', ['phone' => '+441234567890'])
+            ->assertOk();
+    }
+
     // ─────────────── rate limits outside the auth endpoints ───────────────
 
     public function test_the_public_endpoints_are_capped_too(): void

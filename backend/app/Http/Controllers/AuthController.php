@@ -273,6 +273,14 @@ class AuthController extends Controller
     {
         $data = $r->validate(['phone' => 'required|string|max:32']);
 
+        // The gateway we can buy serves Palestinian/Israeli numbers only. Say so
+        // BEFORE issuing a code — a resident abroad must never be left waiting on
+        // an SMS that was never going to arrive, with no way forward named.
+        abort_if(! Notifier::coversNumber($data['phone']), 422,
+            'إرسال رموز التحقق عبر SMS متاح حالياً للأرقام الفلسطينية والإسرائيلية '
+            .'(+970 / +972) فقط. سجّل الدخول بكلمة المرور، أو استخدم رمز QR / كود '
+            .'الدخول الذي يوفره مسؤول العمارة.');
+
         $code = $this->issueCode(OtpCode::class, 'phone', $data['phone']);
         $sent = $notifier->sendSmsCode($data['phone'], $code);
 
@@ -281,7 +289,8 @@ class AuthController extends Controller
             $body['dev_code'] = $code;
         }
         abort_if(! $sent && ! isset($body['dev_code']), 503,
-            'تعذّر إرسال رمز التحقق حالياً — حاول لاحقاً أو سجّل الدخول بكلمة المرور');
+            'تعذّر إرسال رمز التحقق حالياً — سجّل الدخول بكلمة المرور، أو استخدم '
+            .'رمز QR / كود الدخول من مسؤول العمارة.');
 
         return response()->json($body);
     }

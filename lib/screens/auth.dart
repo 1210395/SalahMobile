@@ -534,6 +534,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       size: 12.5, weight: FontWeight.w700, color: AppColors.navy700)),
             ),
           ),
+          const SizedBox(height: 6),
+          // No phone-OTP login exists in the app — say so, instead of letting
+          // someone abroad discover it only after a code never arrives.
+          Text(
+            !Brand.smsAvailable && Brand.smsCoverage.isNotEmpty
+                ? 'الدخول هنا بكلمة المرور، أو برمز QR / كود الدخول من مسؤول العمارة. '
+                    'رموز التحقق عبر SMS غير متاحة حالياً إلا للأرقام '
+                    '${Brand.smsCoverage.join(' / ')}.'
+                : 'الدخول هنا بكلمة المرور، أو برمز QR / كود الدخول من مسؤول العمارة.',
+            style: AppType.base(
+                size: 12.5, weight: FontWeight.w600, color: AppColors.ink500, height: 1.6),
+          ),
         ],
         const SizedBox(height: 22),
         if (_missing.isNotEmpty) ...[
