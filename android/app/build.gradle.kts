@@ -43,6 +43,13 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Ship the two ABIs real phones use. The universal APK also carried a
+        // 27.7 MB x86_64 slice that only an emulator can run — a third of the
+        // download, wasted on every single install.
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        }
     }
 
     signingConfigs {

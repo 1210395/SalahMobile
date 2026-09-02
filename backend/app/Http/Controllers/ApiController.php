@@ -1085,6 +1085,61 @@ class ApiController extends Controller
         return response()->json($alert, 201);
     }
 
+    /// Everything the app needs to draw its first screen, in ONE response.
+    ///
+    /// The app used to fetch thirteen endpoints one after another before it could
+    /// render. Each is only ~4ms of work but ~135ms of round trip, so startup cost
+    /// about 1.8 seconds on a fast network and far worse on mobile. The sections
+    /// below are produced by the SAME methods that serve the individual endpoints,
+    /// so scoping and permissions cannot drift apart from them — including the
+    /// parts a resident is not allowed to see, which fail soft here exactly as the
+    /// app's own per-request error handling did.
+    public function bundle(Request $r)
+    {
+        $sections = [
+            'building' => fn () => $this->building($r),
+            'summary' => fn () => $this->summary($r),
+            'units' => fn () => $this->units($r),
+            'payments' => fn () => $this->payments($r),
+            'expenses' => fn () => $this->expenses($r),
+            'workers' => fn () => $this->workers($r),
+            'parking' => fn () => $this->parking($r),
+            'guard' => fn () => $this->guard($r),
+            'alerts' => fn () => $this->alerts($r),
+            'craftsmen' => fn () => $this->craftsmen($r),
+            'wa_templates' => fn () => $this->waTemplates(),
+            'pay_types' => fn () => $this->payTypes($r),
+            'year_summary' => fn () => $this->yearSummary($r),
+        ];
+
+        $out = [];
+        foreach ($sections as $key => $build) {
+            try {
+                $out[$key] = $this->unwrap($build());
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+                // A resident may not read the building's finances. That is not an
+                // error for the bundle — the section is simply absent, which is
+                // what the app already handled when it fetched them one by one.
+                $out[$key] = null;
+            }
+        }
+
+        return response()->json($out);
+    }
+
+    /// Normalise whatever a section method returned into plain JSON-able data.
+    private function unwrap(mixed $value): mixed
+    {
+        if ($value instanceof \Illuminate\Http\JsonResponse) {
+            return $value->getData(true);
+        }
+        if ($value instanceof \Illuminate\Contracts\Support\Arrayable) {
+            return $value->toArray();
+        }
+
+        return $value;
+    }
+
     public function waTemplates()
     {
         return WaTemplate::orderBy('id')->get();

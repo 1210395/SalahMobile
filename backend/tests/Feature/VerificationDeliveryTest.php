@@ -119,16 +119,39 @@ class VerificationDeliveryTest extends TestCase
 
     // ─────────────── password recovery ───────────────
 
+    /// The code as the recipient receives it. It is stored hashed, so the mail
+    /// itself is the only place a test can read it — which is also the only place
+    /// a real user can, now that no endpoint echoes a reset code back.
+    private function mailedCode(string $to): string
+    {
+        $found = null;
+        Mail::assertSent(\App\Mail\VerificationCodeMail::class,
+            function ($mail) use ($to, &$found) {
+                if ($mail->hasTo($to)) {
+                    $found = $mail->code;
+                }
+
+                return true;
+            });
+        $this->assertNotNull($found, "no verification mail reached $to");
+
+        return $found;
+    }
+
     public function test_a_manager_can_recover_a_forgotten_password(): void
     {
         Mail::fake();
+        config(['mail.default' => 'smtp']);   // recovery needs a mailer that delivers
         $b = $this->building();
         $user = $this->manager($b);
         $oldToken = $user->createToken('old')->plainTextToken;
 
-        $code = $this->postJson('/api/auth/forgot-password', ['email' => 'manager@test.app'])
-            ->assertOk()->json('dev_code');
-        $this->assertNotNull($code);
+        $this->postJson('/api/auth/forgot-password', ['email' => 'manager@test.app'])
+            ->assertOk()->assertJsonMissingPath('dev_code');
+
+        // The code reaches the manager by mail and nowhere else, so read it the
+        // way they would — it is never in the response.
+        $code = $this->mailedCode('manager@test.app');
 
         // A wrong code changes nothing.
         $this->postJson('/api/auth/reset-password', [
@@ -149,6 +172,7 @@ class VerificationDeliveryTest extends TestCase
     public function test_forgot_password_does_not_reveal_whether_an_account_exists(): void
     {
         Mail::fake();
+        config(['mail.default' => 'smtp']);
 
         $known = $this->postJson('/api/auth/forgot-password', ['email' => 'nobody@test.app']);
         $known->assertOk()->assertJson(['sent' => true]);
@@ -163,12 +187,14 @@ class VerificationDeliveryTest extends TestCase
     public function test_reset_asks_which_building_when_one_email_has_several_accounts(): void
     {
         Mail::fake();
+        config(['mail.default' => 'smtp']);
         $a = $this->building('عمارة أ');
         $b = $this->building('عمارة ب');
         $this->manager($a, 'shared@test.app');
         $this->manager($b, 'shared@test.app');
 
-        $code = $this->postJson('/api/auth/forgot-password', ['email' => 'shared@test.app'])->json('dev_code');
+        $this->postJson('/api/auth/forgot-password', ['email' => 'shared@test.app'])->assertOk();
+        $code = $this->mailedCode('shared@test.app');
 
         $choose = $this->postJson('/api/auth/reset-password', [
             'email' => 'shared@test.app', 'code' => $code, 'password' => 'brandnew1',
@@ -188,25 +214,24 @@ class VerificationDeliveryTest extends TestCase
             User::where('email', 'shared@test.app')->where('building_id', $a->id)->value('password')));
     }
 
-    public function test_the_sms_echo_can_be_closed_while_email_stays_usable(): void
+    public function test_the_channel_echoes_are_independent_off_a_production_host(): void
     {
-        // The live shape after this audit: no provider on either channel, but the
-        // SMS echo (the account-takeover path) switched off on its own.
+        // A staging box (not production) may still echo — one channel at a time.
         config([
             'amarati.expose_sms_dev_code' => false,
             'amarati.expose_email_dev_code' => true,
             'amarati.sms.driver' => 'log',
             'mail.default' => 'array',
         ]);
-        $this->app['env'] = 'production';   // the echo's local/testing shortcut is off
+        $this->app['env'] = 'staging';   // the echo's local/testing shortcut is off
 
         // SMS: no provider AND no echo, so there is no way to give the caller a
         // code — which is a refusal, not a cheerful "sent" they cannot act on.
         $this->postJson('/api/auth/request-otp', ['phone' => '0599111222'])
             ->assertStatus(503)->assertJsonMissingPath('dev_code');
 
-        // E-mail: still echoed, so the flow remains usable on a host with no
-        // mail provider — and `sent` tells the truth that nothing was delivered.
+        // E-mail: still echoed, so the flow remains usable on a box with no mail
+        // provider — and `sent` tells the truth that nothing was delivered.
         $this->postJson('/api/auth/request-email-code', ['email' => 'x@test.app'])
             ->assertOk()->assertJson(['sent' => false])->assertJsonStructure(['dev_code']);
     }
@@ -294,5 +319,41 @@ class VerificationDeliveryTest extends TestCase
 
         $this->postJson('/api/auth/request-email-code', ['email' => 'real@test.app'])
             ->assertOk()->assertJson(['sent' => true])->assertJsonMissingPath('dev_code');
+    }
+
+    // ───────── a verification code must never open an EXISTING account ─────────
+
+    /// The reported hole: with the dev echo on, `forgot-password` answered with
+    /// the reset code itself, so knowing a manager's e-mail address was enough to
+    /// take their account over from the open internet.
+    public function test_forgot_password_never_echoes_the_reset_code(): void
+    {
+        config(['amarati.expose_email_dev_code' => true]);
+        \App\Models\User::create([
+            'name' => 'مدير', 'email' => 'boss@t.local',
+            'password' => \Illuminate\Support\Facades\Hash::make('password'), 'role' => 'admin',
+        ]);
+
+        $body = $this->postJson('/api/auth/forgot-password', ['email' => 'boss@t.local'])->json();
+
+        $this->assertArrayNotHasKey('dev_code', $body ?? []);
+    }
+
+    /// …and on a production host the echo is refused outright, so a stray
+    /// `=true` in a deployed .env cannot hand out login codes for any channel.
+    public function test_a_production_host_refuses_the_dev_echo(): void
+    {
+        app()['env'] = 'production';
+        config([
+            'amarati.expose_email_dev_code' => true,
+            'amarati.expose_sms_dev_code' => true,
+        ]);
+
+        // Nothing can deliver and nothing may echo, so it says so (503) rather
+        // than answering with a usable code.
+        $this->postJson('/api/auth/request-email-code', ['email' => 'x@t.local'])
+            ->assertStatus(503);
+        $this->postJson('/api/auth/request-otp', ['phone' => '+970599111222'])
+            ->assertStatus(503);
     }
 }

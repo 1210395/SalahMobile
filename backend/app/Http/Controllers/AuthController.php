@@ -54,10 +54,21 @@ class AuthController extends Controller
             return false;
         }
 
-        return app()->environment(['local', 'testing'])
-            || (bool) config($channel === 'sms'
-                ? 'amarati.expose_sms_dev_code'
-                : 'amarati.expose_email_dev_code');
+        if (app()->environment(['local', 'testing'])) {
+            return true;
+        }
+
+        // The echo hands out a code that logs somebody in. On a development box
+        // that is a convenience; on a production host it is an authentication
+        // bypass one typo away, so the flag is not honoured there AT ALL —
+        // a forgotten `=true` in a deployed .env can no longer open the door.
+        if (app()->environment('production')) {
+            return false;
+        }
+
+        return (bool) config($channel === 'sms'
+            ? 'amarati.expose_sms_dev_code'
+            : 'amarati.expose_email_dev_code');
     }
 
     /// Whether a manager must confirm their e-mail to register: only when the
@@ -393,18 +404,27 @@ class AuthController extends Controller
     {
         $data = $r->validate(['email' => 'required|email']);
 
-        $exists = User::where('email', $data['email'])->whereNotNull('password')->exists();
-        $body = ['sent' => true];
+        // A reset code is NEVER echoed back, whatever the dev-echo setting says.
+        // It was: with the echo on, anyone who knew a manager's address could ask
+        // for a reset, read the code out of this very response, and take the
+        // account over from the open internet. The echo exists to make signing UP
+        // possible on a box with no mailer — it must not also hand out the keys to
+        // accounts that already exist.
+        //
+        // So this endpoint needs a real mailer, and says so plainly when it has
+        // none rather than answering "sent" to a mail nobody will ever receive.
+        abort_unless(Notifier::channelIsLive('mail'), 503,
+            'استعادة كلمة المرور غير متاحة حالياً — تواصل مع مسؤول النظام');
 
-        if ($exists) {
+        // Answered identically whether or not the address exists: this endpoint
+        // needs no credential, so a differing answer would turn it into a way to
+        // test which e-mails have accounts.
+        if (User::where('email', $data['email'])->whereNotNull('password')->exists()) {
             $code = $this->issueCode(EmailCode::class, 'email', $data['email']);
             $notifier->sendEmailCode($data['email'], $code, 'reset');
-            if ($this->exposesDevCode('mail')) {
-                $body['dev_code'] = $code;
-            }
         }
 
-        return response()->json($body);
+        return response()->json(['sent' => true]);
     }
 
     /// Step 2: consume the code and set a new password.

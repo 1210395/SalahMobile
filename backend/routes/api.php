@@ -58,6 +58,9 @@ Route::middleware(['auth:sanctum', 'throttle:amarati-api'])->group(function () {
     Route::get('/buildings', [ApiController::class, 'buildings']);
 
     // Building data (reads scoped to the user's building; admin may pass ?btype)
+    // One request instead of thirteen for the app's first paint.
+    Route::get('/bundle', [ApiController::class, 'bundle']);
+
     Route::get('/units', [ApiController::class, 'units']);
     Route::post('/units', [UnitController::class, 'store']);
     Route::put('/units/{unit}', [UnitController::class, 'update']);

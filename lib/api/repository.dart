@@ -51,19 +51,50 @@ class Api {
       }
     }
 
-    final building = await get('/building');
-    final summary = await getSoft('/summary');
-    final units = await get('/units');
-    final payments = await get('/payments');
-    final expenses = await get('/expenses');
-    final workers = await get('/workers');
-    final parking = await get('/parking');
-    final guard = await get('/guard');
-    final alerts = await get('/alerts');
-    final year = await getSoft('/year-summary', {'year': '${DateTime.now().year}'});
-    final craftsmen = await _dio.get('/craftsmen').then((r) => r.data);
-    final waTemplates = await _dio.get('/wa-templates').then((r) => r.data);
-    final payTypes = await _dio.get('/pay-types').then((r) => r.data);
+    // One request for the whole first paint. Each section is only a few
+    // milliseconds of server work but a full round trip of waiting, so fetching
+    // them one after another cost about 1.8 seconds on a fast network and far
+    // more on mobile. A server that predates /bundle (during the host move)
+    // answers 404, and the old path below still works.
+    dynamic building, summary, units, payments, expenses, workers, parking,
+        guard, alerts, year, craftsmen, waTemplates, payTypes;
+
+    Map<String, dynamic>? packed;
+    try {
+      packed = _obj(await get('/bundle', {'year': '${DateTime.now().year}'}));
+    } catch (_) {
+      packed = null;
+    }
+
+    if (packed != null) {
+      building = packed['building'];
+      summary = packed['summary'];
+      units = packed['units'] ?? const [];
+      payments = packed['payments'] ?? const [];
+      expenses = packed['expenses'] ?? const [];
+      workers = packed['workers'] ?? const [];
+      parking = packed['parking'] ?? const [];
+      guard = packed['guard'];
+      alerts = packed['alerts'] ?? const [];
+      year = packed['year_summary'];
+      craftsmen = packed['craftsmen'] ?? const [];
+      waTemplates = packed['wa_templates'] ?? const [];
+      payTypes = packed['pay_types'] ?? const [];
+    } else {
+      building = await get('/building');
+      summary = await getSoft('/summary');
+      units = await get('/units');
+      payments = await get('/payments');
+      expenses = await get('/expenses');
+      workers = await get('/workers');
+      parking = await get('/parking');
+      guard = await get('/guard');
+      alerts = await get('/alerts');
+      year = await getSoft('/year-summary', {'year': '${DateTime.now().year}'});
+      craftsmen = await _dio.get('/craftsmen').then((r) => r.data);
+      waTemplates = await _dio.get('/wa-templates').then((r) => r.data);
+      payTypes = await _dio.get('/pay-types').then((r) => r.data);
+    }
 
     final s = DataStore.I;
     final b0 = _obj(building);
@@ -84,7 +115,7 @@ class Api {
     s.expenses = _list(expenses).map(Expense.fromJson).toList();
     s.workers = _list(workers).map(Worker.fromJson).toList();
     s.parking = _list(parking).map(ParkingSpot.fromJson).toList();
-    s.guard = Guard.fromJson(_obj(guard));
+    s.guard = Guard.fromJson(guard == null ? const {} : _obj(guard));
     s.alerts = _list(alerts).map(AlertItem.fromJson).toList();
     s.year = YearData.fromJson(_obj(year));
     s.craftsmen = _list(craftsmen).map(Craftsman.fromJson).toList();
