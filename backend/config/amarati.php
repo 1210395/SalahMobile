@@ -40,6 +40,35 @@ return [
     // How long a verification code stays valid.
     'code_ttl_minutes' => (int) env('AMARATI_CODE_TTL_MINUTES', 10),
 
+    // ─────────────────────────── card payments ───────────────────────────
+    // Arab Bank's CyberSource account, through Unified Checkout. Leave the
+    // credentials empty and the platform simply does not offer to take money —
+    // subscriptions activate the way they did before a gateway existed, rather
+    // than presenting a payment form that cannot work.
+    'payments' => [
+        // apitest.cybersource.com while testing; api.cybersource.com for real money.
+        'host' => env('CYBERSOURCE_HOST', 'apitest.cybersource.com'),
+
+        'merchant_id' => env('CYBERSOURCE_MERCHANT_ID'),
+        'key_id' => env('CYBERSOURCE_KEY_ID'),
+        'secret_key' => env('CYBERSOURCE_SECRET_KEY'),
+
+        // The subscription price. Deliberately NOT a row a building manager can
+        // edit — this is what the platform charges THEM.
+        'amount' => env('AMARATI_SUBSCRIPTION_AMOUNT', '0.00'),
+        'currency' => env('AMARATI_SUBSCRIPTION_CURRENCY', 'USD'),
+
+        // How long one payment buys.
+        'period_days' => (int) env('AMARATI_SUBSCRIPTION_PERIOD_DAYS', 365),
+
+        'country' => env('CYBERSOURCE_COUNTRY', 'PS'),
+        'locale' => env('CYBERSOURCE_LOCALE', 'ar_PS'),
+
+        // How long a started checkout stays payable. The capture context itself
+        // expires in about fifteen minutes, so the link must not outlive it.
+        'checkout_ttl_minutes' => (int) env('AMARATI_CHECKOUT_TTL_MINUTES', 15),
+    ],
+
     'sms' => [
         // log    — write the message to the Laravel log (development default)
         // htd    — HTD / sms.htd.ps, the Palestinian gateway in production

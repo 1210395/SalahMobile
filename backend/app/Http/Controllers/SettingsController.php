@@ -33,6 +33,19 @@ class SettingsController extends Controller
             'coverage' => \App\Services\Notifier::smsCoverage(),
         ];
 
+        // Same idea for the subscription price: it is what the platform charges,
+        // never a building's own setting, so it is read from configuration and
+        // cannot be edited through this endpoint. The app shows it on the
+        // subscription screen instead of carrying a number of its own that
+        // silently disagreed with what the card would actually be charged.
+        $merged['subscription'] = [
+            'payable' => \App\Services\CyberSource::isConfigured()
+                && (float) config('amarati.payments.amount') > 0,
+            'amount' => (string) config('amarati.payments.amount'),
+            'currency' => (string) config('amarati.payments.currency'),
+            'period_days' => (int) config('amarati.payments.period_days'),
+        ];
+
         return response()->json($merged);
     }
 

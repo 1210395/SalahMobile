@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\PaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -17,3 +18,12 @@ Route::get('/join/{code?}', function (?string $code = null) {
         'appUrl' => env('AMARATI_APP_URL', 'https://github.com/1210395/SalahMobile/releases/latest'),
     ]);
 })->name('join');
+
+// سكن برو — the hosted card page. The app opens this in a browser rather than
+// embedding a card form, which is what keeps the mobile build out of PCI scope.
+// It authenticates on the one-time secret in the URL, not on a session: the
+// payer may well be in a browser the app never signed in.
+Route::middleware('throttle:amarati-public')->group(function () {
+    Route::get('/pay/{token}', [PaymentController::class, 'show'])->name('pay.show');
+    Route::post('/pay/{token}', [PaymentController::class, 'complete'])->name('pay.complete');
+});

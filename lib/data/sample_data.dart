@@ -758,6 +758,12 @@ class DataStore {
   // settings payload has actually been parsed (Brand supplies the default).
   bool? smsAvailable;
   List<String>? smsCoverage;
+  // The 'subscription' block from /settings: what the platform charges for a
+  // subscription. The screen used to carry its own number, which could disagree
+  // with what the card was actually charged.
+  bool? subscriptionPayable;
+  String? subscriptionAmount;
+  String? subscriptionCurrency;
 
   /// Split a raw /settings response into the flat branding map (existing
   /// shape, every value stringified) and the sms block. Shared by
@@ -766,11 +772,15 @@ class DataStore {
   void applySettingsJson(dynamic data) {
     final map = Map<String, dynamic>.from(data);
     final sms = map.remove('sms');
+    final sub = map.remove('subscription');
     settings = map.map((k, v) => MapEntry(k, '${v ?? ''}'));
     smsAvailable = sms is Map ? sms['available'] == true : null;
     smsCoverage = (sms is Map && sms['coverage'] is List)
         ? List<String>.from((sms['coverage'] as List).map((e) => '$e'))
         : null;
+    subscriptionPayable = sub is Map ? sub['payable'] == true : null;
+    subscriptionAmount = sub is Map ? '${sub['amount'] ?? ''}' : null;
+    subscriptionCurrency = sub is Map ? '${sub['currency'] ?? ''}' : null;
   }
 
   bool get loaded => units != null;

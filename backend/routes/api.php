@@ -4,6 +4,7 @@ use App\Http\Controllers\ApiController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\NoteController;
 use App\Http\Controllers\OnboardingController;
+use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\UnitController;
@@ -115,6 +116,10 @@ Route::middleware(['auth:sanctum', 'throttle:amarati-api'])->group(function () {
     Route::post('/notes', [NoteController::class, 'store']);
     Route::get('/notes', [NoteController::class, 'index']);
     Route::post('/notes/{note}/read', [NoteController::class, 'markRead']);
+
+    // Real card payment for the subscription (returns a URL the app opens).
+    Route::post('/subscription/checkout', [PaymentController::class, 'checkout']);
+    Route::get('/subscription/checkout', [PaymentController::class, 'status']);
 
     // Onboarding — subscription activation, building setup (promotes to admin), joins
     Route::post('/subscription/activate', [OnboardingController::class, 'activateSubscription']);

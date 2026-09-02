@@ -248,6 +248,17 @@ class Api {
   Future<Map<String, dynamic>> activateSubscription(BType b) => _dio
       .post('/subscription/activate', data: {'btype': btypeKey(b)}).then((r) => _obj(r.data));
 
+  /// Begin a real card payment. Returns the checkout URL to open in a browser —
+  /// the card is entered on the gateway's own form, never in this app.
+  Future<Map<String, dynamic>> startCheckout() =>
+      _dio.post('/subscription/checkout').then((r) => _obj(r.data));
+
+  /// How the last checkout ended. The payment happens outside the app, so this
+  /// is how it finds out — there is no building yet during onboarding, and
+  /// therefore no subscription to read.
+  Future<Map<String, dynamic>> checkoutStatus() =>
+      _dio.get('/subscription/checkout').then((r) => _obj(r.data));
+
   /// Returns the updated user (now an admin of [b]) so the app can refresh role.
   Future<Map<String, dynamic>> setupBuilding(BType b, Map<String, dynamic> body) => _dio
       .post('/building/setup', data: {...body, 'btype': btypeKey(b)})

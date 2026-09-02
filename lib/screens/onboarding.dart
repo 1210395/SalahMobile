@@ -3,6 +3,7 @@
 // and admin approval of join requests. All wired to the live Laravel API.
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../common.dart';
 import '../api/auth_store.dart';
@@ -22,36 +23,81 @@ class SubscribeScreen extends StatefulWidget {
 
 class _SubscribeScreenState extends State<SubscribeScreen> {
   // The annual subscription price shown on the gateway, in the base currency.
-  static const _amount = 299;
+  // The price is whatever the platform charges — read from /settings, never a
+  // number kept here that could disagree with what the card is actually charged.
+  String get _amountText {
+    final a = DataStore.I.subscriptionAmount;
+    final c = DataStore.I.subscriptionCurrency;
+    return (a == null || a.isEmpty) ? '—' : '$a ${c ?? ''}'.trim();
+  }
 
-  // True while we fake the redirect hop to the bank's payment page.
+  /// Whether a real card gateway is configured. When it is not, the platform
+  /// does not pretend to take money: the subscription simply activates, exactly
+  /// as it did before there was a gateway at all.
+  bool get _payable => DataStore.I.subscriptionPayable == true;
+
+  // True while the checkout is being opened / confirmed.
   bool _redirecting = false;
+  bool _awaitingReturn = false;
 
-  // SIMULATION — bank e-payment redirect (Note 4: "transferred to the bank's
-  // electronic payment screen to pay the subscription"). We round-trip a fake
-  // gateway entirely in-app: no real checkout URL, no card capture. A real
-  // integration would push the user to the bank's hosted page via env-keyed
-  // credentials (merchant id / API key) and confirm the result with a *signed
-  // webhook* — never trust the client. This mirrors the backend's own
-  // subscription-activate simulation note. The seam: replace _payViaGateway
-  // with a url_launcher hop + server-verified payment_ref, then keep the same
-  // activate-on-return path below.
+  /// Hand the payer to the gateway's own page.
+  ///
+  /// The card is entered there, not here — which is what keeps this app out of
+  /// PCI scope. We learn the outcome by asking our own server afterwards, never
+  /// by trusting anything the browser hands back.
   Future<void> _payViaGateway() async {
     final ctx = widget.ctx;
+
+    if (!_payable) {
+      // No gateway configured: carry on to setup, where the subscription is
+      // activated as before.
+      ctx.go('buildingSetup');
+      return;
+    }
+
     setState(() => _redirecting = true);
-    // Brief "redirecting to the gateway" beat before the checkout sheet.
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    setState(() => _redirecting = false);
+    try {
+      final checkout = await Api.I.startCheckout();
+      final url = '${checkout['url'] ?? ''}';
+      if (url.isEmpty) throw Exception('no checkout url');
 
-    final paid = await showAppSheet<bool>(context, _GatewaySheet(amount: _amount));
-    if (paid != true || !mounted) return;
+      final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!mounted) return;
+      if (!opened) {
+        ctx.toast('تعذّر فتح صفحة الدفع', tone: 'late');
+        return;
+      }
+      setState(() => _awaitingReturn = true);
+      ctx.toast('أكمل الدفع في المتصفح ثم عد إلى التطبيق');
+    } catch (e) {
+      if (mounted) ctx.toast(apiErrorText(e), tone: 'late');
+    } finally {
+      if (mounted) setState(() => _redirecting = false);
+    }
+  }
 
-    // Gateway approved. The subscription is actually activated on the server in
-    // the building-setup step (for the chosen building type) — keep that path
-    // intact and just hand off to it, exactly as before.
-    ctx.toast('تم الدفع بنجاح — أكمل إعداد المبنى');
-    ctx.go('buildingSetup');
+  /// Ask OUR server whether the payment settled. The browser's word is not
+  /// evidence — only the gateway's answer to us is.
+  Future<void> _confirmPayment() async {
+    final ctx = widget.ctx;
+    setState(() => _redirecting = true);
+    try {
+      final status = await Api.I.checkoutStatus();
+      if (!mounted) return;
+      if (status['paid'] == true) {
+        ctx.toast('تم الدفع بنجاح — أكمل إعداد المبنى');
+        ctx.go('buildingSetup');
+      } else if (status['status'] == 'failed') {
+        setState(() => _awaitingReturn = false);
+        ctx.toast('لم تتم الموافقة على البطاقة — حاول مرة أخرى', tone: 'late');
+      } else {
+        ctx.toast('لم يكتمل الدفع بعد', tone: 'late');
+      }
+    } catch (e) {
+      if (mounted) ctx.toast(apiErrorText(e), tone: 'late');
+    } finally {
+      if (mounted) setState(() => _redirecting = false);
+    }
   }
 
   @override
@@ -74,7 +120,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                   style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.accent400)),
               const SizedBox(height: 8),
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                NumText(fmtUSD(_amount),
+                NumText(_amountText,
                     style: AppType.num(size: 30, weight: FontWeight.w800, color: Colors.white)),
                 const SizedBox(width: 6),
                 Padding(
@@ -125,7 +171,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                   children: [
                     Text('المبلغ المستحق',
                         style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
-                    NumText(fmtUSD(_amount),
+                    NumText(_amountText,
                         style: AppType.num(size: 18, weight: FontWeight.w800, color: AppColors.brand700)),
                   ],
                 ),
@@ -144,100 +190,32 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         ]),
         const SizedBox(height: 16),
         AppButton(
-          label: _redirecting ? 'جارٍ التحويل إلى بوابة الدفع البنكية…' : 'الدفع عبر البوابة البنكية',
+          label: _redirecting
+              ? 'جارٍ التحويل إلى بوابة الدفع البنكية…'
+              : (_awaitingReturn
+                  ? 'تحقّق من إتمام الدفع'
+                  : (_payable ? 'الدفع عبر البوابة البنكية' : 'متابعة')),
           size: BtnSize.lg,
           full: true,
-          icon: _redirecting ? null : 'wallet',
+          icon: _redirecting ? null : (_awaitingReturn ? 'check' : 'wallet'),
           disabled: _redirecting || ctx.busy,
-          onTap: _payViaGateway,
+          onTap: _awaitingReturn ? _confirmPayment : _payViaGateway,
         ),
+        if (_awaitingReturn) ...[
+          const SizedBox(height: 8),
+          Center(
+            child: Text('أتممت الدفع في المتصفح؟ اضغط الزر أعلاه للتحقق.',
+                style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400)),
+          ),
+        ],
       ],
     );
   }
 }
 
-// Simulated bank checkout, presented via showAppSheet and styled as the bank's
 // hosted payment page. Pops `true` on "تأكيد الدفع", `false`/null otherwise.
 // SIMULATION: a real gateway would render the bank's own page (or an in-app
 // webview / url_launcher hop) and the approval would arrive via a signed webhook.
-class _GatewaySheet extends StatelessWidget {
-  const _GatewaySheet({required this.amount});
-  final int amount;
-
-  @override
-  Widget build(BuildContext context) {
-    return SheetShell(
-      title: 'بوابة الدفع البنكية',
-      onClose: () => Navigator.of(context).pop(false),
-      footer: Row(children: [
-        Expanded(
-          child: AppButton(
-            label: 'إلغاء',
-            variant: BtnVariant.ghost,
-            size: BtnSize.lg,
-            full: true,
-            onTap: () => Navigator.of(context).pop(false),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: AppButton(
-            label: 'تأكيد الدفع',
-            size: BtnSize.lg,
-            full: true,
-            icon: 'check',
-            onTap: () => Navigator.of(context).pop(true),
-          ),
-        ),
-      ]),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppColors.brand700, AppColors.brand800],
-            ),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(children: [
-                AppIcon('shield', size: 16, color: AppColors.accent400),
-                const SizedBox(width: 6),
-                Text('دفع إلكتروني آمن',
-                    style: AppType.base(size: 12.5, weight: FontWeight.w700, color: AppColors.accent400)),
-              ]),
-              const SizedBox(height: 14),
-              Text('المبلغ',
-                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.brand300)),
-              const SizedBox(height: 4),
-              NumText(fmtUSD(amount),
-                  style: AppType.num(size: 30, weight: FontWeight.w800, color: Colors.white)),
-              const SizedBox(height: 4),
-              Text('اشتراك إدارة المبنى · سنوياً',
-                  style: AppType.base(size: 12, weight: FontWeight.w500, color: AppColors.brand300)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        Row(children: [
-          AppIcon('lock', size: 14, color: AppColors.ink400),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text('بيئة محاكاة للدفع. عند الربط الفعلي، تتم العملية على صفحة البنك '
-                'ويُؤكَّد القبول عبر إشعار موقّع من البنك.',
-                style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.ink400, height: 1.55)),
-          ),
-        ]),
-      ],
-    );
-  }
-}
-
 // ───────────────────────────── Building setup wizard ─────────────────────────────
 
 class BuildingSetupScreen extends StatefulWidget {

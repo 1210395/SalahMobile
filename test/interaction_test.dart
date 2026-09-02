@@ -1021,4 +1021,26 @@ void main() {
     expect(resolveSiteBase(), isNot(contains('/api')));
     expect(resolveApiBase(), startsWith(resolveSiteBase()));
   });
+
+  // The subscription screen used to carry its own hard-coded price, which could
+  // disagree with what the card was actually charged. It reads the platform's
+  // price now, and offers no payment at all when no gateway is configured.
+  test('the subscription price and payability come from the server', () {
+    final s = DataStore.I;
+
+    s.applySettingsJson({
+      'app_name': 'سكن برو',
+      'subscription': {'payable': true, 'amount': '25.00', 'currency': 'USD', 'period_days': 365},
+    });
+    expect(s.subscriptionPayable, isTrue);
+    expect(s.subscriptionAmount, '25.00');
+    expect(s.subscriptionCurrency, 'USD');
+    // the block is not left sitting in the branding map
+    expect(s.settings!.containsKey('subscription'), isFalse);
+    expect(s.settings!['app_name'], 'سكن برو');
+
+    // An older server that knows nothing about payments must not read as payable.
+    s.applySettingsJson({'app_name': 'سكن برو'});
+    expect(s.subscriptionPayable, isNull);
+  });
 }
