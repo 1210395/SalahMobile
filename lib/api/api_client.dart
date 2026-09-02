@@ -17,6 +17,20 @@ String resolveApiBase() {
   return kProdApiBase;
 }
 
+/// The site the backend serves its own pages from — the join/invite landing page
+/// lives there, not under /api.
+///
+/// Derived from whatever base the build is pointed at, so moving the backend to
+/// another domain moves the invite links with it. Hard-coding the host meant a
+/// shipped APK would keep sending residents to the OLD site on move day, with
+/// nothing in the app able to correct it.
+String resolveSiteBase() {
+  final base = resolveApiBase();
+  final api = base.lastIndexOf('/api');
+
+  return api > 0 ? base.substring(0, api) : base;
+}
+
 class ApiClient {
   ApiClient._() {
     dio = Dio(BaseOptions(

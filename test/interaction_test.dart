@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:sakan_pro/api/api_client.dart';
 import 'package:sakan_pro/app.dart';
 import 'package:sakan_pro/common.dart';
 import 'package:sakan_pro/api/auth_store.dart' show AuthUser;
@@ -1010,5 +1011,14 @@ void main() {
     // Dark is the default, so the button offers the sun (the skin you would get).
     expect(find.byWidgetPredicate((w) => w is RoundBtn && w.icon == 'sun'), findsWidgets);
     expect(tester.takeException(), isNull);
+  });
+
+  // The backend is moving to another domain. A shipped APK cannot be told about
+  // that, so anything it builds a URL from must come from the base it was built
+  // with — the invite link used to name the old host in source.
+  test('the site base follows the API base, so invite links move with the host',
+      () {
+    expect(resolveSiteBase(), isNot(contains('/api')));
+    expect(resolveApiBase(), startsWith(resolveSiteBase()));
   });
 }

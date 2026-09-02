@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../api/api_client.dart';
 import '../common.dart';
 import '../api/repository.dart';
 import 'admin_finance.dart' show AddPaymentSheet;
@@ -848,7 +849,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
   /// Invite preview (WhatsApp link / QR) — the resident opens the join page.
   void _openInvite(Ctx ctx, bool res, {required bool qr}) {
     final code = 'AMR-${ctx.building.units}${ctx.building.floors}';
-    final link = 'https://imarty.olive-dev.com/join/$code';
+    final link = '${resolveSiteBase()}/join/$code';
     showAppSheet(
       context,
       SheetShell(
