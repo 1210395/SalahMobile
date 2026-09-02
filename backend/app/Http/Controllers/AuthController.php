@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\Notifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -188,6 +189,19 @@ class AuthController extends Controller
             // Set on the second call when the first returned a `choose` list.
             'building_id' => 'nullable|integer',
         ]);
+        // Password guessing is capped per ACCOUNT, not only per IP. The route's
+        // 6/min is keyed by address, so a spread-out attacker simply guesses from
+        // many of them; this ties the budget to the account being attacked, where
+        // it belongs. It is deliberately generous — someone mistyping their own
+        // password a few times must not be locked out of their building.
+        $throttleKey = 'amarati-login:'.strtolower($data['email'] ?? $data['phone']);
+        if (RateLimiter::tooManyAttempts($throttleKey, 10)) {
+            throw ValidationException::withMessages(['email' => [
+                'محاولات دخول كثيرة — حاول مرة أخرى بعد '
+                .ceil(RateLimiter::availableIn($throttleKey) / 60).' دقيقة',
+            ]]);
+        }
+
         $q = isset($data['email'])
             ? User::where('email', $data['email'])
             : User::where('phone', $data['phone']);
@@ -201,8 +215,14 @@ class AuthController extends Controller
             && $u->password && Hash::check($data['password'], $u->password))->values();
 
         if ($candidates->isEmpty()) {
+            RateLimiter::hit($throttleKey, 900);   // 15 minutes
             throw ValidationException::withMessages(['email' => ['بيانات الدخول غير صحيحة']]);
         }
+
+        // They proved they own the account, so their budget resets — otherwise a
+        // stranger's failed guesses would still lock the real owner out.
+        RateLimiter::clear($throttleKey);
+
         if ($candidates->count() > 1) {
             return $this->chooseBuilding($candidates);
         }

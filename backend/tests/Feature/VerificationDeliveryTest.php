@@ -356,4 +356,54 @@ class VerificationDeliveryTest extends TestCase
         $this->postJson('/api/auth/request-otp', ['phone' => '+970599111222'])
             ->assertStatus(503);
     }
+
+    // ───────────────── password guessing is capped per ACCOUNT ─────────────────
+
+    /// Per-IP throttling alone lets a spread-out attacker keep guessing one
+    /// person's password forever. The budget belongs to the account.
+    public function test_login_locks_one_account_out_after_repeated_wrong_passwords(): void
+    {
+        config(['amarati.auth_rate' => 100]);   // isolate the per-account cap from the per-IP one
+        $this->manager($this->building(), 'target@test.app');
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/api/auth/login', [
+                'email' => 'target@test.app', 'password' => "wrong$i",
+            ])->assertStatus(422);
+        }
+
+        // The 11th is refused before the password is even considered — the RIGHT
+        // password included, which is what makes it a lockout and not a counter.
+        $this->postJson('/api/auth/login', [
+            'email' => 'target@test.app', 'password' => 'password',
+        ])->assertStatus(422);
+        $this->assertStringContainsString('محاولات دخول كثيرة',
+            $this->postJson('/api/auth/login', [
+                'email' => 'target@test.app', 'password' => 'password',
+            ])->json('message'));
+    }
+
+    /// …and signing in successfully clears it, so a stranger's failed guesses
+    /// cannot lock the real owner out of their own building.
+    public function test_a_successful_login_clears_the_budget(): void
+    {
+        config(['amarati.auth_rate' => 100]);   // isolate the per-account cap from the per-IP one
+        $this->manager($this->building(), 'owner@test.app');
+
+        for ($i = 0; $i < 9; $i++) {
+            $this->postJson('/api/auth/login', ['email' => 'owner@test.app', 'password' => 'no'])
+                ->assertStatus(422);
+        }
+
+        $this->postJson('/api/auth/login', ['email' => 'owner@test.app', 'password' => 'password'])
+            ->assertOk();
+
+        // Ten more wrong guesses are available again, so the next honest typo is
+        // not the one that locks them out.
+        $this->postJson('/api/auth/login', ['email' => 'owner@test.app', 'password' => 'no'])
+            ->assertStatus(422);
+        $this->assertStringNotContainsString('محاولات دخول كثيرة',
+            $this->postJson('/api/auth/login', ['email' => 'owner@test.app', 'password' => 'no'])
+                ->json('message'));
+    }
 }
