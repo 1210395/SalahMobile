@@ -44,9 +44,14 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // Ship the two ABIs real phones use. The universal APK also carried a
-        // 27.7 MB x86_64 slice that only an emulator can run — a third of the
-        // download, wasted on every single install.
+        // Real phones are ARM. A universal APK also carries an x86_64 slice that
+        // only an emulator can run — 27.7 MB of a 77 MB download, wasted on every
+        // install. This drops it from the PLUGINS' native libraries.
+        //
+        // Flutter's own engine libraries are added by its gradle plugin and do
+        // NOT pass through here, so the release build must ALSO be given:
+        //     flutter build apk --release --target-platform android-arm,android-arm64
+        // Together: 77 MB -> ~50 MB.
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
