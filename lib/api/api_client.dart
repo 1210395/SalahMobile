@@ -2,8 +2,8 @@
 
 import 'package:dio/dio.dart';
 
-/// Hosted production backend (Coolify @ Imarty.olive-dev.com).
-const String kProdApiBase = 'https://imarty.olive-dev.com/api';
+/// Hosted production backend.
+const String kProdApiBase = 'https://sakanpro.app/api';
 
 /// Base URL resolution:
 /// - by default (any build — debug or release) the app talks to the hosted

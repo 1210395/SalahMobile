@@ -76,6 +76,7 @@ class Notifier
 
         try {
             return match ($driver) {
+                'htd' => $this->viaHtd($to, $text),
                 'twilio' => $this->viaTwilio($to, $text),
                 'http' => $this->viaHttpGateway($to, $text),
                 default => $this->viaLog('sms', $to, $text),
@@ -105,6 +106,62 @@ class Notifier
     }
 
     // ───────────────────────────── drivers ─────────────────────────────
+
+    /// HTD (sms.htd.ps) — the Palestinian gateway سكن برو sends through.
+    ///
+    /// Two things stop the generic gateway driver from covering this one. The
+    /// number must be bare digits with a country code and no "+", and success is
+    /// a plain English sentence in the body rather than a status code — every
+    /// failure mode is another sentence ("Insufficient Credit", "IP Not Allowed",
+    /// "Sender Not Allowed"), which is worth logging verbatim because each one
+    /// names its own fix.
+    private function viaHtd(string $to, string $text): bool
+    {
+        $id = config('amarati.sms.htd.id');
+        if (! $id) {
+            Log::error('amarati.sms.misconfigured', ['driver' => 'htd', 'missing' => 'SMS_HTD_ID']);
+
+            return false;
+        }
+
+        $res = Http::timeout(20)->get(config('amarati.sms.htd.url'), [
+            'id' => $id,
+            'sender' => config('amarati.sms.from'),
+            'to' => $this->htdNumber($to),
+            'msg' => $text,
+            'mode' => 0,
+        ]);
+
+        $body = trim($res->body());
+        $ok = $res->successful() && str_contains($body, 'Message Sent Successfully');
+
+        if (! $ok) {
+            Log::error('amarati.sms.rejected', [
+                'driver' => 'htd',
+                'status' => $res->status(),
+                'to' => $this->mask($to),
+                'body' => mb_substr($body, 0, 200),
+            ]);
+        }
+
+        return $ok;
+    }
+
+    /// The number as HTD wants it: digits only, carrying a country code.
+    ///
+    /// The account is provisioned against 972, so a Palestinian +970 number goes
+    /// out as 972 — the same handset either way. It is configurable because the
+    /// provider's own manual documents 970 and the account note says 972; if
+    /// that ever changes it must not need a deploy.
+    public function htdNumber(string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', $this->normalisePhone($phone));
+        $cc = trim((string) config('amarati.sms.htd.country_code'));
+
+        return ($cc !== '' && str_starts_with($digits, '970'))
+            ? $cc.substr($digits, 3)
+            : $digits;
+    }
 
     private function viaTwilio(string $to, string $text): bool
     {

@@ -42,8 +42,9 @@ return [
 
     'sms' => [
         // log    — write the message to the Laravel log (development default)
+        // htd    — HTD / sms.htd.ps, the Palestinian gateway in production
         // twilio — Twilio REST API
-        // http   — any gateway that takes a plain GET/POST (local operators)
+        // http   — any other gateway that takes a plain GET/POST
         'driver' => env('SMS_DRIVER', 'log'),
 
         // Which numbers the provider can actually REACH, as E.164 prefixes.
@@ -56,6 +57,21 @@ return [
         // The name/number the message comes from (Twilio: a purchased number or
         // messaging-service SID; http: usually an approved alphabetic sender).
         'from' => env('SMS_FROM', 'Amarati'),
+
+        'htd' => [
+            'url' => env('SMS_HTD_URL', 'https://sms.htd.ps/API/SendSMS.aspx'),
+
+            // The API ID from the gateway's "My Account" page. It is the only
+            // credential the send call carries, so it is a password: it lives in
+            // .env and nowhere else. Sending is additionally locked to the
+            // server's IP by an allow-list on the account itself.
+            'id' => env('SMS_HTD_ID'),
+
+            // Rewrite a Palestinian +970 number to this country code before
+            // sending. The account was issued against 972; blank it to send the
+            // number exactly as the app stores it.
+            'country_code' => env('SMS_HTD_COUNTRY_CODE', '972'),
+        ],
 
         'twilio' => [
             'sid' => env('TWILIO_SID'),

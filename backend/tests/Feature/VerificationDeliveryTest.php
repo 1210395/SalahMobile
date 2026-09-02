@@ -406,4 +406,67 @@ class VerificationDeliveryTest extends TestCase
             $this->postJson('/api/auth/login', ['email' => 'owner@test.app', 'password' => 'no'])
                 ->json('message'));
     }
+
+    // ─────────────────── the HTD gateway (production SMS) ───────────────────
+
+    /// HTD wants bare digits with a country code, and the account is issued
+    /// against 972 — a +970 E.164 string is simply rejected.
+    public function test_the_gateway_gets_the_number_in_the_shape_it_accepts(): void
+    {
+        $n = app(\App\Services\Notifier::class);
+
+        $this->assertSame('972599123456', $n->htdNumber('0599123456'));
+        $this->assertSame('972599123456', $n->htdNumber('+970599123456'));
+        $this->assertSame('972599123456', $n->htdNumber('972-599-123456'));
+
+        // Blank the country code and the number goes exactly as stored.
+        config(['amarati.sms.htd.country_code' => '']);
+        $this->assertSame('970599123456', $n->htdNumber('0599123456'));
+    }
+
+    /// The gateway answers 200 with a sentence, so the HTTP status alone says
+    /// nothing — "Insufficient Credit" is a 200 and must not read as delivered.
+    public function test_a_gateway_refusal_is_not_reported_as_sent(): void
+    {
+        config(['amarati.sms.driver' => 'htd', 'amarati.sms.htd.id' => 'test-api-id']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            '*' => \Illuminate\Support\Facades\Http::response('Insufficient Credit', 200),
+        ]);
+
+        $this->assertFalse(app(\App\Services\Notifier::class)->sendSmsCode('0599123456', '123456'));
+    }
+
+    public function test_the_gateway_reports_a_real_send(): void
+    {
+        config(['amarati.sms.driver' => 'htd', 'amarati.sms.htd.id' => 'test-api-id',
+            'amarati.sms.from' => 'Amarti']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            '*' => \Illuminate\Support\Facades\Http::response('Message Sent Successfully', 200),
+        ]);
+
+        $this->assertTrue(app(\App\Services\Notifier::class)->sendSmsCode('0599123456', '123456'));
+
+        \Illuminate\Support\Facades\Http::assertSent(function ($request) {
+            $q = $request->data();
+
+            return str_contains($request->url(), 'sms.htd.ps')
+                && $q['id'] === 'test-api-id'
+                && $q['sender'] === 'Amarti'
+                && $q['to'] === '972599123456'
+                && str_contains($q['msg'], '123456');
+        });
+    }
+
+    /// With a gateway configured, the SMS channel counts as live — which is what
+    /// stops the dev echo and makes `sent` mean something.
+    public function test_configuring_the_gateway_makes_the_channel_live(): void
+    {
+        config(['amarati.sms.driver' => 'log']);
+        $this->assertFalse(\App\Services\Notifier::channelIsLive('sms'));
+
+        config(['amarati.sms.driver' => 'htd']);
+        $this->assertTrue(\App\Services\Notifier::channelIsLive('sms'));
+    }
 }
