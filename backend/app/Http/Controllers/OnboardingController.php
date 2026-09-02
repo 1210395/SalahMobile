@@ -7,6 +7,7 @@ use App\Models\JoinRequest;
 use App\Models\PayType;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Services\CyberSource;
 use Illuminate\Http\Request;
 
 // سكن برو — onboarding flow: subscription, building setup (which CREATES the
@@ -132,18 +133,39 @@ class OnboardingController extends Controller
             // from it, and it must not be shared with anyone else's building.
             PayType::seedDefaults($building->id);
 
-            // The manager "paid" in the subscribe step — activate this building's
-            // subscription (simulated).
-            Subscription::create([
-                'building_id' => $building->id,
-                'building_key' => $type,
-                'status' => 'active',
-                'plan' => 'سنوي',
-                'amount' => 299,
-                'payment_ref' => 'SIM-'.strtoupper(bin2hex(random_bytes(4))),
-                'activated_at' => now(),
-                'expires_at' => now()->addYear(),
-            ]);
+            // Where the subscription comes from depends on whether the platform
+            // is charging at all.
+            //
+            // It used to be activated unconditionally, on the reasoning that
+            // reaching this screen meant the (simulated) payment had happened.
+            // With a real gateway that is a free subscription for anyone who
+            // calls this endpoint directly instead of paying, so once money is
+            // actually being taken the subscription comes from a settled
+            // payment and from nothing else.
+            if (CyberSource::isConfigured() && CyberSource::configuredAmount() !== null) {
+                Subscription::create([
+                    'building_id' => $building->id,
+                    'building_key' => $type,
+                    'status' => 'inactive',
+                ]);
+                // A manager pays BEFORE their building exists, so the payment had
+                // nowhere to point until now. Without this the money is taken and
+                // the subscription never turns on.
+                PaymentController::claimForBuilding($u->id, $building->id);
+            } else {
+                // No gateway: the platform is not charging, so setting a building
+                // up is what activates it — exactly as before.
+                Subscription::create([
+                    'building_id' => $building->id,
+                    'building_key' => $type,
+                    'status' => 'active',
+                    'plan' => 'سنوي',
+                    'amount' => 0,
+                    'payment_ref' => null,
+                    'activated_at' => now(),
+                    'expires_at' => now()->addYear(),
+                ]);
+            }
         }
 
         // SECURITY (role model): you become an admin by setting up a building, not

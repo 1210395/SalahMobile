@@ -1261,15 +1261,17 @@ class AmaratiOverhaulTest extends TestCase
     public function test_otp_not_consumed_for_password_account(): void
     {
         $this->app['env'] = 'local';
-        User::create(['name' => 'مدير', 'phone' => '0599', 'password' => Hash::make('secret6'),
+        // A real-shaped number: sending to '0599' would be a wasted credit, and
+        // request-otp refuses anything that is not plausibly a phone.
+        User::create(['name' => 'مدير', 'phone' => '0599111222', 'password' => Hash::make('secret6'),
             'role' => 'admin', 'building_key' => 'residential']);
 
-        $code = $this->postJson('/api/auth/request-otp', ['phone' => '0599'])->json('dev_code');
-        $this->postJson('/api/auth/verify-otp', ['phone' => '0599', 'code' => $code])
+        $code = $this->postJson('/api/auth/request-otp', ['phone' => '0599111222'])->json('dev_code');
+        $this->postJson('/api/auth/verify-otp', ['phone' => '0599111222', 'code' => $code])
             ->assertStatus(422);
 
         // The OTP must still be unused (not wasted on a login that can't succeed).
-        $this->assertDatabaseHas('otp_codes', ['phone' => '0599', 'used' => false]);
+        $this->assertDatabaseHas('otp_codes', ['phone' => '0599111222', 'used' => false]);
     }
 
     // Repro: type old code wrong, request a NEW code, enter the new one — accepted.

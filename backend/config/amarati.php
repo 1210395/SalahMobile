@@ -69,6 +69,13 @@ return [
         'checkout_ttl_minutes' => (int) env('AMARATI_CHECKOUT_TTL_MINUTES', 15),
     ],
 
+    // The same restraint as SMS, for the same reason: request-email-code needs
+    // no account, so without a per-address limit it is a way to bomb a
+    // stranger's inbox from our domain — which costs us the sending reputation
+    // that makes the codes arrive at all.
+    'email_cooldown_seconds' => (int) env('EMAIL_COOLDOWN_SECONDS', 60),
+    'email_per_address_hourly' => (int) env('EMAIL_PER_ADDRESS_HOURLY', 5),
+
     'sms' => [
         // log    — write the message to the Laravel log (development default)
         // htd    — HTD / sms.htd.ps, the Palestinian gateway in production
@@ -86,6 +93,20 @@ return [
         // The name/number the message comes from (Twilio: a purchased number or
         // messaging-service SID; http: usually an approved alphabetic sender).
         'from' => env('SMS_FROM', 'Amarati'),
+
+        // ─────────── spending limits ───────────
+        // Sending is not free and the balance is finite: 1000 credits is 1000
+        // codes. `request-otp` needs no account, so without a ceiling anyone
+        // can drain the balance — and with it everyone's ability to sign in —
+        // by asking for codes for numbers they do not own. This is the ordinary
+        // SMS-pumping attack, and the per-IP throttle does not stop it because
+        // an attacker simply uses more addresses.
+        'daily_cap' => (int) env('SMS_DAILY_CAP', 300),
+
+        // One person, one number: a code every minute at most, and a handful an
+        // hour. Comfortably above anyone re-requesting a code they did not get.
+        'cooldown_seconds' => (int) env('SMS_COOLDOWN_SECONDS', 60),
+        'per_number_hourly' => (int) env('SMS_PER_NUMBER_HOURLY', 5),
 
         'htd' => [
             'url' => env('SMS_HTD_URL', 'https://sms.htd.ps/API/SendSMS.aspx'),

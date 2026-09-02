@@ -29,16 +29,16 @@ class PaymentController extends Controller
             'الدفع الإلكتروني غير متاح حالياً — تواصل مع مسؤول النظام');
 
         $user = $r->user();
-        $amount = (int) round(((float) config('amarati.payments.amount')) * 100);
-        abort_if($amount <= 0, 503, 'لم يتم تحديد قيمة الاشتراك بعد');
+        $amount = CyberSource::configuredAmount();
+        abort_if($amount === null, 503, 'لم يتم تحديد قيمة الاشتراك بعد');
 
-        // An unpaid checkout that is still valid is reused rather than piling up
-        // half-finished payments every time somebody taps the button twice.
-        $existing = SubscriptionPayment::where('user_id', $user->id)
+        // Somebody who opened a checkout and closed the browser used to be told
+        // to wait a quarter of an hour, with no way to start again. Their older
+        // links are retired instead — which also means only ONE live link exists
+        // per person at a time, so there is never a second one to be charged on.
+        SubscriptionPayment::where('user_id', $user->id)
             ->where('status', 'pending')->where('expires_at', '>', now())
-            ->latest('id')->first();
-        abort_if($existing !== null, 409,
-            'هناك عملية دفع جارية — أكملها أو انتظر انتهاء صلاحيتها');
+            ->update(['expires_at' => now()->subSecond()]);
 
         [$payment, $token] = SubscriptionPayment::start(
             $user->building_id, $user->id, $amount,
@@ -137,7 +137,7 @@ class PaymentController extends Controller
         // second one now finds the row already claimed and stops.
         $claimed = DB::transaction(function () use ($payment) {
             $fresh = SubscriptionPayment::whereKey($payment->id)->lockForUpdate()->first();
-            if (! $fresh || ! $fresh->isPayable()) {
+            if (! $fresh || ! $fresh->isClaimable()) {
                 return null;
             }
             $fresh->update(['status' => 'charging']);
@@ -191,17 +191,45 @@ class PaymentController extends Controller
         return response()->json(['paid' => true, 'reference' => $claimed->reference]);
     }
 
+    /// Attach a payment made before the building existed, and activate it.
+    ///
+    /// Called from building setup. Without it, a manager who paid during
+    /// onboarding would have the money taken and no subscription to show for
+    /// it — the payment row had nowhere to point.
+    public static function claimForBuilding(int $userId, int $buildingId): void
+    {
+        $paid = SubscriptionPayment::where('user_id', $userId)
+            ->whereNull('building_id')->where('status', 'paid')
+            ->latest('id')->first();
+
+        if (! $paid) {
+            return;
+        }
+
+        $paid->update(['building_id' => $buildingId]);
+        (new self)->activate($paid->fresh());
+    }
+
     /// Turn a settled payment into an active subscription.
     private function activate(SubscriptionPayment $payment): void
     {
         if (! $payment->building_id) {
-            // The manager pays during onboarding, before their building exists.
-            // setupBuilding() creates the subscription row; the payment is
-            // already recorded against them and is what unlocks that step.
+            // Paid during onboarding, before the building exists. There is
+            // nothing to attach it to yet, so claimForBuilding() below picks it
+            // up the moment the building is created — otherwise the money is
+            // taken and the subscription never turns on.
             return;
         }
 
         $days = (int) config('amarati.payments.period_days', 365);
+        $current = Subscription::where('building_id', $payment->building_id)->first();
+
+        // Renewing early EXTENDS rather than restarts. Setting expiry to
+        // now()+period would quietly bin whatever was left of the term they had
+        // already paid for — the person who renews a month early loses a month.
+        $from = ($current?->expires_at && $current->expires_at->isFuture())
+            ? $current->expires_at
+            : now();
 
         Subscription::updateOrCreate(
             ['building_id' => $payment->building_id],
@@ -209,8 +237,8 @@ class PaymentController extends Controller
                 'status' => 'active',
                 'amount' => (int) round($payment->amount / 100),
                 'payment_ref' => $payment->reference,
-                'activated_at' => now(),
-                'expires_at' => now()->addDays($days),
+                'activated_at' => $current?->activated_at ?? now(),
+                'expires_at' => $from->copy()->addDays($days),
             ],
         );
     }

@@ -479,4 +479,315 @@ class VerificationDeliveryTest extends TestCase
         config(['amarati.sms.htd.id' => 'an-api-id']);
         $this->assertTrue(\App\Services\Notifier::channelIsLive('sms'));
     }
+
+    // ═══════════════ e-mail as identity: spelling and length ═══════════════
+
+    /// A code is issued against one spelling and redeemed against another —
+    /// somebody types "Boss@Example.COM" to register and "boss@example.com" to
+    /// confirm. That used to work only because MySQL's collation happens to be
+    /// case-insensitive, which is a property of the host, not a decision.
+    public function test_a_code_survives_a_change_of_spelling(): void
+    {
+        Mail::fake();
+        config(['mail.default' => 'smtp']);
+
+        $this->postJson('/api/auth/request-email-code', ['email' => '  Boss@Example.COM '])
+            ->assertOk();
+        $code = $this->mailedCode('boss@example.com');
+
+        $this->postJson('/api/auth/verify-email-code',
+            ['email' => 'BOSS@example.com', 'code' => $code])->assertOk();
+    }
+
+    public function test_an_account_is_stored_under_one_spelling(): void
+    {
+        Mail::fake();
+        config(['mail.default' => 'smtp', 'amarati.require_email_verification' => false]);
+
+        $this->postJson('/api/auth/register', [
+            'name' => 'مدير', 'email' => 'Mixed.Case@Example.COM', 'password' => 'secret123',
+        ])->assertCreated();
+
+        $this->assertSame('mixed.case@example.com', User::first()->email);
+
+        // …and the same person cannot register again under a different casing.
+        $this->postJson('/api/auth/register', [
+            'name' => 'مدير', 'email' => 'MIXED.CASE@example.com', 'password' => 'secret123',
+        ])->assertStatus(422);
+    }
+
+    /// The column holds 255 characters. Without a bound this was a raw SQL
+    /// error — a 500 with a stack trace instead of "that address is too long".
+    public function test_an_over_long_address_is_refused_not_crashed(): void
+    {
+        $long = str_repeat('a', 200).'@example.com';
+
+        $this->postJson('/api/auth/request-email-code', ['email' => $long])
+            ->assertStatus(422)->assertJsonValidationErrors('email');
+        $this->postJson('/api/auth/register', [
+            'name' => 'مدير', 'email' => $long, 'password' => 'secret123',
+        ])->assertStatus(422)->assertJsonValidationErrors('email');
+    }
+
+    /// Case variation must not multiply the login budget: ten guesses at
+    /// "boss@x" and ten more at "BOSS@x" would otherwise be twenty.
+    public function test_case_variation_does_not_buy_extra_password_guesses(): void
+    {
+        config(['amarati.auth_rate' => 100]);
+        $b = $this->building();
+        $this->manager($b, 'target@test.app');
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/auth/login', ['email' => 'target@test.app', 'password' => "x$i"])
+                ->assertStatus(422);
+        }
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/auth/login', ['email' => 'TARGET@TEST.APP', 'password' => "y$i"])
+                ->assertStatus(422);
+        }
+
+        $this->assertStringContainsString('محاولات دخول كثيرة',
+            $this->postJson('/api/auth/login',
+                ['email' => 'Target@Test.App', 'password' => 'password'])->json('message'));
+    }
+
+    /// If creating the account fails after the code was consumed, the person is
+    /// locked out for good: their correct code now reads as wrong and a fresh
+    /// one cannot be requested for an address that half-exists. The two steps
+    /// are one transaction.
+    public function test_a_failed_registration_does_not_burn_the_code(): void
+    {
+        Mail::fake();
+        config(['mail.default' => 'smtp', 'amarati.require_email_verification' => true]);
+
+        $this->postJson('/api/auth/request-email-code', ['email' => 'boss@test.app'])->assertOk();
+        $code = $this->mailedCode('boss@test.app');
+
+        // Something goes wrong AFTER validation passed — a unique-index race, a
+        // dead database, anything at all.
+        User::creating(fn () => throw new \RuntimeException('write failed'));
+
+        try {
+            $this->postJson('/api/auth/register', [
+                'name' => 'مدير', 'email' => 'boss@test.app',
+                'password' => 'secret123', 'email_code' => $code,
+            ]);
+        } catch (\Throwable $e) {
+            // the failure itself is not what is under test
+        }
+
+        $this->assertSame(0, User::where('email', 'boss@test.app')->count());
+
+        // The code is still theirs to use.
+        \App\Models\User::flushEventListeners();
+        $this->postJson('/api/auth/verify-email-code',
+            ['email' => 'boss@test.app', 'code' => $code])->assertOk();
+    }
+
+    // ═════════════ SMS: the balance is finite and worth guarding ═════════════
+
+    private function withGateway(): void
+    {
+        config([
+            'amarati.sms.driver' => 'htd', 'amarati.sms.htd.id' => 'test-api-id',
+            'amarati.auth_rate' => 500,
+        ]);
+        \Illuminate\Support\Facades\Http::fake([
+            '*' => \Illuminate\Support\Facades\Http::response('Message Sent Successfully', 200),
+        ]);
+    }
+
+    /// A code costs real credit, so it must fit ONE segment. Arabic goes out as
+    /// UCS-2 (70 characters), and the old wording ran to 74 — every code cost
+    /// two credits, halving what the balance was worth.
+    public function test_a_code_message_fits_one_sms_segment(): void
+    {
+        $this->withGateway();
+
+        app(\App\Services\Notifier::class)->sendSmsCode('0599123456', '123456');
+
+        \Illuminate\Support\Facades\Http::assertSent(function ($request) {
+            $this->assertLessThanOrEqual(70, mb_strlen($request->data()['msg']),
+                'an OTP over 70 characters costs two credits instead of one');
+
+            return true;
+        });
+    }
+
+    /// request-otp needs no account, so without a per-number limit a stranger
+    /// can drain the whole balance — and everyone's ability to sign in — by
+    /// asking for codes for numbers they do not own.
+    public function test_one_number_cannot_be_used_to_burn_the_balance(): void
+    {
+        $this->withGateway();
+        config(['amarati.sms.cooldown_seconds' => 0, 'amarati.sms.per_number_hourly' => 3]);
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->postJson('/api/auth/request-otp', ['phone' => '0599123456'])->assertOk();
+        }
+        $this->postJson('/api/auth/request-otp', ['phone' => '0599123456'])->assertStatus(429);
+
+        \Illuminate\Support\Facades\Http::assertSentCount(3);
+    }
+
+    public function test_a_second_code_is_not_sent_the_same_second(): void
+    {
+        $this->withGateway();
+        config(['amarati.sms.per_number_hourly' => 50, 'amarati.sms.cooldown_seconds' => 60]);
+
+        $this->postJson('/api/auth/request-otp', ['phone' => '0599123456'])->assertOk();
+        $this->postJson('/api/auth/request-otp', ['phone' => '0599123456'])->assertStatus(429);
+
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
+    /// Spread across many numbers, the per-number limit does not help — a
+    /// day's budget is what stops the balance going in one afternoon.
+    public function test_a_daily_budget_caps_the_whole_platform(): void
+    {
+        $this->withGateway();
+        config(['amarati.sms.daily_cap' => 3, 'amarati.sms.cooldown_seconds' => 0]);
+
+        $n = app(\App\Services\Notifier::class);
+        foreach (['0599000001', '0599000002', '0599000003'] as $phone) {
+            $this->assertTrue($n->sendSmsCode($phone, '123456'));
+        }
+
+        // The fourth number is refused however fresh it is.
+        $this->assertFalse($n->sendSmsCode('0599000004', '123456'));
+        \Illuminate\Support\Facades\Http::assertSentCount(3);
+        $this->assertSame(0, \App\Services\Notifier::remainingDailyBudget());
+    }
+
+    /// A development box spends nothing, so it must never be throttled by a
+    /// limit that means nothing there.
+    public function test_the_budget_does_not_apply_without_a_real_gateway(): void
+    {
+        config(['amarati.sms.driver' => 'log', 'amarati.sms.daily_cap' => 1]);
+        $n = app(\App\Services\Notifier::class);
+
+        $this->assertTrue($n->sendSmsCode('0599000001', '123456'));
+        $this->assertTrue($n->sendSmsCode('0599000002', '123456'));
+    }
+
+    /// The coverage check only looks at a prefix, so "+9705" passed it and we
+    /// would have spent a credit posting nonsense to the gateway.
+    public function test_something_that_is_not_a_number_costs_nothing(): void
+    {
+        $this->withGateway();
+
+        $this->postJson('/api/auth/request-otp', ['phone' => '+9705'])->assertStatus(422);
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    /// A refusal the caller could not have avoided must not spend their
+    /// allowance — otherwise a gateway outage locks them out of retrying.
+    public function test_a_failed_send_does_not_consume_the_allowance(): void
+    {
+        config([
+            'amarati.sms.driver' => 'htd', 'amarati.sms.htd.id' => 'test-api-id',
+            'amarati.auth_rate' => 500, 'amarati.sms.per_number_hourly' => 2,
+            'amarati.sms.cooldown_seconds' => 60,
+        ]);
+        \Illuminate\Support\Facades\Http::fake([
+            '*' => \Illuminate\Support\Facades\Http::response('Internal Error Occurred', 200),
+        ]);
+        $this->app['env'] = 'production';   // no echo to fall back on
+
+        // Three refusals in a row — the allowance is untouched, so when the
+        // gateway recovers they can still ask.
+        for ($i = 0; $i < 3; $i++) {
+            $this->postJson('/api/auth/request-otp', ['phone' => '0599123456'])->assertStatus(503);
+        }
+    }
+
+    // ═════════ e-mail codes are not free either: sending reputation ═════════
+
+    private function liveMailer(): void
+    {
+        Mail::fake();
+        config([
+            'mail.default' => 'smtp', 'amarati.auth_rate' => 500,
+            'amarati.email_cooldown_seconds' => 60, 'amarati.email_per_address_hourly' => 3,
+        ]);
+    }
+
+    /// request-email-code needs no account, so without a per-address limit it is
+    /// a way to bomb a stranger's inbox from our own domain — and the sending
+    /// reputation that makes verification codes arrive at all is what pays.
+    public function test_one_address_cannot_be_bombed_with_codes(): void
+    {
+        $this->liveMailer();
+        config(['amarati.email_cooldown_seconds' => 0]);
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->postJson('/api/auth/request-email-code', ['email' => 'victim@test.app'])
+                ->assertOk();
+        }
+        $this->postJson('/api/auth/request-email-code', ['email' => 'victim@test.app'])
+            ->assertStatus(429);
+
+        Mail::assertSentCount(3);
+    }
+
+    public function test_a_second_code_is_not_mailed_the_same_second(): void
+    {
+        $this->liveMailer();
+
+        $this->postJson('/api/auth/request-email-code', ['email' => 'boss@test.app'])->assertOk();
+        $this->postJson('/api/auth/request-email-code', ['email' => 'boss@test.app'])
+            ->assertStatus(429);
+
+        Mail::assertSentCount(1);
+    }
+
+    /// The limit follows the address, not its spelling — otherwise changing the
+    /// capitalisation buys another full allowance.
+    public function test_the_allowance_follows_the_address_not_its_spelling(): void
+    {
+        $this->liveMailer();
+
+        $this->postJson('/api/auth/request-email-code', ['email' => 'boss@test.app'])->assertOk();
+        $this->postJson('/api/auth/request-email-code', ['email' => 'BOSS@Test.App'])
+            ->assertStatus(429);
+
+        Mail::assertSentCount(1);
+    }
+
+    /// Password recovery shares the allowance — and still answers identically
+    /// whether or not the address has an account, so it cannot be used to test
+    /// which e-mails are registered.
+    public function test_recovery_shares_the_allowance_without_leaking_who_exists(): void
+    {
+        $this->liveMailer();
+        config(['amarati.email_cooldown_seconds' => 0]);
+        $this->manager($this->building(), 'real@test.app');
+
+        $known = $this->postJson('/api/auth/forgot-password', ['email' => 'real@test.app']);
+        $unknown = $this->postJson('/api/auth/forgot-password', ['email' => 'nobody@test.app']);
+
+        $known->assertOk()->assertJson(['sent' => true]);
+        $unknown->assertOk()->assertJson(['sent' => true]);
+        $this->assertSame($known->json(), $unknown->json());
+
+        // Only the real one actually sent anything.
+        Mail::assertSentCount(1);
+    }
+
+    /// A mailer outage must not spend the allowance — otherwise the outage locks
+    /// people out of retrying once it is over.
+    public function test_a_mail_failure_does_not_consume_the_allowance(): void
+    {
+        config([
+            'mail.default' => 'smtp', 'amarati.auth_rate' => 500,
+            'amarati.email_per_address_hourly' => 2, 'amarati.email_cooldown_seconds' => 60,
+        ]);
+        $this->app['env'] = 'production';   // no echo to fall back on
+        Mail::shouldReceive('to->send')->andThrow(new \RuntimeException('smtp down'));
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->postJson('/api/auth/request-email-code', ['email' => 'boss@test.app'])
+                ->assertStatus(503);
+        }
+    }
 }

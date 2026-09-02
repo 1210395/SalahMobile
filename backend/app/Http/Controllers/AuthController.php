@@ -7,6 +7,7 @@ use App\Models\OtpCode;
 use App\Models\User;
 use App\Services\Notifier;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
@@ -120,15 +121,59 @@ class AuthController extends Controller
         return $code;
     }
 
+    /// Fold an e-mail to one spelling BEFORE anything looks at it.
+    ///
+    /// It has to happen before validation, not after: the uniqueness rule runs
+    /// on the raw input, so "MIXED.CASE@example.com" was accepted as a second
+    /// account beside "mixed.case@example.com" — and a code issued against one
+    /// spelling was redeemed against the other only because the database's
+    /// collation happened to be case-insensitive. That is a property of the
+    /// host, not a decision, and it changed under us once already when the
+    /// platform moved from MariaDB to MySQL.
+    private function foldEmail(Request $r): void
+    {
+        $email = $r->input('email');
+        if (is_string($email)) {
+            $r->merge(['email' => mb_strtolower(trim($email))]);
+        }
+    }
+
+    /// Refuse to send yet another code to the same address.
+    ///
+    /// These endpoints need no account, so without this one person can be used
+    /// to bomb a stranger's inbox from our domain — and the sending reputation
+    /// that makes verification codes arrive at all is the thing that pays for
+    /// it. Charged only on a send that really happened.
+    private function emailAllowance(string $email): string
+    {
+        $key = 'amarati-email-code:'.$email;
+        if (RateLimiter::tooManyAttempts($key, (int) config('amarati.email_per_address_hourly'))) {
+            abort(429, 'تم إرسال رسائل كثيرة إلى هذا البريد — حاول بعد قليل');
+        }
+        if (RateLimiter::tooManyAttempts($key.':cooldown', 1)) {
+            abort(429, 'تم إرسال رمز للتو — تحقّق من بريدك أو انتظر قليلاً');
+        }
+
+        return $key;
+    }
+
+    /// Charge one send against an address's allowance.
+    private function chargeEmailAllowance(string $key): void
+    {
+        RateLimiter::hit($key, 3600);
+        RateLimiter::hit($key.':cooldown', (int) config('amarati.email_cooldown_seconds'));
+    }
+
     public function register(Request $r)
     {
+        $this->foldEmail($r);
         $data = $r->validate([
             'name' => 'required|string|max:120',
             // Identity is unique WITHIN a building. A self-registering manager
             // has no building yet, so they are checked against the other
             // building-less accounts only — the same person may already be a
             // resident somewhere, and that must not block them.
-            'email' => ['required', 'email', Rule::unique('users', 'email')->whereNull('building_id')],
+            'email' => ['required', 'email', 'max:190', Rule::unique('users', 'email')->whereNull('building_id')],
             'phone' => ['nullable', 'string', 'max:32', Rule::unique('users', 'phone')->whereNull('building_id')],
             'whatsapp' => 'nullable|string|max:32',
             // This account will own a building's finances.
@@ -151,18 +196,26 @@ class AuthController extends Controller
         // Verify the code as part of account creation: a wrong code fails here
         // WITHOUT creating the user, and (crucially) a later failure can't strand
         // an already-consumed code so the correct code reads as "wrong" on retry.
-        $emailVerified = false;
-        if (! empty($data['email_code'])) {
-            $this->consumeEmailCodeOrFail($data['email'], $data['email_code']);
-            $emailVerified = true;
-        }
+        $email = $data['email'];
 
         // SECURITY: role is never accepted from a public endpoint. New accounts
         // are always unprivileged residents; promotion to admin must be done by
         // an existing admin through a separate, authorized flow.
-        $user = User::create([
+        // Consuming the code and creating the account are one step or neither.
+        // They were two: a unique-index collision on the phone (two registrations
+        // racing past validation) left the code burned and the account uncreated,
+        // so the person's CORRECT code then read as "wrong" and they could not
+        // register at all.
+        $user = DB::transaction(function () use ($data, $email) {
+            $emailVerified = false;
+            if (! empty($data['email_code'])) {
+                $this->consumeEmailCodeOrFail($email, $data['email_code']);
+                $emailVerified = true;
+            }
+
+            return User::create([
             'name' => $data['name'],
-            'email' => $data['email'],
+            'email' => $email,
             'phone' => $data['phone'] ?? null,
             'whatsapp' => $data['whatsapp'] ?? null,
             'password' => Hash::make($data['password']),
@@ -174,16 +227,18 @@ class AuthController extends Controller
             // building happened to be first of that type (a stranger's).
             'building_key' => null,
             'email_verified_at' => $emailVerified ? now() : null,
-        ]);
+            ]);
+        });
 
         return response()->json($this->payload($user), 201);
     }
 
     public function login(Request $r)
     {
+        $this->foldEmail($r);
         // Identifier is EITHER email OR phone (plus password).
         $data = $r->validate([
-            'email' => 'required_without:phone|email',
+            'email' => 'required_without:phone|email|max:190',
             'phone' => 'required_without:email|string|max:32',
             'password' => 'required|string|max:200',
             // Set on the second call when the first returned a `choose` list.
@@ -194,7 +249,7 @@ class AuthController extends Controller
         // many of them; this ties the budget to the account being attacked, where
         // it belongs. It is deliberately generous — someone mistyping their own
         // password a few times must not be locked out of their building.
-        $throttleKey = 'amarati-login:'.strtolower($data['email'] ?? $data['phone']);
+        $throttleKey = 'amarati-login:'.($data['email'] ?? $data['phone']);
         if (RateLimiter::tooManyAttempts($throttleKey, 10)) {
             throw ValidationException::withMessages(['email' => [
                 'محاولات دخول كثيرة — حاول مرة أخرى بعد '
@@ -232,10 +287,16 @@ class AuthController extends Controller
 
     public function requestEmailCode(Request $r, Notifier $notifier)
     {
-        $data = $r->validate(['email' => 'required|email']);
+        $this->foldEmail($r);
+        $data = $r->validate(['email' => 'required|email|max:190']);
 
-        $code = $this->issueCode(EmailCode::class, 'email', $data['email']);
-        $sent = $this->delivered('mail', fn () => $notifier->sendEmailCode($data['email'], $code));
+        $email = $data['email'];
+        $allowance = $this->emailAllowance($email);
+        $code = $this->issueCode(EmailCode::class, 'email', $email);
+        $sent = $this->delivered('mail', fn () => $notifier->sendEmailCode($email, $code));
+        if ($sent) {
+            $this->chargeEmailAllowance($allowance);
+        }
 
         $body = ['sent' => $sent];
         if ($this->exposesDevCode('mail')) {
@@ -251,15 +312,17 @@ class AuthController extends Controller
 
     public function verifyEmailCode(Request $r)
     {
+        $this->foldEmail($r);
         $data = $r->validate([
-            'email' => 'required|email',
+            'email' => 'required|email|max:190',
             'code' => 'required|string|max:64',
         ]);
 
-        $this->consumeEmailCodeOrFail($data['email'], $data['code']);
+        $email = $data['email'];
+        $this->consumeEmailCodeOrFail($email, $data['code']);
 
         // If an account already uses this email, mark it verified.
-        User::where('email', $data['email'])->whereNull('email_verified_at')
+        User::where('email', $email)->whereNull('email_verified_at')
             ->update(['email_verified_at' => now()]);
 
         return response()->json(['verified' => true]);
@@ -326,8 +389,32 @@ class AuthController extends Controller
             .'(+970 / +972) فقط. سجّل الدخول بكلمة المرور، أو استخدم رمز QR / كود '
             .'الدخول الذي يوفره مسؤول العمارة.');
 
+        abort_if(! Notifier::looksLikeANumber($data['phone']), 422,
+            'رقم الهاتف غير صحيح');
+
+        // One number, one code at a time. `request-otp` needs no account and
+        // every send costs real credit from a finite balance, so without this a
+        // stranger can drain it — and with it everyone's ability to sign in —
+        // by asking for codes for numbers they do not own. The per-address
+        // throttle does not help: an attacker just uses more addresses.
+        $numberKey = 'amarati-otp-number:'.preg_replace('/\D/', '', $data['phone']);
+        if (RateLimiter::tooManyAttempts($numberKey, (int) config('amarati.sms.per_number_hourly'))) {
+            abort(429, 'تم إرسال رموز كثيرة إلى هذا الرقم — حاول بعد قليل');
+        }
+        $cooldownKey = $numberKey.':cooldown';
+        if (RateLimiter::tooManyAttempts($cooldownKey, 1)) {
+            abort(429, 'تم إرسال رمز للتو — انتظر قليلاً قبل طلب رمز جديد');
+        }
+
         $code = $this->issueCode(OtpCode::class, 'phone', $data['phone']);
         $sent = $this->delivered('sms', fn () => $notifier->sendSmsCode($data['phone'], $code));
+
+        // Only a real send is charged against the number's allowance; a refusal
+        // the caller could not have avoided must not lock them out of retrying.
+        if ($sent) {
+            RateLimiter::hit($numberKey, 3600);
+            RateLimiter::hit($cooldownKey, (int) config('amarati.sms.cooldown_seconds'));
+        }
 
         $body = ['sent' => $sent];
         if ($this->exposesDevCode('sms')) {
@@ -422,7 +509,8 @@ class AuthController extends Controller
     /// endpoint becomes a way to enumerate who is registered.
     public function forgotPassword(Request $r, Notifier $notifier)
     {
-        $data = $r->validate(['email' => 'required|email']);
+        $this->foldEmail($r);
+        $data = $r->validate(['email' => 'required|email|max:190']);
 
         // A reset code is NEVER echoed back, whatever the dev-echo setting says.
         // It was: with the echo on, anyone who knew a manager's address could ask
@@ -439,9 +527,13 @@ class AuthController extends Controller
         // Answered identically whether or not the address exists: this endpoint
         // needs no credential, so a differing answer would turn it into a way to
         // test which e-mails have accounts.
-        if (User::where('email', $data['email'])->whereNotNull('password')->exists()) {
-            $code = $this->issueCode(EmailCode::class, 'email', $data['email']);
-            $notifier->sendEmailCode($data['email'], $code, 'reset');
+        $email = $data['email'];
+        $allowance = $this->emailAllowance($email);
+        if (User::where('email', $email)->whereNotNull('password')->exists()) {
+            $code = $this->issueCode(EmailCode::class, 'email', $email);
+            if ($notifier->sendEmailCode($email, $code, 'reset')) {
+                $this->chargeEmailAllowance($allowance);
+            }
         }
 
         return response()->json(['sent' => true]);
@@ -455,14 +547,16 @@ class AuthController extends Controller
     /// the caller names which (or is asked).
     public function resetPassword(Request $r)
     {
+        $this->foldEmail($r);
         $data = $r->validate([
-            'email' => 'required|email',
+            'email' => 'required|email|max:190',
             'code' => 'required|string|max:64',
             'password' => 'required|string|min:6',
             'building_id' => 'nullable|integer',
         ]);
 
-        $q = User::where('email', $data['email'])->whereNotNull('password');
+        $email = $data['email'];
+        $q = User::where('email', $email)->whereNotNull('password');
         if (! empty($data['building_id'])) {
             $q->where('building_id', $data['building_id']);
         }
@@ -477,7 +571,7 @@ class AuthController extends Controller
             return $this->chooseBuilding($accounts);
         }
 
-        $this->consumeEmailCodeOrFail($data['email'], $data['code']);
+        $this->consumeEmailCodeOrFail($email, $data['code']);
 
         $user = $accounts->first();
         $user->tokens()->delete();

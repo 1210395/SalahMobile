@@ -37,6 +37,15 @@ return Application::configure(basePath: dirname(__DIR__))
         // middleware throw AuthenticationException instead, which the JSON
         // renderer below turns into a clean 401.
         $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') ? null : '/');
+
+        // The hosted card page authenticates on the one-time secret in its URL,
+        // not on a session. A CSRF token adds nothing there — an attacker who
+        // could forge the request would need that secret, and having it they
+        // would not need forgery — while it can take a payment down: a browser
+        // that drops the session cookie, or a page left open past the session
+        // lifetime, answers 419 AFTER the card form has already succeeded, and
+        // the transient token is spent for nothing.
+        $middleware->validateCsrfTokens(except: ['pay/*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

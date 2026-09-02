@@ -36,6 +36,23 @@ class CyberSource
         return ! empty($c['merchant_id']) && ! empty($c['key_id']) && ! empty($c['secret_key']);
     }
 
+    /// The configured price in minor units, or null if it is not a price.
+    ///
+    /// A plain (float) cast reads "1,000.00" as 1.0 and would charge one dollar
+    /// for a thousand — silently, and in our favour never. A value we cannot
+    /// read exactly is refused instead of guessed at.
+    public static function configuredAmount(): ?int
+    {
+        $raw = trim((string) config('amarati.payments.amount'));
+        if (! preg_match('/^\d{1,9}(\.\d{1,2})?$/', $raw)) {
+            return null;
+        }
+
+        $minor = (int) round(((float) $raw) * 100);
+
+        return $minor > 0 ? $minor : null;
+    }
+
     private function host(): string
     {
         return config('amarati.payments.host');
@@ -85,6 +102,11 @@ class CyberSource
     /// from either side of the integration.
     public function pay(string $transientToken, string $reference, string $amount, string $currency): array
     {
+        // The dangerous case is not a decline, it is a LOST ANSWER: the card is
+        // charged and the response never arrives. Retrying then charges twice.
+        // Our own order id is sent as the idempotency key, so a repeat of this
+        // exact payment returns the original result instead of taking the money
+        // again — which is what makes retrying safe at all.
         $res = $this->send('post', '/pts/v2/payments', [
             'clientReferenceInformation' => ['code' => $reference],
             'processingInformation' => ['capture' => true],
@@ -92,7 +114,7 @@ class CyberSource
             'orderInformation' => [
                 'amountDetails' => ['totalAmount' => $amount, 'currency' => $currency],
             ],
-        ]);
+        ], ['v-c-idempotency-id' => $reference]);
 
         $json = $res->json() ?? [];
         $status = $json['status'] ?? 'UNKNOWN';
@@ -107,9 +129,12 @@ class CyberSource
         }
 
         return [
-            // AUTHORIZED_PENDING_REVIEW is a hold, not money taken — treating it
-            // as paid would hand out a subscription the bank may still reverse.
-            'paid' => $res->successful() && in_array($status, ['AUTHORIZED', 'PENDING'], true),
+            // ONLY an authorised capture is money. Everything else is a hold, a
+            // review, or a different rail: AUTHORIZED_PENDING_REVIEW can still be
+            // reversed by the bank, and PENDING belongs to the transfer rails we
+            // do not accept. Any of them read as paid would hand out a
+            // subscription nobody paid for.
+            'paid' => $res->successful() && $status === 'AUTHORIZED',
             'status' => $status,
             'id' => $json['id'] ?? null,
             'reason' => $json['errorInformation']['reason'] ?? ($json['errorInformation']['message'] ?? null),
@@ -136,7 +161,7 @@ class CyberSource
 
     // ───────────────────────── HTTP Signature ─────────────────────────
 
-    private function send(string $method, string $path, array $body)
+    private function send(string $method, string $path, array $body, array $extraHeaders = [])
     {
         if (! self::isConfigured()) {
             throw new RuntimeException('بوابة الدفع غير مهيأة');
@@ -154,7 +179,7 @@ class CyberSource
             'Signature' => $this->signature($method, $path, $date, $digest),
             'Content-Type' => 'application/json',
             'Accept' => 'application/json',
-        ])->withBody($payload, 'application/json')
+        ] + $extraHeaders)->withBody($payload, 'application/json')
             ->timeout(30)
             ->send(strtoupper($method), 'https://'.$this->host().$path);
     }

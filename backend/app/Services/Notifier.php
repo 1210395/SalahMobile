@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Mail\VerificationCodeMail;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -48,6 +49,18 @@ class Notifier
         )));
     }
 
+    /// Whether this is even a phone number.
+    ///
+    /// The coverage check only looks at the prefix, so "+9705" passed it and we
+    /// would spend a credit posting nonsense to the gateway. E.164 allows at
+    /// most fifteen digits and no real mobile has fewer than nine.
+    public static function looksLikeANumber(string $phone): bool
+    {
+        $digits = strlen(preg_replace('/\D/', '', $phone));
+
+        return $digits >= 9 && $digits <= 15;
+    }
+
     /// Whether an OTP could ever arrive at this number.
     ///
     /// A local operator gateway serves Palestinian and Israeli numbers only. A
@@ -75,7 +88,11 @@ class Notifier
     {
         $minutes = (int) config('amarati.code_ttl_minutes', 10);
 
-        return $this->sendSms($phone, "رمز الدخول إلى تطبيق سكن برو: $code\nصالح لمدة $minutes دقائق. لا تشاركه مع أحد.");
+        // Kept under 70 characters ON PURPOSE. Arabic goes out as UCS-2, which
+        // fits 70 to a segment, and the gateway bills by segment — the previous
+        // wording ran to 74 and so cost two credits for every single code,
+        // halving what the balance was worth.
+        return $this->sendSms($phone, "سكن برو: رمز الدخول $code\nصالح $minutes دقائق — لا تشاركه مع أحد.");
     }
 
     /// Send an arbitrary SMS through the configured driver.
@@ -83,6 +100,17 @@ class Notifier
     {
         $to = $this->normalisePhone($phone);
         $driver = config('amarati.sms.driver', 'log');
+
+        // A finite balance is a resource worth guarding at the one place every
+        // send passes through, rather than at each caller that might forget.
+        if (! $this->claimDailyBudget()) {
+            Log::error('amarati.sms.budget_exhausted', [
+                'cap' => (int) config('amarati.sms.daily_cap'),
+                'to' => $this->mask($to),
+            ]);
+
+            return false;
+        }
 
         try {
             return match ($driver) {
@@ -233,6 +261,40 @@ class Notifier
         }
 
         return $ok;
+    }
+
+    /// Take one unit of today's sending budget, or report that it is spent.
+    ///
+    /// Counted for real sends only: the log driver spends nothing, so a
+    /// development box is never throttled by a limit that means nothing there.
+    private function claimDailyBudget(): bool
+    {
+        $cap = (int) config('amarati.sms.daily_cap');
+        if ($cap <= 0 || ! self::channelIsLive('sms')) {
+            return true;
+        }
+
+        $key = 'amarati-sms-sent:'.now()->toDateString();
+        $sent = (int) Cache::get($key, 0);
+        if ($sent >= $cap) {
+            return false;
+        }
+
+        // Expires on its own at the end of the day; nothing has to sweep it.
+        Cache::put($key, $sent + 1, now()->endOfDay());
+
+        return true;
+    }
+
+    /// How much of today's budget is left. Zero means codes are not going out.
+    public static function remainingDailyBudget(): int
+    {
+        $cap = (int) config('amarati.sms.daily_cap');
+        if ($cap <= 0) {
+            return PHP_INT_MAX;
+        }
+
+        return max(0, $cap - (int) Cache::get('amarati-sms-sent:'.now()->toDateString(), 0));
     }
 
     /// Development default: the message goes to the log, never to a person.

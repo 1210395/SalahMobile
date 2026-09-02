@@ -54,6 +54,29 @@ class SubscriptionPayment extends Model
             && $this->expires_at->isFuture();
     }
 
+    /// How long a row may sit mid-charge before another attempt may claim it.
+    public const STUCK_AFTER_MINUTES = 3;
+
+    /// Whether a charge attempt may take this row.
+    ///
+    /// A row is left in 'charging' if the process dies between claiming it and
+    /// hearing back — a fatal, a timeout, a lost connection. Refusing forever
+    /// would strand the payer with a link that can never be used and money that
+    /// may or may not have moved. After a short grace period another attempt may
+    /// take it, which is safe ONLY because the charge carries an idempotency key:
+    /// if the first attempt did reach the bank, the second returns that same
+    /// result rather than charging again.
+    public function isClaimable(): bool
+    {
+        if ($this->isPayable()) {
+            return true;
+        }
+
+        return $this->status === 'charging'
+            && $this->updated_at !== null
+            && $this->updated_at->lt(now()->subMinutes(self::STUCK_AFTER_MINUTES));
+    }
+
     /// The amount as the gateway wants it: a decimal string in major units.
     public function majorAmount(): string
     {
