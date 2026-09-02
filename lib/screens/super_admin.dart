@@ -1,4 +1,4 @@
-// عمارتي — Super-admin (platform owner): global report across all buildings
+// سكن برو — Super-admin (platform owner): global report across all buildings
 // with filters, and creating/listing building admins.
 
 import 'package:flutter/material.dart';
@@ -95,8 +95,8 @@ class _SuperReportScreenState extends State<SuperReportScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: on ? AppColors.navy700 : AppColors.surface,
-                    border: Border.all(color: on ? AppColors.navy700 : AppColors.line2),
+                    color: on ? AppColors.brand700 : AppColors.surface,
+                    border: Border.all(color: on ? AppColors.brand700 : AppColors.line2),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(i == 0 ? 'كل الأشهر' : monthLabelNum(i - 1),
@@ -114,7 +114,7 @@ class _SuperReportScreenState extends State<SuperReportScreen> {
         else if (_data == null && _loading)
           Padding(
             padding: EdgeInsets.only(top: 50),
-            child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
+            child: Center(child: CircularProgressIndicator(color: AppColors.brand700)),
           )
         else ...[
           // Combined totals (across buildings; each shown in its own currency below)
@@ -125,9 +125,9 @@ class _SuperReportScreenState extends State<SuperReportScreen> {
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            Expanded(child: _totalCard('الرصيد', _n(totals['balance']), AppColors.navy700, 'wallet')),
+            Expanded(child: _totalCard('الرصيد', _n(totals['balance']), AppColors.brand700, 'wallet')),
             const SizedBox(width: 10),
-            Expanded(child: _totalCard('متأخرون', '${_i(totals['late'])}', AppColors.gold700, 'alert', plain: true)),
+            Expanded(child: _totalCard('متأخرون', '${_i(totals['late'])}', AppColors.accent700, 'alert', plain: true)),
           ]),
           const SizedBox(height: 16),
           const SectionTitle(text: 'حسب المبنى'),
@@ -175,7 +175,7 @@ class _SuperReportScreenState extends State<SuperReportScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(children: [
-              IconChip(icon: b['type'] == 'تجاري' ? 'store' : 'building2', tone: 'navy', size: 44),
+              IconChip(icon: b['type'] == 'تجاري' ? 'store' : 'building2', tone: 'brand', size: 44),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -197,7 +197,7 @@ class _SuperReportScreenState extends State<SuperReportScreen> {
               const SizedBox(width: 8),
               MiniStat(label: 'مصروفات', value: fmtMoney(_i(b['expenses']), cur), tone: 'late', num: true),
               const SizedBox(width: 8),
-              MiniStat(label: 'الرصيد', value: fmtMoney(_i(b['balance']), cur), tone: 'navy', num: true),
+              MiniStat(label: 'الرصيد', value: fmtMoney(_i(b['balance']), cur), tone: 'brand', num: true),
             ]),
           ],
         ),
@@ -276,7 +276,7 @@ class _AdminsScreenState extends State<AdminsScreen> {
         else if (_admins == null)
           Padding(
             padding: EdgeInsets.only(top: 60),
-            child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
+            child: Center(child: CircularProgressIndicator(color: AppColors.brand700)),
           )
         else if (_admins!.isEmpty)
           const EmptyState(icon: 'users', title: 'لا يوجد مسؤولون', sub: 'أنشئ مسؤول مبنى جديد')
@@ -285,7 +285,7 @@ class _AdminsScreenState extends State<AdminsScreen> {
                 padding: const EdgeInsets.only(bottom: 10),
                 child: AppCard(
                   child: Row(children: [
-                    Avatar(name: '${a['name']}', size: 46, tone: 'navy'),
+                    Avatar(name: '${a['name']}', size: 46, tone: 'brand'),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -303,7 +303,7 @@ class _AdminsScreenState extends State<AdminsScreen> {
                     // residential buildings apart, which is the whole point now.
                     AppBadge(
                         label: _buildingName(a['building_id']),
-                        tone: 'gold', small: true),
+                        tone: 'accent', small: true),
                   ]),
                 ),
               )),

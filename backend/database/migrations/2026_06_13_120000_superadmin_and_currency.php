@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — super-admin role + multi-currency payments.
+// سكن برو — super-admin role + multi-currency payments.
 return new class extends Migration
 {
     public function up(): void

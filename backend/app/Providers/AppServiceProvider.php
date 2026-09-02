@@ -25,7 +25,7 @@ class AppServiceProvider extends ServiceProvider
         $this->defineRateLimits();
     }
 
-    /// عمارتي — the API's rate limits, as NAMED limiters.
+    /// سكن برو — the API's rate limits, as NAMED limiters.
     ///
     /// They were written into the route file as `throttle:6,1`, which reads its
     /// number when the routes are REGISTERED. Two consequences: `route:cache`

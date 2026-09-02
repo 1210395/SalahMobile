@@ -1,4 +1,4 @@
-// عمارتي — navigation/role context passed to every screen (mirrors the
+// سكن برو — navigation/role context passed to every screen (mirrors the
 // prototype's `ctx` object).
 
 import 'package:flutter/widgets.dart';

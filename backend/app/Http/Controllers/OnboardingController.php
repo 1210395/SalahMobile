@@ -9,7 +9,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Http\Request;
 
-// عمارتي — onboarding flow: subscription, building setup (which CREATES the
+// سكن برو — onboarding flow: subscription, building setup (which CREATES the
 // manager's own building and promotes them to its admin), and resident join
 // requests + admin approvals. Multi-building: every manager owns their own
 // building (building_id), so setups never collide ('already managed' is gone).

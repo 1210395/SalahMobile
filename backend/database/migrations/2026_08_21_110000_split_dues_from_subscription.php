@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — a payment now settles ONE named pot, never "the balance".
+// سكن برو — a payment now settles ONE named pot, never "the balance".
 //
 //   bucket = 'sub'   → اشتراكات شهرية (monthly dues accrued from billing_start)
 //   bucket = 'dues'  → ذمم سابقة      (the debt entered when the unit was added)

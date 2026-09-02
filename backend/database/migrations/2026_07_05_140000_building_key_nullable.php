@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — multi-building: building_id is now the authoritative FK, so the
+// سكن برو — multi-building: building_id is now the authoritative FK, so the
 // denormalized building_key label becomes optional (some rows — e.g. generated
 // alerts — carry only building_id).
 return new class extends Migration

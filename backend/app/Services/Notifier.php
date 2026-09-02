@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
-// عمارتي — the one place a verification code leaves the server.
+// سكن برو — the one place a verification code leaves the server.
 //
 // Both channels are provider-agnostic: SMS picks a driver from config
 // (log | twilio | http-gateway), e-mail rides Laravel's own mailer, so moving

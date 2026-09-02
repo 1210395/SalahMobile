@@ -1,4 +1,4 @@
-// عمارتي — chart primitives (Ring, BarChart, Donut). Ported from ui2.jsx.
+// سكن برو — chart primitives (Ring, BarChart, Donut). Ported from ui2.jsx.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -35,7 +35,7 @@ class Ring extends StatelessWidget {
           CustomPaint(
             size: Size(size, size),
             painter: _RingPainter(
-                value / 100, stroke, color ?? AppColors.ok, track ?? AppColors.navy50),
+                value / 100, stroke, color ?? AppColors.ok, track ?? AppColors.brand50),
           ),
           ?child,
         ],
@@ -162,7 +162,7 @@ class _DonutPainter extends CustomPainter {
     final r = (size.width - stroke) / 2;
     final total = data.fold<num>(0, (s, d) => s + d.value).toDouble();
     final track = Paint()
-      ..color = AppColors.navy50
+      ..color = AppColors.brand50
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke;
     canvas.drawCircle(c, r, track);

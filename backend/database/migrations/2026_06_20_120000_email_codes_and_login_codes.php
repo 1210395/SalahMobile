@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — email confirmation codes + per-resident QR/login code.
+// سكن برو — email confirmation codes + per-resident QR/login code.
 return new class extends Migration
 {
     public function up(): void

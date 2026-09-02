@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-// عمارتي — the fee catalogue of ONE building (the payment sheet's line items).
+// سكن برو — the fee catalogue of ONE building (the payment sheet's line items).
 // It used to be a single global table, so an admin editing "الاشتراك الشهري"
 // silently rewrote the fees of every other building on the platform.
 class PayType extends Model

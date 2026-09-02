@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Services\Notifier;
 use Illuminate\Console\Command;
 
-// عمارتي — prove that verification codes actually leave this server.
+// سكن برو — prove that verification codes actually leave this server.
 //
 // Run it right after moving hosts (or after changing a provider) and it reports,
 // per channel, what is configured and whether a real message was accepted:

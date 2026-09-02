@@ -10,7 +10,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// عمارتي — regenerate every building's alerts from live data.
+// سكن برو — regenerate every building's alerts from live data.
 Artisan::command('amarati:alerts {--btype=}', function (AlertGenerator $gen) {
     $keys = $this->option('btype')
         ? [$this->option('btype')]

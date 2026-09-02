@@ -39,9 +39,9 @@ void _loadBundle() {
     'bars': [
       {'label': 'الاشتراكات', 'value': 800, 'color': 'ok'},
       {'label': 'المصروفات', 'value': 300, 'color': 'late'},
-      {'label': 'الذمم', 'value': 900, 'color': 'gold500'},
+      {'label': 'الذمم', 'value': 900, 'color': 'accent500'},
     ],
-    'trend': [for (var i = 0; i < 12; i++) {'label': 'ش', 'value': i * 10, 'color': 'navy600'}],
+    'trend': [for (var i = 0; i < 12; i++) {'label': 'ش', 'value': i * 10, 'color': 'brand600'}],
   });
   s.units = [
     Unit.fromJson({
@@ -93,7 +93,7 @@ void _loadBundle() {
   });
   s.alerts = [
     AlertItem.fromJson({
-      'id': 1, 'type': 'notice', 'icon': 'bell', 'tone': 'navy', 'title': 'إعلان',
+      'id': 1, 'type': 'notice', 'icon': 'bell', 'tone': 'brand', 'title': 'إعلان',
       'body': 'اجتماع السكان', 'time_label': 'الآن', 'channel': 'internal', 'target': 'all',
     }),
   ];

@@ -1,6 +1,6 @@
 <?php
 
-// عمارتي — permissive CORS for the API (mobile app + local web review).
+// سكن برو — permissive CORS for the API (mobile app + local web review).
 // Bearer-token auth (no cookies), so credentials support stays off.
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],

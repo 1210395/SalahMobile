@@ -1,4 +1,4 @@
-// عمارتي — Resident screens + admin "More" hub.
+// سكن برو — Resident screens + admin "More" hub.
 
 import 'package:flutter/material.dart';
 
@@ -89,7 +89,7 @@ class ResidentHome extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(2, 0, 2, 12),
           child: Row(
             children: [
-              Avatar(name: me.resident, size: 40, tone: 'gold'),
+              Avatar(name: me.resident, size: 40, tone: 'accent'),
               const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,14 +160,14 @@ class ResidentHome extends StatelessWidget {
         Row(children: [
           Expanded(child: StatCard(label: 'المسدّد هذا العام', value: fmtUSD(paidYear), icon: 'checkCircle', tone: 'ok')),
           const SizedBox(width: 10),
-          Expanded(child: StatCard(label: 'المطلوب سنوياً', value: fmtUSD(requiredYear), icon: 'wallet', tone: 'navy')),
+          Expanded(child: StatCard(label: 'المطلوب سنوياً', value: fmtUSD(requiredYear), icon: 'wallet', tone: 'brand')),
         ]),
         const SizedBox(height: 16),
         const SectionTitle(text: 'روابط سريعة'),
         gridRows([
           QuickTile(label: 'تقريري', sub: 'سجل مدفوعاتي', icon: 'pie', tone: 'credit', onTap: () => ctx.go('resReport')),
-          QuickTile(label: 'المصعد', sub: paid ? 'رقم الهاتف' : 'مغلق', icon: 'elevator', tone: 'navy', onTap: () => ctx.go('resElevator')),
-          QuickTile(label: 'الصنايعية', sub: 'أرقام موثوقة', icon: 'wrench', tone: 'gold', onTap: () => ctx.go('craftsmen')),
+          QuickTile(label: 'المصعد', sub: paid ? 'رقم الهاتف' : 'مغلق', icon: 'elevator', tone: 'brand', onTap: () => ctx.go('resElevator')),
+          QuickTile(label: 'الصنايعية', sub: 'أرقام موثوقة', icon: 'wrench', tone: 'accent', onTap: () => ctx.go('craftsmen')),
           QuickTile(label: 'التنبيهات', sub: 'إشعاراتي', icon: 'bell', tone: 'ok', badge: 2, onTap: () => ctx.go('alerts')),
         ], n: 2),
       ],
@@ -285,7 +285,7 @@ class _ResidentReportState extends State<ResidentReport> {
                   children: [
                     Donut(data: [
                       ChartDatum(label: 'مسدّد', value: paidAmt, color: AppColors.ok),
-                      ChartDatum(label: 'متبقٍ', value: remaining, color: AppColors.gold500),
+                      ChartDatum(label: 'متبقٍ', value: remaining, color: AppColors.accent500),
                     ]),
                     Column(
                       mainAxisSize: MainAxisSize.min,
@@ -306,9 +306,9 @@ class _ResidentReportState extends State<ResidentReport> {
                   children: [
                     _ratioRow(AppColors.ok, 'المسدّد', fmtUSD(paidAmt)),
                     const SizedBox(height: 8),
-                    _ratioRow(AppColors.gold500, 'المتبقّي', fmtUSD(remaining)),
+                    _ratioRow(AppColors.accent500, 'المتبقّي', fmtUSD(remaining)),
                     const SizedBox(height: 8),
-                    _ratioRow(AppColors.navy600, 'المطلوب سنوياً', fmtUSD(required)),
+                    _ratioRow(AppColors.brand600, 'المطلوب سنوياً', fmtUSD(required)),
                   ],
                 ),
               ),
@@ -322,7 +322,7 @@ class _ResidentReportState extends State<ResidentReport> {
             children: [
               Row(
                 children: [
-                  Avatar(name: me.resident, size: 46, tone: 'gold'),
+                  Avatar(name: me.resident, size: 46, tone: 'accent'),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -450,7 +450,7 @@ class ResidentElevator extends StatelessWidget {
                     style: AppType.base(size: 14, weight: FontWeight.w600, color: AppColors.ink600)),
                 const SizedBox(height: 6),
                 NumText(kElevPhone,
-                    style: AppType.num(size: 26, weight: FontWeight.w800, color: AppColors.navy700, letterSpacing: 0.5)),
+                    style: AppType.num(size: 26, weight: FontWeight.w800, color: AppColors.brand700, letterSpacing: 0.5)),
                 const SizedBox(height: 18),
                 AppButton(
                   label: 'اتصال بالمصعد',
@@ -487,7 +487,7 @@ class ResidentElevator extends StatelessWidget {
                 const SizedBox(height: 18),
                 AppButton(
                   label: 'سدّد الآن لتفعيل المصعد',
-                  variant: BtnVariant.gold,
+                  variant: BtnVariant.accent,
                   full: true,
                   icon: 'wallet',
                   onTap: () => ctx.toast('فتح صفحة الدفع', tone: 'info'),
@@ -534,11 +534,11 @@ class MoreHub extends StatelessWidget {
       ]),
     ];
     const toneFor = {
-      'building': 'navy', 'units': 'navy', 'years': 'credit', 'approvals': 'gold',
-      'subscribe': 'navy',
+      'building': 'brand', 'units': 'brand', 'years': 'credit', 'approvals': 'accent',
+      'subscribe': 'brand',
       'payments': 'ok', 'expenses': 'late', 'reports': 'credit',
-      'workers': 'ok', 'parking': 'gold', 'guard': 'navy',
-      'elevator': 'navy', 'craftsmen': 'gold', 'alerts': 'warn',
+      'workers': 'ok', 'parking': 'accent', 'guard': 'brand',
+      'elevator': 'brand', 'craftsmen': 'accent', 'alerts': 'warn',
     };
 
     return ScreenScaffold(
@@ -557,7 +557,7 @@ class MoreHub extends StatelessWidget {
                       children: List.generate(g.$2.length, (i) {
                         final it = g.$2[i];
                         return ListRow(
-                          leading: IconChip(icon: it.$3, tone: toneFor[it.$1] ?? 'navy', size: 40),
+                          leading: IconChip(icon: it.$3, tone: toneFor[it.$1] ?? 'brand', size: 40),
                           title: it.$2,
                           sub: it.$4,
                           chevron: true,

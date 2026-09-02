@@ -1,4 +1,4 @@
-// عمارتي — shared extras added in the redesign pass: a calendar date field, a
+// سكن برو — shared extras added in the redesign pass: a calendar date field, a
 // branded QR box, a full-screen QR scanner, and WhatsApp sharing. Centralised
 // here so every screen uses one consistent implementation (and one set of
 // dependencies). Exported via `common.dart`.
@@ -29,7 +29,7 @@ Future<String?> pickDate(BuildContext context, {String? initialIso}) async {
       child: Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: ColorScheme.light(
-              primary: AppColors.navy700, onPrimary: Colors.white),
+              primary: AppColors.brand700, onPrimary: Colors.white),
         ),
         child: child!,
       ),
@@ -92,7 +92,7 @@ class DateField extends StatelessWidget {
               height: 50,
               padding: const EdgeInsets.symmetric(horizontal: 13),
               decoration: BoxDecoration(
-                color: enabled ? AppColors.surface : AppColors.navy50,
+                color: enabled ? AppColors.surface : AppColors.brand50,
                 borderRadius: BorderRadius.circular(13),
                 border: Border.all(color: AppColors.line2, width: 1.5),
                 boxShadow: AppShadows.xs,
@@ -142,9 +142,9 @@ class QrBox extends StatelessWidget {
         version: QrVersions.auto,
         backgroundColor: Colors.white,
         eyeStyle: QrEyeStyle(
-            eyeShape: QrEyeShape.square, color: AppColors.navy700),
+            eyeShape: QrEyeShape.square, color: AppColors.brand700),
         dataModuleStyle: QrDataModuleStyle(
-            dataModuleShape: QrDataModuleShape.square, color: AppColors.navy800),
+            dataModuleShape: QrDataModuleShape.square, color: AppColors.brand800),
       ),
     );
   }
@@ -192,7 +192,7 @@ class _ScanScreenState extends State<_ScanScreen> {
       child: Scaffold(
         backgroundColor: Colors.black,
         appBar: AppBar(
-          backgroundColor: AppColors.navy900,
+          backgroundColor: AppColors.brand900,
           foregroundColor: Colors.white,
           title: Text('مسح رمز QR',
               style: AppType.base(

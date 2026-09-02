@@ -1,4 +1,4 @@
-// عمارتي — common barrel: tokens, data, context, widgets, shared screen parts.
+// سكن برو — common barrel: tokens, data, context, widgets, shared screen parts.
 
 export 'theme/tokens.dart';
 export 'data/sample_data.dart';

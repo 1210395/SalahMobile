@@ -1,4 +1,4 @@
-// عمارتي — entry point. RTL, Cairo type, navy + gold theme.
+// سكن برو — entry point. RTL, Cairo type, purple + gold theme.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -80,8 +80,8 @@ class AmaratiRoot extends StatelessWidget {
       useMaterial3: true,
       scaffoldBackgroundColor: AppColors.page,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.navy700,
-        primary: AppColors.navy700,
+        seedColor: AppColors.brand700,
+        primary: AppColors.brand700,
         surface: AppColors.surface,
         brightness: AppTheme.isDark ? Brightness.dark : Brightness.light,
       ),

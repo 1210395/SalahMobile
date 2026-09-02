@@ -6,7 +6,7 @@ use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
-// عمارتي — editable brand / app settings (name, slogan, description, colors,
+// سكن برو — editable brand / app settings (name, slogan, description, colors,
 // logo). Public read so every client can theme itself; admin-only write.
 class SettingsController extends Controller
 {

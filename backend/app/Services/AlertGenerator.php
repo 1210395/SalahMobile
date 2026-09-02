@@ -9,7 +9,7 @@ use App\Models\Unit;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
-// عمارتي — automated alerts engine. Recomputes a building's alerts from live
+// سكن برو — automated alerts engine. Recomputes a building's alerts from live
 // data (overdue units, recent payments) plus standing reminders, then "sends"
 // each alert through its channel. Real SMS/WhatsApp/push providers plug into
 // [send()] — by default delivery is logged so the engine is functional without

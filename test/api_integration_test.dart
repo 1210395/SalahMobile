@@ -37,8 +37,8 @@ void main() {
     ];
     s.summary = SummaryData.fromJson({
       'balance': 99000, 'due': 1, 'revenueM': 2, 'expenseM': 3,
-      'bars': [{'label': 'إيرادات', 'value': 10, 'color': 'navy600'}],
-      'trend': [{'label': 'ينا', 'value': 5, 'color': 'navy600'}],
+      'bars': [{'label': 'إيرادات', 'value': 10, 'color': 'brand600'}],
+      'trend': [{'label': 'ينا', 'value': 5, 'color': 'brand600'}],
     });
 
     // Commercial getters now reflect the live data…
@@ -209,7 +209,7 @@ void main() {
 
   test('Brand parses the sms coverage block from /settings', () {
     DataStore.I.applySettingsJson({
-      'app_name': 'عمارتي',
+      'app_name': 'سكن برو',
       'sms': {'available': true, 'coverage': []}, // a global provider, e.g. Twilio
     });
     expect(Brand.smsAvailable, isTrue);
@@ -218,7 +218,7 @@ void main() {
 
   test('Brand falls back to the local-gateway default when sms is absent', () {
     // An older cached response / a host still on the pre-coverage controller.
-    DataStore.I.applySettingsJson({'app_name': 'عمارتي'});
+    DataStore.I.applySettingsJson({'app_name': 'سكن برو'});
     expect(Brand.smsAvailable, isFalse);
     expect(Brand.smsCoverage, ['+970', '+972']);
   });

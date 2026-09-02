@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — complete the building_id refactor: give every building-scoped table a
+// سكن برو — complete the building_id refactor: give every building-scoped table a
 // proper foreign key to buildings.id (was a denormalized building_key string).
 // Additive + idempotent + backfilled, so it's safe on existing production data.
 return new class extends Migration

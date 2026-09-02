@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — domain tables. Rows are scoped by `building_key`
+// سكن برو — domain tables. Rows are scoped by `building_key`
 // (residential | commercial) to mirror the app's سكني/تجاري toggle.
 return new class extends Migration
 {

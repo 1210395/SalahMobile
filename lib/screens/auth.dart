@@ -1,4 +1,4 @@
-// عمارتي — auth screens: Splash, Guest, Login.
+// سكن برو — auth screens: Splash, Guest, Login.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,7 +21,7 @@ class SplashScreen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topRight,
             end: Alignment.bottomLeft,
-            colors: [AppColors.navy600, AppColors.navy800, AppColors.navy900],
+            colors: [AppColors.brand600, AppColors.brand800, AppColors.brand900],
             stops: [0, 0.55, 1],
           ),
         ),
@@ -85,7 +85,7 @@ class SplashScreen extends StatelessWidget {
                             style: AppType.base(
                                 size: 14.5,
                                 weight: FontWeight.w500,
-                                color: AppColors.navy300,
+                                color: AppColors.brand300,
                                 height: 1.7),
                           ),
                         ),
@@ -99,7 +99,7 @@ class SplashScreen extends StatelessWidget {
                     children: [
                       AppButton(
                         label: 'تجربة التطبيق كزائر',
-                        variant: BtnVariant.gold,
+                        variant: BtnVariant.accent,
                         size: BtnSize.lg,
                         full: true,
                         icon: 'eye',
@@ -117,7 +117,7 @@ class SplashScreen extends StatelessWidget {
                       const SizedBox(height: 18),
                       Text(Brand.tagline,
                           style: AppType.base(
-                              size: 12, weight: FontWeight.w600, color: AppColors.navy300)),
+                              size: 12, weight: FontWeight.w600, color: AppColors.brand300)),
                     ],
                   ),
                 ),
@@ -168,12 +168,12 @@ class GuestHome extends StatelessWidget {
       header: AppHeader(
         accent: true,
         logo: true,
-        right: const AppBadge(label: 'زائر', tone: 'gold', icon: 'eye'),
+        right: const AppBadge(label: 'زائر', tone: 'accent', icon: 'eye'),
       ),
       nav: ctx.guestNav,
       children: [
         HeroBanner(
-          gradient: [AppColors.navy700, AppColors.navy800],
+          gradient: [AppColors.brand700, AppColors.brand800],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -182,7 +182,7 @@ class GuestHome extends StatelessWidget {
               // rather than some other customer's building. Show the app's own
               // name instead of a dangling "ملخص عام — ".
               Text('ملخص عام — ${ctx.building.name.trim().isEmpty ? Brand.appName : ctx.building.name}',
-                  style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.gold400)),
+                  style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.accent400)),
               const SizedBox(height: 14),
               Row(
                 children: [
@@ -201,7 +201,7 @@ class GuestHome extends StatelessWidget {
         AppCard(
           child: Row(
             children: [
-              const IconChip(icon: 'pie', tone: 'gold'),
+              const IconChip(icon: 'pie', tone: 'accent'),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -226,8 +226,8 @@ class GuestHome extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: AppColors.gold50,
-            border: Border.all(color: AppColors.gold400, width: 1.5),
+            color: AppColors.accent50,
+            border: Border.all(color: AppColors.accent400, width: 1.5),
             borderRadius: BorderRadius.circular(AppRadii.md),
           ),
           child: Column(
@@ -236,9 +236,9 @@ class GuestHome extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                    color: AppColors.gold100, borderRadius: BorderRadius.circular(16)),
+                    color: AppColors.accent100, borderRadius: BorderRadius.circular(16)),
                 alignment: Alignment.center,
-                child: AppIcon('lock', size: 26, color: AppColors.gold700),
+                child: AppIcon('lock', size: 26, color: AppColors.accent700),
               ),
               const SizedBox(height: 12),
               Text('الوصول محدود في وضع الزائر',
@@ -269,7 +269,7 @@ class GuestHome extends StatelessWidget {
         children: [
           NumText(value, style: AppType.num(size: 22, weight: FontWeight.w800, color: Colors.white)),
           const SizedBox(height: 2),
-          Text(label, style: AppType.base(size: 12, weight: FontWeight.w500, color: AppColors.navy300)),
+          Text(label, style: AppType.base(size: 12, weight: FontWeight.w500, color: AppColors.brand300)),
         ],
       );
 }
@@ -405,7 +405,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                      color: AppColors.gold100, borderRadius: BorderRadius.circular(12)),
+                      color: AppColors.accent100, borderRadius: BorderRadius.circular(12)),
                   child: Text('رمز الاستعادة (وضع التجربة): $devCode',
                       style: AppType.base(
                           size: 13, weight: FontWeight.w800, color: AppColors.ink900)),
@@ -531,7 +531,7 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: _openForgotPassword,
               child: Text('نسيت كلمة المرور؟',
                   style: AppType.base(
-                      size: 12.5, weight: FontWeight.w700, color: AppColors.navy700)),
+                      size: 12.5, weight: FontWeight.w700, color: AppColors.brand700)),
             ),
           ),
           const SizedBox(height: 6),
@@ -571,7 +571,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const TextSpan(text: 'ليس لديك حساب؟ '),
                   TextSpan(
                       text: 'إنشاء حساب جديد',
-                      style: AppType.base(size: 13, weight: FontWeight.w800, color: AppColors.navy600)),
+                      style: AppType.base(size: 13, weight: FontWeight.w800, color: AppColors.brand600)),
                 ],
               ),
             ),
@@ -582,7 +582,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: GestureDetector(
             onTap: () => ctx.enterGuest(btype),
             child: Text('المتابعة كزائر بدلاً من ذلك',
-                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.navy600)),
+                style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.brand600)),
           ),
         ),
       ],
@@ -719,10 +719,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       children: [
         AppCard(
-          color: AppColors.navy50,
-          borderColor: AppColors.navy100,
+          color: AppColors.brand50,
+          borderColor: AppColors.brand100,
           child: Row(children: [
-            const IconChip(icon: 'user', tone: 'navy', size: 42),
+            const IconChip(icon: 'user', tone: 'brand', size: 42),
             const SizedBox(width: 12),
             Expanded(
               child: Text('أنشئ حساب مدير العمارة. بعد الدخول تُكمل تفعيل الاشتراك ثم '
@@ -839,8 +839,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: AppColors.gold400.withValues(alpha: 0.14),
-                    border: Border.all(color: AppColors.gold500, width: 1.4),
+                    color: AppColors.accent400.withValues(alpha: 0.14),
+                    border: Border.all(color: AppColors.accent500, width: 1.4),
                     borderRadius: BorderRadius.circular(AppRadii.lg),
                   ),
                   child: Row(
@@ -854,7 +854,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 style: AppType.base(size: 12, weight: FontWeight.w700, color: AppColors.ink600)),
                             const SizedBox(height: 4),
                             NumText(_devCode!,
-                                style: AppType.num(size: 26, weight: FontWeight.w800, color: AppColors.navy800)),
+                                style: AppType.num(size: 26, weight: FontWeight.w800, color: AppColors.brand800)),
                           ],
                         ),
                       ),
@@ -916,7 +916,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const TextSpan(text: 'لديك حساب؟ '),
                   TextSpan(
                       text: 'تسجيل الدخول',
-                      style: AppType.base(size: 13, weight: FontWeight.w800, color: AppColors.navy600)),
+                      style: AppType.base(size: 13, weight: FontWeight.w800, color: AppColors.brand600)),
                 ],
               ),
             ),

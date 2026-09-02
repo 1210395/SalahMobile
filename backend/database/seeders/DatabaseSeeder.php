@@ -19,7 +19,7 @@ use App\Models\YearSummary;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
-// عمارتي — seeds the prototype's sample data so the app looks identical but
+// سكن برو — seeds the prototype's sample data so the app looks identical but
 // is now backed by MySQL. Mirrors lib/data/sample_data.dart.
 class DatabaseSeeder extends Seeder
 {

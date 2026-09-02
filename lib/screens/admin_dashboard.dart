@@ -1,4 +1,4 @@
-// عمارتي — Admin: Dashboard (hero layout) + Building settings.
+// سكن برو — Admin: Dashboard (hero layout) + Building settings.
 
 import 'package:flutter/material.dart';
 
@@ -56,11 +56,11 @@ class _DashboardState extends State<Dashboard> {
     final res = ctx.res;
     final b = ctx.building;
     final tiles = [
-      QuickTile(label: res ? 'الشقق السكنية' : 'الوحدات التجارية', sub: res ? 'الشقق والملاك' : 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
-      QuickTile(label: 'الإيرادات', sub: 'تسجيل ومتابعة دفعات السكان', icon: 'wallet', tone: 'gold', onTap: () => ctx.go('payments')),
+      QuickTile(label: res ? 'الشقق السكنية' : 'الوحدات التجارية', sub: res ? 'الشقق والملاك' : 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'brand', onTap: () => ctx.go('units')),
+      QuickTile(label: 'الإيرادات', sub: 'تسجيل ومتابعة دفعات السكان', icon: 'wallet', tone: 'accent', onTap: () => ctx.go('payments')),
       QuickTile(label: 'المصروفات', sub: 'إدارة المصروفات', icon: 'expense', tone: 'late', onTap: () => ctx.go('expenses')),
       QuickTile(label: 'التقارير', sub: 'تقارير شاملة', icon: 'pie', tone: 'credit', onTap: () => ctx.go('reports')),
-      QuickTile(label: 'المصعد', sub: 'صلاحية الوصول', icon: 'elevator', tone: 'navy', onTap: () => ctx.go('elevator')),
+      QuickTile(label: 'المصعد', sub: 'صلاحية الوصول', icon: 'elevator', tone: 'brand', onTap: () => ctx.go('elevator')),
       QuickTile(label: 'التنبيهات', sub: 'إشعارات وتذكير', icon: 'bell', tone: 'ok', badge: kAlerts.length, onTap: () => ctx.go('alerts')),
     ];
 
@@ -113,9 +113,9 @@ class _DashboardState extends State<Dashboard> {
               child: Container(
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
-                  gradient: appGradient([AppColors.navy700, AppColors.navy800]),
+                  gradient: appGradient([AppColors.brand700, AppColors.brand800]),
                   borderRadius: BorderRadius.circular(AppRadii.md),
-                  boxShadow: AppShadows.navy,
+                  boxShadow: AppShadows.brand,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,17 +127,17 @@ class _DashboardState extends State<Dashboard> {
                         style: AppType.base(size: 12.5, weight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(height: 2),
                     Text('${res ? 'سكني' : 'تجاري'} · ${b.units} وحدة · ${b.currency}',
-                        style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.navy300)),
+                        style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.brand300)),
                     const SizedBox(height: 12),
                     Text('رصيد الصندوق',
-                        style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.navy300)),
+                        style: AppType.base(size: 11.5, weight: FontWeight.w500, color: AppColors.brand300)),
                     const SizedBox(height: 6),
                     NumText(fmtUSD(Summary.balance),
                         style: AppType.num(size: 22, weight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(height: 4),
                     // #8 — رصيد الصندوق = المرحّل + إيرادات العام − مصروفاته.
                     Text('الإيرادات − المصروفات · للعام $selYear',
-                        style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.navy300)),
+                        style: AppType.base(size: 10, weight: FontWeight.w500, color: AppColors.brand300)),
                   ],
                 ),
               ),
@@ -247,7 +247,7 @@ class _DashboardState extends State<Dashboard> {
             ChartDatum(
                 label: 'الذمم',
                 value: Summary.due.abs(),
-                color: AppColors.gold500,
+                color: AppColors.accent500,
                 label2: fmtUSD(Summary.due.abs())),
           ]),
         ),
@@ -316,7 +316,7 @@ class BuildingScreen extends StatelessWidget {
     final b = ctx.building;
     final res = ctx.res;
 
-    Widget row(String icon, String label, Widget value, {String tone = 'navy', bool divider = true}) =>
+    Widget row(String icon, String label, Widget value, {String tone = 'brand', bool divider = true}) =>
         ListRow(
           leading: IconChip(icon: icon, tone: tone, size: 40),
           title: label,
@@ -335,9 +335,9 @@ class BuildingScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: appGradient([AppColors.navy700, AppColors.navy800]),
+            gradient: appGradient([AppColors.brand700, AppColors.brand800]),
             borderRadius: BorderRadius.circular(AppRadii.lg),
-            boxShadow: AppShadows.navy,
+            boxShadow: AppShadows.brand,
           ),
           child: Stack(
             children: [
@@ -367,12 +367,12 @@ class BuildingScreen extends StatelessWidget {
                             const SizedBox(height: 3),
                             Row(
                               children: [
-                                AppIcon('pin', size: 14, color: AppColors.navy300),
+                                AppIcon('pin', size: 14, color: AppColors.brand300),
                                 const SizedBox(width: 4),
                                 Expanded(
                                   child: Text(b.address,
                                       style: AppType.base(
-                                          size: 12.5, weight: FontWeight.w500, color: AppColors.navy300)),
+                                          size: 12.5, weight: FontWeight.w500, color: AppColors.brand300)),
                                 ),
                               ],
                             ),
@@ -386,9 +386,9 @@ class BuildingScreen extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      AppBadge(label: res ? 'سكني' : 'تجاري', tone: 'gold', icon: res ? 'building' : 'store'),
-                      AppBadge(label: '${b.floors} أدوار', tone: 'navy', icon: 'layers'),
-                      AppBadge(label: '${b.units} وحدة', tone: 'navy', icon: 'grid'),
+                      AppBadge(label: res ? 'سكني' : 'تجاري', tone: 'accent', icon: res ? 'building' : 'store'),
+                      AppBadge(label: '${b.floors} أدوار', tone: 'brand', icon: 'layers'),
+                      AppBadge(label: '${b.units} وحدة', tone: 'brand', icon: 'grid'),
                     ],
                   ),
                 ],
@@ -405,7 +405,7 @@ class BuildingScreen extends StatelessWidget {
               row('wallet', 'الاشتراك الافتراضي',
                   Text('${fmtUSD(b.subscription)} / شهر',
                       style: AppType.base(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
-                  tone: 'gold'),
+                  tone: 'accent'),
               row('dollar', 'العملة',
                   Text('${b.currency} (${currencySymbol(b.currency)})',
                       style: AppType.base(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
@@ -420,14 +420,14 @@ class BuildingScreen extends StatelessWidget {
         const SizedBox(height: 16),
         const SectionTitle(text: 'إدارة سريعة'),
         gridRows([
-          QuickTile(label: res ? 'الشقق' : 'الوحدات', sub: 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'navy', onTap: () => ctx.go('units')),
-          QuickTile(label: 'الباركينج', sub: 'المواقف', icon: 'parking', tone: 'gold', onTap: () => ctx.go('parking')),
+          QuickTile(label: res ? 'الشقق' : 'الوحدات', sub: 'الوحدات والملاك', icon: res ? 'building' : 'store', tone: 'brand', onTap: () => ctx.go('units')),
+          QuickTile(label: 'الباركينج', sub: 'المواقف', icon: 'parking', tone: 'accent', onTap: () => ctx.go('parking')),
           QuickTile(label: 'الحارس', sub: 'بيانات الحارس', icon: 'shield', tone: 'ok', onTap: () => ctx.go('guard')),
           QuickTile(label: 'الترحيل السنوي', sub: 'الأرصدة الافتتاحية والترحيل', icon: 'calendar', tone: 'credit', onTap: () => ctx.go('years')),
-          QuickTile(label: 'طلبات الانضمام', sub: 'الموافقة على السكان', icon: 'users', tone: 'gold', onTap: () => ctx.go('approvals')),
-          QuickTile(label: 'الاشتراك بالتطبيق', sub: 'تفعيل الاشتراك بالتطبيق', icon: 'shield', tone: 'navy', onTap: () => ctx.go('subscribe')),
+          QuickTile(label: 'طلبات الانضمام', sub: 'الموافقة على السكان', icon: 'users', tone: 'accent', onTap: () => ctx.go('approvals')),
+          QuickTile(label: 'الاشتراك بالتطبيق', sub: 'تفعيل الاشتراك بالتطبيق', icon: 'shield', tone: 'brand', onTap: () => ctx.go('subscribe')),
           QuickTile(label: 'مسؤول مساعد', sub: 'إضافة مسؤول للمبنى', icon: 'users', tone: 'credit', onTap: () => _openCoAdmin(context, ctx)),
-          QuickTile(label: 'الرسوم', sub: 'قيم المصعد والحارس والباركينج المضمّنة بالاشتراك', icon: 'wallet', tone: 'gold', onTap: () => _openPayTypes(context, ctx)),
+          QuickTile(label: 'الرسوم', sub: 'قيم المصعد والحارس والباركينج المضمّنة بالاشتراك', icon: 'wallet', tone: 'accent', onTap: () => _openPayTypes(context, ctx)),
         ], n: 2),
       ],
     );
@@ -689,7 +689,7 @@ class BuildingScreen extends StatelessWidget {
               child: Row(children: [
                 Expanded(child: Text(pt.label, style: AppType.base(size: 14, weight: FontWeight.w700))),
                 NumText(fmtUSD(pt.amount),
-                    style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.gold700)),
+                    style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.accent700)),
                 const SizedBox(width: 10),
                 RoundBtn(icon: 'edit', label: 'تعديل', onTap: () {
                   Navigator.of(context).pop();

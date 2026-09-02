@@ -1,4 +1,4 @@
-// عمارتي — real PDF report export (#8). Builds an RTL, Cairo-font PDF from the
+// سكن برو — real PDF report export (#8). Builds an RTL, Cairo-font PDF from the
 // same row data used for Excel/CSV, then either opens the system share sheet or
 // saves it to the device (#41). The header carries the app logo, the building
 // name, and the report title.

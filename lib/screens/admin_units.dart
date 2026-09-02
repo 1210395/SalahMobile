@@ -1,4 +1,4 @@
-// عمارتي — Units (apartments / shops): list, detail sheet, add via WhatsApp/QR.
+// سكن برو — Units (apartments / shops): list, detail sheet, add via WhatsApp/QR.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -125,7 +125,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
             height: 52,
             padding: const EdgeInsets.symmetric(horizontal: 3),
             decoration: BoxDecoration(
-                color: vacant ? AppColors.page : AppColors.navy700,
+                color: vacant ? AppColors.page : AppColors.brand700,
                 borderRadius: BorderRadius.circular(14)),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -161,7 +161,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 Row(
                   children: [
                     if (!vacant) ...[
-                      AppBadge(label: u.kind, tone: u.kind == 'مالك' ? 'navy' : 'gold', small: true),
+                      AppBadge(label: u.kind, tone: u.kind == 'مالك' ? 'brand' : 'accent', small: true),
                       const SizedBox(width: 6),
                     ],
                     AppBadge(label: s.label, tone: s.tone, small: true, icon: s.hasDot ? null : 'lock'),
@@ -233,7 +233,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
         children: [
           Row(
             children: [
-              Avatar(name: u.resident, size: 52, tone: u.kind == 'مالك' ? 'navy' : 'gold'),
+              Avatar(name: u.resident, size: 52, tone: u.kind == 'مالك' ? 'brand' : 'accent'),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -243,7 +243,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                     Text(u.resident, style: AppType.base(size: 17, weight: FontWeight.w800)),
                     const SizedBox(height: 5),
                     Row(children: [
-                      AppBadge(label: u.kind, tone: u.kind == 'مالك' ? 'navy' : 'gold', small: true),
+                      AppBadge(label: u.kind, tone: u.kind == 'مالك' ? 'brand' : 'accent', small: true),
                       const SizedBox(width: 6),
                       AppBadge(label: s.label, tone: s.tone, small: true),
                     ]),
@@ -348,7 +348,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
             ),
             child: Center(
               child: NumText(u.loginCode,
-                  style: AppType.num(size: 20, weight: FontWeight.w800, color: AppColors.navy700)),
+                  style: AppType.num(size: 20, weight: FontWeight.w800, color: AppColors.brand700)),
             ),
           ),
         ],
@@ -830,8 +830,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
           ),
           const SizedBox(height: 12),
           _addOption(
-            bg: AppColors.navy50,
-            iconColor: AppColors.navy700,
+            bg: AppColors.brand50,
+            iconColor: AppColors.brand700,
             icon: 'qr',
             title: 'إنشاء رمز QR',
             sub: 'يمسح الساكن الرمز للانضمام ${res ? 'للشقة' : 'للوحدة'}',
@@ -877,7 +877,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ),
                 alignment: Alignment.center,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  AppIcon('qr', size: 96, color: AppColors.navy700),
+                  AppIcon('qr', size: 96, color: AppColors.brand700),
                   const SizedBox(height: 8),
                   NumText(code,
                       style: AppType.num(size: 12, weight: FontWeight.w700, color: AppColors.ink500)),
@@ -900,7 +900,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
             child: Row(children: [
               Expanded(
                 child: NumText(link,
-                    style: AppType.num(size: 12.5, weight: FontWeight.w700, color: AppColors.navy700)),
+                    style: AppType.num(size: 12.5, weight: FontWeight.w700, color: AppColors.brand700)),
               ),
               const SizedBox(width: 8),
               GestureDetector(
@@ -908,7 +908,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   Clipboard.setData(ClipboardData(text: link));
                   ctx.toast('تم نسخ رابط الدعوة');
                 },
-                child: AppIcon('file', size: 18, color: AppColors.navy600),
+                child: AppIcon('file', size: 18, color: AppColors.brand600),
               ),
             ]),
           ),

@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Support\Facades\Validator;
 
-// عمارتي — create (or re-password) the platform owner account.
+// سكن برو — create (or re-password) the platform owner account.
 //
 // The super-admin role is built and enforced, but no account held it, so
 // platform branding and the all-buildings report were unreachable and a new

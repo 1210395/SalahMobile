@@ -1,4 +1,4 @@
-// عمارتي — screen scaffold, bottom-sheet shell, LTR number text.
+// سكن برو — screen scaffold, bottom-sheet shell, LTR number text.
 
 import 'package:flutter/material.dart';
 

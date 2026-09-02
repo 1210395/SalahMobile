@@ -1,4 +1,4 @@
-// عمارتي — shared screen building blocks used across multiple screens.
+// سكن برو — shared screen building blocks used across multiple screens.
 
 import 'package:flutter/material.dart';
 
@@ -40,7 +40,7 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pair = _statTones[tone] ?? _statTones['navy']!;
+    final pair = _statTones[tone] ?? _statTones['brand']!;
     return AppCard(
       pad: 14,
       child: Column(
@@ -78,8 +78,8 @@ class StatCard extends StatelessWidget {
 }
 
 Map<String, (Color, Color)> _statTones = {
-  'navy': (AppColors.navy50, AppColors.navy700),
-  'gold': (AppColors.gold100, AppColors.gold700),
+  'brand': (AppColors.brand50, AppColors.brand700),
+  'accent': (AppColors.accent100, AppColors.accent700),
   'late': (AppColors.lateBg, AppColors.late700),
   'ok': (AppColors.okBg, AppColors.ok700),
   'credit': (AppColors.creditBg, AppColors.credit700),
@@ -105,7 +105,7 @@ class QuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pair = _statTones[tone] ?? _statTones['navy']!;
+    final pair = _statTones[tone] ?? _statTones['brand']!;
     return Pressable(
       onTap: onTap,
       scale: 0.96,
@@ -169,7 +169,7 @@ class MiniStat extends StatelessWidget {
     super.key,
     required this.label,
     required this.value,
-    this.tone = 'navy',
+    this.tone = 'brand',
     this.num = false,
   });
   final String label;
@@ -180,10 +180,10 @@ class MiniStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = {
-      'navy': AppColors.navy700,
+      'brand': AppColors.brand700,
       'ok': AppColors.ok700,
       'late': AppColors.late700,
-      'gold': AppColors.gold700,
+      'accent': AppColors.accent700,
     }[tone]!;
     return Expanded(
       child: Container(
@@ -301,7 +301,7 @@ class HeroBanner extends StatelessWidget {
         color: color,
         border: borderColor != null ? Border.all(color: borderColor!) : null,
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: shadow ?? AppShadows.navy,
+        boxShadow: shadow ?? AppShadows.brand,
       ),
       child: child,
     );

@@ -1,4 +1,4 @@
-// عمارتي — root app: router, roles, navigation, toast, role switcher.
+// سكن برو — root app: router, roles, navigation, toast, role switcher.
 
 import 'dart:async';
 import 'package:dio/dio.dart';
@@ -617,7 +617,7 @@ class _AmaratiAppState extends State<AmaratiApp> {
                     height: 46,
                     child: CircularProgressIndicator(
                       strokeWidth: 3,
-                      valueColor: AlwaysStoppedAnimation(AppColors.navy700),
+                      valueColor: AlwaysStoppedAnimation(AppColors.brand700),
                     ),
                   ),
                 ),
@@ -637,7 +637,7 @@ class _ToastView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (bg, icon) = switch (data.tone) {
-      'info' => (AppColors.navy700, 'bell'),
+      'info' => (AppColors.brand700, 'bell'),
       'late' => (AppColors.late, 'alert'),
       _ => (AppColors.ok, 'checkCircle'),
     };

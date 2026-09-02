@@ -5,7 +5,7 @@ namespace App\Models\Concerns;
 use App\Models\Building;
 use RuntimeException;
 
-// عمارتي — a building-scoped model. building_id (the FK) is the authoritative
+// سكن برو — a building-scoped model. building_id (the FK) is the authoritative
 // scope key; building_key remains a readable label.
 //
 // building_key holds a TYPE ('residential' | 'commercial'), NOT a unique id —

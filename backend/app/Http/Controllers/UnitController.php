@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
-// عمارتي — unit CRUD (admin only). Adding/editing/removing apartments or shops,
+// سكن برو — unit CRUD (admin only). Adding/editing/removing apartments or shops,
 // including marking a unit vacant (excluded from dues/payments).
 class UnitController extends Controller
 {

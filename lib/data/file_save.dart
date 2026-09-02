@@ -1,4 +1,4 @@
-// عمارتي — saving exports to the device (#41).
+// سكن برو — saving exports to the device (#41).
 //
 // Every export used to end at the system SHARE sheet, so a manager who just
 // wanted the file on their phone had no way to get it. These helpers write the

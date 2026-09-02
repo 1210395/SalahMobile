@@ -8,7 +8,7 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-// عمارتي — the verification / password-reset code e-mail.
+// سكن برو — the verification / password-reset code e-mail.
 class VerificationCodeMail extends Mailable
 {
     use Queueable, SerializesModels;

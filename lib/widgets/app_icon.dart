@@ -1,4 +1,4 @@
-// عمارتي — icon set. Exact SVG path data from the prototype's icons.jsx,
+// سكن برو — icon set. Exact SVG path data from the prototype's icons.jsx,
 // rendered through flutter_svg. 1.75 stroke, rounded caps, currentColor.
 
 import 'package:flutter/widgets.dart';

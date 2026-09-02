@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
-// عمارتي — super-admin (platform owner): create building admins and view a
+// سكن برو — super-admin (platform owner): create building admins and view a
 // global report across all buildings with filters.
 class SuperAdminController extends Controller
 {

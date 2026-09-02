@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — the fee catalogue (pay_types) was a single GLOBAL table shared by
+// سكن برو — the fee catalogue (pay_types) was a single GLOBAL table shared by
 // every building: one admin editing "الاشتراك الشهري" rewrote every other
 // building's fees, and PUT /pay-types/{id} let any admin edit any row. Scope it
 // to a building.

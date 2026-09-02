@@ -1,4 +1,4 @@
-// عمارتي — models, helpers, and the runtime DataStore.
+// سكن برو — models, helpers, and the runtime DataStore.
 //
 // Every public accessor (kApartments, kPayments, Summary.*, …) returns LIVE
 // data from [DataStore] once a session has loaded it from the Laravel API, and
@@ -152,13 +152,13 @@ BType btypeFromKey(String? k) =>
     k == 'commercial' ? BType.commercial : BType.residential;
 String btypeKey(BType b) => b == BType.commercial ? 'commercial' : 'residential';
 
-/// Map an API color token (e.g. "navy600", "ok") to a brand color.
+/// Map an API color token (e.g. "brand600", "ok") to a brand color.
 Color colorFromName(String? name) {
   switch (name) {
-    case 'navy600':
-      return AppColors.navy600;
-    case 'gold500':
-      return AppColors.gold500;
+    case 'brand600':
+      return AppColors.brand600;
+    case 'accent500':
+      return AppColors.accent500;
     case 'late':
       return AppColors.late;
     case 'ok':
@@ -168,7 +168,7 @@ Color colorFromName(String? name) {
     case 'warn':
       return AppColors.warn;
     default:
-      return AppColors.navy600;
+      return AppColors.brand600;
   }
 }
 
@@ -465,7 +465,7 @@ class Expense {
         id: _int(j['id']),
         cat: j['cat'] ?? '',
         icon: j['icon'] ?? 'receipt',
-        tone: j['tone'] ?? 'gold',
+        tone: j['tone'] ?? 'accent',
         supplier: j['supplier'] ?? '',
         amount: _int(j['amount']),
         date: '${j['date']}'.split('T').first,
@@ -615,7 +615,7 @@ class AlertItem {
         id: _int(j['id']),
         type: j['type'] ?? '',
         icon: j['icon'] ?? 'bell',
-        tone: j['tone'] ?? 'navy',
+        tone: j['tone'] ?? 'brand',
         title: j['title'] ?? '',
         body: j['body'] ?? '',
         time: j['time_label'] ?? j['time'] ?? '',

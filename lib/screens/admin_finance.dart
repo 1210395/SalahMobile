@@ -1,4 +1,4 @@
-// عمارتي — Admin: Payments, Expenses, Workers, Parking.
+// سكن برو — Admin: Payments, Expenses, Workers, Parking.
 
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -429,7 +429,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                     ),
                     child: Row(
                       children: [
-                        AppIcon('wallet', size: 18, color: AppColors.navy600),
+                        AppIcon('wallet', size: 18, color: AppColors.brand600),
                         const SizedBox(width: 11),
                         Expanded(
                           child: Column(
@@ -812,9 +812,9 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
                       decoration: BoxDecoration(
-                        color: selUnits.contains(u.no) ? AppColors.navy700 : AppColors.surface,
+                        color: selUnits.contains(u.no) ? AppColors.brand700 : AppColors.surface,
                         border: Border.all(
-                            color: selUnits.contains(u.no) ? AppColors.navy700 : AppColors.line2,
+                            color: selUnits.contains(u.no) ? AppColors.brand700 : AppColors.line2,
                             width: 1.5),
                         borderRadius: BorderRadius.circular(999),
                       ),
@@ -908,7 +908,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Row(children: [
-                AppIcon('calendar', size: 20, color: AppColors.navy600),
+                AppIcon('calendar', size: 20, color: AppColors.brand600),
                 const SizedBox(width: 11),
                 Expanded(
                   child: Text(_monthsSummary(),
@@ -1063,9 +1063,9 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                 decoration: BoxDecoration(
                   color: settled.contains(i)
                       ? AppColors.surface2
-                      : (payMonths.contains(i) ? AppColors.navy50 : AppColors.surface),
+                      : (payMonths.contains(i) ? AppColors.brand50 : AppColors.surface),
                   border: Border.all(
-                      color: payMonths.contains(i) ? AppColors.navy100 : AppColors.line, width: 1.5),
+                      color: payMonths.contains(i) ? AppColors.brand100 : AppColors.line, width: 1.5),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(children: [
@@ -1289,8 +1289,8 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: on ? AppColors.navy700 : AppColors.surface,
-                    border: Border.all(color: on ? AppColors.navy700 : AppColors.line2),
+                    color: on ? AppColors.brand700 : AppColors.surface,
+                    border: Border.all(color: on ? AppColors.brand700 : AppColors.line2),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(c == 'all' ? 'الكل' : c,
@@ -1415,11 +1415,11 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
   // Icon/tone per expense category (matches the seed styling).
   static const _expMeta = {
-    'مصعد': ['elevator', 'navy'],
+    'مصعد': ['elevator', 'brand'],
     'نظافة': ['broom', 'ok'],
     'كهرباء': ['alert', 'warn'],
     'صيانة': ['wrench', 'credit'],
-    'أخرى': ['receipt', 'gold'],
+    'أخرى': ['receipt', 'accent'],
   };
 
   void _openAdd(Ctx ctx) {
@@ -1463,7 +1463,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               icon: 'check',
               disabled: blockers.isNotEmpty,
               onTap: () async {
-                final meta = _expMeta[f['cat']] ?? const ['receipt', 'gold'];
+                final meta = _expMeta[f['cat']] ?? const ['receipt', 'accent'];
                 Navigator.of(sheetCtx).pop();
                 try {
                   await Api.I.createExpense(ctx.btype, {
@@ -1615,12 +1615,12 @@ class WorkersScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        AppBadge(label: w.cycle, tone: 'navy'),
+                        AppBadge(label: w.cycle, tone: 'brand'),
                       ],
                     ),
                     const SizedBox(height: 12),
                     Row(children: [
-                      MiniStat(label: 'المبلغ', value: fmtUSD(w.amount), tone: 'navy'),
+                      MiniStat(label: 'المبلغ', value: fmtUSD(w.amount), tone: 'brand'),
                       const SizedBox(width: 8),
                       MiniStat(label: 'آخر دفعة', value: w.last, tone: 'ok', num: true),
                       const SizedBox(width: 8),
@@ -1640,7 +1640,7 @@ class WorkersScreen extends StatelessWidget {
                         tone: w.payStatus == 'full'
                             ? 'ok'
                             : w.payStatus == 'partial'
-                                ? 'gold'
+                                ? 'accent'
                                 : 'late',
                       ),
                     ]),
@@ -1736,12 +1736,12 @@ class WorkersScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
               decoration: BoxDecoration(
-                color: came ? AppColors.navy50 : AppColors.surface,
-                border: Border.all(color: came ? AppColors.navy100 : AppColors.line, width: 1.5),
+                color: came ? AppColors.brand50 : AppColors.surface,
+                border: Border.all(color: came ? AppColors.brand100 : AppColors.line, width: 1.5),
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Row(children: [
-                AppIcon('checkCircle', size: 20, color: AppColors.navy700),
+                AppIcon('checkCircle', size: 20, color: AppColors.brand700),
                 const SizedBox(width: 11),
                 Expanded(child: Text('حضر في هذه الدورة', style: AppType.base(size: 14, weight: FontWeight.w700))),
                 AppSwitch(checked: came, onChanged: (v) => setS(() => came = v)),
@@ -1909,9 +1909,9 @@ class ParkingScreen extends StatelessWidget {
         Row(children: [
           MiniStat(label: 'مشغول', value: '${countBy('مشغول')}', tone: 'ok'),
           const SizedBox(width: 8),
-          MiniStat(label: 'شاغر', value: '${countBy('شاغر')}', tone: 'navy'),
+          MiniStat(label: 'شاغر', value: '${countBy('شاغر')}', tone: 'brand'),
           const SizedBox(width: 8),
-          MiniStat(label: 'صيانة', value: '${countBy('صيانة')}', tone: 'gold'),
+          MiniStat(label: 'صيانة', value: '${countBy('صيانة')}', tone: 'accent'),
         ]),
         const SizedBox(height: 14),
         gridRows(kParking.map((p) => _spot(context, p)).toList(), n: 2),
@@ -1922,8 +1922,8 @@ class ParkingScreen extends StatelessWidget {
   Widget _spot(BuildContext context, ParkingSpot p) {
     final cols = {
       'مشغول': (AppColors.okBg, AppColors.ok700, AppColors.ok),
-      'شاغر': (AppColors.navy50, AppColors.navy700, AppColors.navy300),
-      'صيانة': (AppColors.warnBg, AppColors.gold700, AppColors.warn),
+      'شاغر': (AppColors.brand50, AppColors.brand700, AppColors.brand300),
+      'صيانة': (AppColors.warnBg, AppColors.accent700, AppColors.warn),
     }[p.status]!;
     return Pressable(
       onTap: () => _openDetail(context, ctx, p),

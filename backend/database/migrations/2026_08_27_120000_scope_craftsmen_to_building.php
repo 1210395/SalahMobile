@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — الصنايعية belong to a building, like everything else.
+// سكن برو — الصنايعية belong to a building, like everything else.
 //
 // The craftsmen table was the ONE table with no tenancy: any manager's entry
 // appeared in every building on the platform, and nothing could remove it. A

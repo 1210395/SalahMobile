@@ -1,6 +1,6 @@
 <?php
 
-// عمارتي — app-specific runtime flags.
+// سكن برو — app-specific runtime flags.
 return [
 
     // Echo the generated code back in the API response, per channel.

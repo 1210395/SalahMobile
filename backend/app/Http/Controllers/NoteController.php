@@ -6,7 +6,7 @@ use App\Models\Building;
 use App\Models\Note;
 use Illuminate\Http\Request;
 
-// عمارتي — short notes a resident sends to the building admin (≤ 280 chars),
+// سكن برو — short notes a resident sends to the building admin (≤ 280 chars),
 // and the admin's inbox.
 class NoteController extends Controller
 {

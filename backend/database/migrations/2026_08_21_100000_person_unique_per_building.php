@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — the same PERSON may now appear in several buildings.
+// سكن برو — the same PERSON may now appear in several buildings.
 //
 // phone/email were globally unique, so a man who rents a shop in one building
 // and owns a flat in another simply could not be added twice: the second

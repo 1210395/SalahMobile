@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — multi-building: a building's `key` is now its TYPE (residential /
+// سكن برو — multi-building: a building's `key` is now its TYPE (residential /
 // commercial), no longer a unique identifier. Each manager creates their own
 // building (identified by id), so many buildings can share a key. Drops the
 // unique index on buildings.key.

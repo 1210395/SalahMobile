@@ -1,4 +1,4 @@
-// عمارتي — core UI primitives (RTL). Ported from ui.jsx.
+// سكن برو — core UI primitives (RTL). Ported from ui.jsx.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,8 +9,8 @@ import 'app_icon.dart';
 /// (background, foreground) for a tonal color name.
 ({Color bg, Color fg}) toneColors(String tone) {
   switch (tone) {
-    case 'gold':
-      return (bg: AppColors.gold100, fg: AppColors.gold700);
+    case 'accent':
+      return (bg: AppColors.accent100, fg: AppColors.accent700);
     case 'ok':
       return (bg: AppColors.okBg, fg: AppColors.ok700);
     case 'late':
@@ -18,12 +18,12 @@ import 'app_icon.dart';
     case 'credit':
       return (bg: AppColors.creditBg, fg: AppColors.credit700);
     case 'warn':
-      return (bg: AppColors.warnBg, fg: AppColors.gold700);
+      return (bg: AppColors.warnBg, fg: AppColors.accent700);
     case 'neutral':
       return (bg: AppColors.page, fg: AppColors.ink600);
-    case 'navy':
+    case 'brand':
     default:
-      return (bg: AppColors.navy50, fg: AppColors.navy700);
+      return (bg: AppColors.brand50, fg: AppColors.brand700);
   }
 }
 
@@ -166,7 +166,7 @@ class RoundBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = dark ? Colors.white : AppColors.navy700;
+    final fg = dark ? Colors.white : AppColors.brand700;
     if (label != null) {
       return Pressable(
         onTap: onTap,
@@ -175,7 +175,7 @@ class RoundBtn extends StatelessWidget {
           height: 40,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: dark ? Colors.white.withValues(alpha: 0.12) : AppColors.navy50,
+            color: dark ? Colors.white.withValues(alpha: 0.12) : AppColors.brand50,
             borderRadius: BorderRadius.circular(13),
           ),
           child: Row(
@@ -197,13 +197,13 @@ class RoundBtn extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: dark ? Colors.white.withValues(alpha: 0.12) : AppColors.navy50,
+          color: dark ? Colors.white.withValues(alpha: 0.12) : AppColors.brand50,
           borderRadius: BorderRadius.circular(13),
         ),
         child: Stack(
           alignment: Alignment.center,
           children: [
-            AppIcon(icon, size: 21, color: dark ? Colors.white : AppColors.navy700),
+            AppIcon(icon, size: 21, color: dark ? Colors.white : AppColors.brand700),
             if (badge)
               Positioned(
                 top: 7,
@@ -215,7 +215,7 @@ class RoundBtn extends StatelessWidget {
                     color: AppColors.late,
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: dark ? AppColors.navy700 : Colors.white, width: 1.5),
+                        color: dark ? AppColors.brand700 : Colors.white, width: 1.5),
                   ),
                 ),
               ),
@@ -226,7 +226,7 @@ class RoundBtn extends StatelessWidget {
   }
 }
 
-/// Screen header — accent (navy gradient) or plain (white) variant.
+/// Screen header — accent (brand gradient) or plain variant.
 class AppHeader extends StatelessWidget {
   const AppHeader({
     super.key,
@@ -293,7 +293,7 @@ class AppHeader extends StatelessWidget {
                         style: AppType.base(
                           size: 12.5,
                           weight: FontWeight.w500,
-                          color: accent ? AppColors.gold400 : AppColors.ink500,
+                          color: accent ? AppColors.accent400 : AppColors.ink500,
                         ),
                       ),
                     ),
@@ -331,9 +331,9 @@ class AppHeader extends StatelessWidget {
         ? Container(
             decoration: BoxDecoration(
               gradient: appGradient(
-                  [AppColors.navy700, AppColors.navy800, AppColors.navy900]),
+                  [AppColors.brand700, AppColors.brand800, AppColors.brand900]),
             ),
-            // The building/dots motif is removed from the navy background per
+            // The building/dots motif is removed from the brand background per
             // client feedback — plain gradient only.
             child: bar,
           )
@@ -391,7 +391,7 @@ class BottomNav extends StatelessWidget {
       child: Row(
         children: tabs.map((t) {
           final on = t.id == active;
-          final color = on ? AppColors.navy700 : AppColors.ink400;
+          final color = on ? AppColors.brand700 : AppColors.ink400;
           return Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -407,7 +407,7 @@ class BottomNav extends StatelessWidget {
                       width: 50,
                       height: 30,
                       decoration: BoxDecoration(
-                        color: on ? AppColors.navy50 : Colors.transparent,
+                        color: on ? AppColors.brand50 : Colors.transparent,
                         borderRadius: BorderRadius.circular(99),
                       ),
                       child: Stack(
@@ -518,8 +518,8 @@ class SectionTitle extends StatelessWidget {
                 children: [
                   Text(action!,
                       style: AppType.base(
-                          size: 12.5, weight: FontWeight.w700, color: AppColors.navy600)),
-                  AppIcon('chevronL', size: 15, color: AppColors.navy600),
+                          size: 12.5, weight: FontWeight.w700, color: AppColors.brand600)),
+                  AppIcon('chevronL', size: 15, color: AppColors.brand600),
                 ],
               ),
             ),
@@ -529,7 +529,7 @@ class SectionTitle extends StatelessWidget {
   }
 }
 
-enum BtnVariant { primary, gold, outline, ghost, danger, white }
+enum BtnVariant { primary, accent, outline, ghost, danger, white }
 
 enum BtnSize { sm, md, lg }
 
@@ -568,34 +568,34 @@ class AppButton extends StatelessWidget {
       case BtnVariant.primary:
         fg = Colors.white;
         deco = BoxDecoration(
-            color: AppColors.navy700,
+            color: AppColors.brand700,
             borderRadius: BorderRadius.circular(radius),
-            boxShadow: AppShadows.navy);
-      case BtnVariant.gold:
+            boxShadow: AppShadows.brand);
+      case BtnVariant.accent:
         fg = const Color(0xFF3A2F0C);
         deco = BoxDecoration(
             gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [AppColors.gold500, AppColors.gold600]),
+                colors: [AppColors.accent500, AppColors.accent600]),
             borderRadius: BorderRadius.circular(radius),
-            boxShadow: AppShadows.gold);
+            boxShadow: AppShadows.accent);
       case BtnVariant.outline:
-        fg = AppColors.navy700;
+        fg = AppColors.brand700;
         deco = BoxDecoration(
             color: AppColors.surface,
-            border: Border.all(color: AppColors.navy100, width: 1.5),
+            border: Border.all(color: AppColors.brand100, width: 1.5),
             borderRadius: BorderRadius.circular(radius));
       case BtnVariant.ghost:
-        fg = AppColors.navy700;
+        fg = AppColors.brand700;
         deco = BoxDecoration(
-            color: AppColors.navy50, borderRadius: BorderRadius.circular(radius));
+            color: AppColors.brand50, borderRadius: BorderRadius.circular(radius));
       case BtnVariant.danger:
         fg = AppColors.late700;
         deco = BoxDecoration(
             color: AppColors.lateBg, borderRadius: BorderRadius.circular(radius));
       case BtnVariant.white:
-        fg = AppColors.navy700;
+        fg = AppColors.brand700;
         deco = BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(radius),
@@ -640,7 +640,7 @@ class AppBadge extends StatelessWidget {
   const AppBadge({
     super.key,
     required this.label,
-    this.tone = 'navy',
+    this.tone = 'brand',
     this.icon,
     this.small = false,
   });
@@ -690,7 +690,7 @@ class IconChip extends StatelessWidget {
   const IconChip({
     super.key,
     required this.icon,
-    this.tone = 'navy',
+    this.tone = 'brand',
     this.size = 44,
     this.iconSize,
   });

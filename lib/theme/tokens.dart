@@ -2,9 +2,8 @@
 //
 // The colours are no longer compile-time constants: every token reads through
 // to the active skin (see skin.dart), so the whole app follows the dark/light
-// switch without any widget knowing a theme exists. The token NAMES are
-// historical — `navy*` is the brand purple and `gold*` the accent — kept so the
-// rebrand stayed a palette swap instead of a rename across 573 call sites.
+// switch without any widget knowing a theme exists. `brand*` is the purple of
+// the logo's towers, `accent*` the gold of its frame.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -19,24 +18,24 @@ class AppColors {
 
   static Palette get _p => AppTheme.palette;
 
-  // Brand — purple (historically "navy")
-  static Color get navy900 => _p.navy900;
-  static Color get navy800 => _p.navy800;
-  static Color get navy700 => _p.navy700; // primary
-  static Color get navy600 => _p.navy600;
-  static Color get navy500 => _p.navy500;
-  static Color get navy300 => _p.navy300;
-  static Color get navy100 => _p.navy100;
-  static Color get navy50 => _p.navy50;
+  // Brand — purple
+  static Color get brand900 => _p.brand900;
+  static Color get brand800 => _p.brand800;
+  static Color get brand700 => _p.brand700; // primary
+  static Color get brand600 => _p.brand600;
+  static Color get brand500 => _p.brand500;
+  static Color get brand300 => _p.brand300;
+  static Color get brand100 => _p.brand100;
+  static Color get brand50 => _p.brand50;
 
-  // Brand — gold (the logo's frame colour)
-  static Color get gold700 => _p.gold700;
-  static Color get gold600 => _p.gold600;
-  static Color get gold500 => _p.gold500;
-  static Color get gold400 => _p.gold400;
-  static Color get gold200 => _p.gold200;
-  static Color get gold100 => _p.gold100;
-  static Color get gold50 => _p.gold50;
+  // Accent — gold (the logo's frame colour)
+  static Color get accent700 => _p.accent700;
+  static Color get accent600 => _p.accent600;
+  static Color get accent500 => _p.accent500;
+  static Color get accent400 => _p.accent400;
+  static Color get accent200 => _p.accent200;
+  static Color get accent100 => _p.accent100;
+  static Color get accent50 => _p.accent50;
 
   // Brand — red (the plinth the logo's towers stand on). Distinct from the
   // semantic `late` red.
@@ -107,12 +106,12 @@ class AppShadows {
   static List<BoxShadow> get lg => [
         BoxShadow(color: _ink(0.16), offset: const Offset(0, 16), blurRadius: 40),
       ];
-  static List<BoxShadow> get gold => [
-        BoxShadow(color: AppColors.gold600.withValues(alpha: 0.28),
+  static List<BoxShadow> get accent => [
+        BoxShadow(color: AppColors.accent600.withValues(alpha: 0.28),
             offset: const Offset(0, 8), blurRadius: 22),
       ];
-  static List<BoxShadow> get navy => [
-        BoxShadow(color: AppColors.navy700.withValues(alpha: 0.30),
+  static List<BoxShadow> get brand => [
+        BoxShadow(color: AppColors.brand700.withValues(alpha: 0.30),
             offset: const Offset(0, 10), blurRadius: 26),
       ];
 }

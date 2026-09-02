@@ -1,4 +1,4 @@
-// عمارتي — onboarding flow: subscription activation, building setup wizard
+// سكن برو — onboarding flow: subscription activation, building setup wizard
 // (which promotes the actor to admin), resident self-join (invite/QR target),
 // and admin approval of join requests. All wired to the live Laravel API.
 
@@ -65,13 +65,13 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
       ),
       children: [
         HeroBanner(
-          gradient: [AppColors.navy700, AppColors.navy800],
+          gradient: [AppColors.brand700, AppColors.brand800],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('باقة إدارة المبنى',
-                  style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.gold400)),
+                  style: AppType.base(size: 13, weight: FontWeight.w600, color: AppColors.accent400)),
               const SizedBox(height: 8),
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 NumText(fmtUSD(_amount),
@@ -80,12 +80,12 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 5),
                   child: Text('/ سنوياً',
-                      style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.navy300)),
+                      style: AppType.base(size: 12.5, weight: FontWeight.w600, color: AppColors.brand300)),
                 ),
               ]),
               const SizedBox(height: 10),
               Text('شقق ووحدات غير محدودة · تقارير · تنبيهات واتساب · نسخ احتياطي',
-                  style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.navy300, height: 1.6)),
+                  style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.brand300, height: 1.6)),
             ],
           ),
         ),
@@ -96,7 +96,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(children: [
-                const IconChip(icon: 'building2', tone: 'navy', size: 44),
+                const IconChip(icon: 'building2', tone: 'brand', size: 44),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -116,9 +116,9 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: AppColors.navy50,
+                  color: AppColors.brand50,
                   borderRadius: BorderRadius.circular(13),
-                  border: Border.all(color: AppColors.navy100),
+                  border: Border.all(color: AppColors.brand100),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -126,7 +126,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                     Text('المبلغ المستحق',
                         style: AppType.base(size: 13, weight: FontWeight.w700, color: AppColors.ink700)),
                     NumText(fmtUSD(_amount),
-                        style: AppType.num(size: 18, weight: FontWeight.w800, color: AppColors.navy700)),
+                        style: AppType.num(size: 18, weight: FontWeight.w800, color: AppColors.brand700)),
                   ],
                 ),
               ),
@@ -197,7 +197,7 @@ class _GatewaySheet extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [AppColors.navy700, AppColors.navy800],
+              colors: [AppColors.brand700, AppColors.brand800],
             ),
             borderRadius: BorderRadius.circular(16),
           ),
@@ -206,20 +206,20 @@ class _GatewaySheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(children: [
-                AppIcon('shield', size: 16, color: AppColors.gold400),
+                AppIcon('shield', size: 16, color: AppColors.accent400),
                 const SizedBox(width: 6),
                 Text('دفع إلكتروني آمن',
-                    style: AppType.base(size: 12.5, weight: FontWeight.w700, color: AppColors.gold400)),
+                    style: AppType.base(size: 12.5, weight: FontWeight.w700, color: AppColors.accent400)),
               ]),
               const SizedBox(height: 14),
               Text('المبلغ',
-                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.navy300)),
+                  style: AppType.base(size: 12, weight: FontWeight.w600, color: AppColors.brand300)),
               const SizedBox(height: 4),
               NumText(fmtUSD(amount),
                   style: AppType.num(size: 30, weight: FontWeight.w800, color: Colors.white)),
               const SizedBox(height: 4),
               Text('اشتراك إدارة المبنى · سنوياً',
-                  style: AppType.base(size: 12, weight: FontWeight.w500, color: AppColors.navy300)),
+                  style: AppType.base(size: 12, weight: FontWeight.w500, color: AppColors.brand300)),
             ],
           ),
         ),
@@ -449,7 +449,7 @@ class _BuildingSetupScreenState extends State<BuildingSetupScreen> {
                   height: 5,
                   margin: EdgeInsets.only(left: i == _steps.length - 1 ? 0 : 5),
                   decoration: BoxDecoration(
-                    color: i <= step ? AppColors.navy700 : AppColors.line2,
+                    color: i <= step ? AppColors.brand700 : AppColors.line2,
                     borderRadius: BorderRadius.circular(99),
                   ),
                 ),
@@ -633,10 +633,10 @@ class _JoinUnitScreenState extends State<JoinUnitScreen> {
       ),
       children: [
         AppCard(
-          color: AppColors.navy50,
-          borderColor: AppColors.navy100,
+          color: AppColors.brand50,
+          borderColor: AppColors.brand100,
           child: Row(children: [
-            const IconChip(icon: 'building2', tone: 'navy', size: 42),
+            const IconChip(icon: 'building2', tone: 'brand', size: 42),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -823,7 +823,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
         else if (_requests == null)
           Padding(
             padding: EdgeInsets.only(top: 60),
-            child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
+            child: Center(child: CircularProgressIndicator(color: AppColors.brand700)),
           )
         else if (pending.isEmpty)
           const EmptyState(icon: 'users', title: 'لا توجد طلبات', sub: 'ستظهر هنا طلبات الانضمام الجديدة')
@@ -839,7 +839,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(children: [
-                      Avatar(name: name, size: 46, tone: 'gold'),
+                      Avatar(name: name, size: 46, tone: 'accent'),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -853,7 +853,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                           ],
                         ),
                       ),
-                      AppBadge(label: '${ctx.res ? 'شقة' : 'وحدة'} $unit', tone: 'navy', small: true),
+                      AppBadge(label: '${ctx.res ? 'شقة' : 'وحدة'} $unit', tone: 'brand', small: true),
                     ]),
                     const SizedBox(height: 12),
                     Row(children: [

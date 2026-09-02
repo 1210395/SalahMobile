@@ -1,4 +1,4 @@
-{{-- عمارتي — verification / password-reset code. Deliberately plain: inline
+{{-- سكن برو — verification / password-reset code. Deliberately plain: inline
      styles only, RTL, no images and no links, so it renders everywhere and
      nothing in it can be mistaken for a phishing call to action. --}}
 <!DOCTYPE html>

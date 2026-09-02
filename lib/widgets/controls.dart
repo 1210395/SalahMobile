@@ -1,4 +1,4 @@
-// عمارتي — form controls + small widgets. Ported from ui2.jsx.
+// سكن برو — form controls + small widgets. Ported from ui2.jsx.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -101,16 +101,16 @@ class _FieldState extends State<Field> {
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(13),
               border: Border.all(
-                  color: _foc ? AppColors.navy500 : AppColors.line2, width: 1.5),
+                  color: _foc ? AppColors.brand500 : AppColors.line2, width: 1.5),
               boxShadow: _foc
-                  ? [BoxShadow(color: AppColors.navy100, blurRadius: 0, spreadRadius: 3)]
+                  ? [BoxShadow(color: AppColors.brand100, blurRadius: 0, spreadRadius: 3)]
                   : AppShadows.xs,
             ),
             child: Row(
               children: [
                 if (widget.icon != null) ...[
                   AppIcon(widget.icon!,
-                      size: 19, color: _foc ? AppColors.navy600 : AppColors.ink400),
+                      size: 19, color: _foc ? AppColors.brand600 : AppColors.ink400),
                   const SizedBox(width: 9),
                 ],
                 Expanded(
@@ -129,7 +129,7 @@ class _FieldState extends State<Field> {
                     textDirection: widget.ltr ? TextDirection.ltr : null,
                     style: AppType.base(
                         size: 15, weight: FontWeight.w600, color: AppColors.ink900),
-                    cursorColor: AppColors.navy600,
+                    cursorColor: AppColors.brand600,
                     decoration: InputDecoration(
                       isCollapsed: true,
                       border: InputBorder.none,
@@ -196,7 +196,7 @@ class AppTextArea extends StatelessWidget {
               onChanged: onChanged,
               controller: value == null ? null : TextEditingController(text: value),
               style: AppType.base(size: 15, weight: FontWeight.w600, color: AppColors.ink900),
-              cursorColor: AppColors.navy600,
+              cursorColor: AppColors.brand600,
               decoration: InputDecoration(
                 isCollapsed: true,
                 border: InputBorder.none,
@@ -264,7 +264,7 @@ class _SelectFieldState extends State<SelectField> {
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(13),
                 border: Border.all(
-                    color: _open ? AppColors.navy500 : AppColors.line2, width: 1.5),
+                    color: _open ? AppColors.brand500 : AppColors.line2, width: 1.5),
                 boxShadow: AppShadows.xs,
               ),
               child: Row(
@@ -312,7 +312,7 @@ class _SelectFieldState extends State<SelectField> {
                           },
                           child: Container(
                             width: double.infinity,
-                            color: on ? AppColors.navy50 : Colors.transparent,
+                            color: on ? AppColors.brand50 : Colors.transparent,
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -321,8 +321,8 @@ class _SelectFieldState extends State<SelectField> {
                                     style: AppType.base(
                                         size: 14.5,
                                         weight: FontWeight.w600,
-                                        color: on ? AppColors.navy700 : AppColors.ink700)),
-                                if (on) AppIcon('check', size: 17, color: AppColors.navy700),
+                                        color: on ? AppColors.brand700 : AppColors.ink700)),
+                                if (on) AppIcon('check', size: 17, color: AppColors.brand700),
                               ],
                             ),
                           ),
@@ -381,7 +381,7 @@ class Segmented extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (o.icon != null) ...[
-                AppIcon(o.icon!, size: 16, color: on ? AppColors.navy700 : AppColors.ink500),
+                AppIcon(o.icon!, size: 16, color: on ? AppColors.brand700 : AppColors.ink500),
                 const SizedBox(width: 5),
               ],
               Flexible(
@@ -391,7 +391,7 @@ class Segmented extends StatelessWidget {
                     style: AppType.base(
                         size: small ? 12.5 : 13.5,
                         weight: FontWeight.w700,
-                        color: on ? AppColors.navy700 : AppColors.ink500)),
+                        color: on ? AppColors.brand700 : AppColors.ink500)),
               ),
             ],
           ),
@@ -408,7 +408,7 @@ class Segmented extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-          color: AppColors.navy50, borderRadius: BorderRadius.circular(13)),
+          color: AppColors.brand50, borderRadius: BorderRadius.circular(13)),
       child: Row(
           mainAxisSize: full ? MainAxisSize.max : MainAxisSize.min, children: children),
     );
@@ -445,7 +445,7 @@ class AppSwitch extends StatelessWidget {
 }
 
 class Avatar extends StatelessWidget {
-  const Avatar({super.key, required this.name, this.size = 42, this.tone = 'navy', this.img});
+  const Avatar({super.key, required this.name, this.size = 42, this.tone = 'brand', this.img});
   final String name;
   final double size;
   final String tone;
@@ -458,11 +458,11 @@ class Avatar extends StatelessWidget {
           child: Image.asset(img!, width: size, height: size, fit: BoxFit.cover));
     }
     final pair = {
-      'navy': (AppColors.navy100, AppColors.navy700),
-      'gold': (AppColors.gold100, AppColors.gold700),
+      'brand': (AppColors.brand100, AppColors.brand700),
+      'accent': (AppColors.accent100, AppColors.accent700),
       'ok': (AppColors.okBg, AppColors.ok700),
       'credit': (AppColors.creditBg, AppColors.credit700),
-    }[tone] ?? (AppColors.navy100, AppColors.navy700);
+    }[tone] ?? (AppColors.brand100, AppColors.brand700);
     final words = name.trim().split(RegExp(r'\s+'));
     final initials = words.take(2).map((w) => w.isNotEmpty ? w[0] : '').join();
     return Container(
@@ -492,9 +492,9 @@ class EmptyState extends StatelessWidget {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-                color: AppColors.navy50, borderRadius: BorderRadius.circular(24)),
+                color: AppColors.brand50, borderRadius: BorderRadius.circular(24)),
             alignment: Alignment.center,
-            child: AppIcon(icon, size: 34, color: AppColors.navy300),
+            child: AppIcon(icon, size: 34, color: AppColors.brand300),
           ),
           const SizedBox(height: 14),
           Text(title,
@@ -533,9 +533,9 @@ class AppFab extends StatelessWidget {
           gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [AppColors.gold500, AppColors.gold600]),
+              colors: [AppColors.accent500, AppColors.accent600]),
           borderRadius: BorderRadius.circular(99),
-          boxShadow: AppShadows.gold,
+          boxShadow: AppShadows.accent,
         ),
         alignment: Alignment.center,
         child: Row(

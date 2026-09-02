@@ -21,7 +21,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
-// عمارتي — read + write endpoints for all building data. Every list is scoped
+// سكن برو — read + write endpoints for all building data. Every list is scoped
 // by ?btype=residential|commercial (defaults to residential).
 class ApiController extends Controller
 {

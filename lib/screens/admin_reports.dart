@@ -1,4 +1,4 @@
-// عمارتي — Admin: Reports, Alerts & Messages, Years.
+// سكن برو — Admin: Reports, Alerts & Messages, Years.
 
 import 'dart:convert';
 import 'dart:io';
@@ -79,7 +79,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<ChartDatum> _monthlyBars(Ctx ctx) => [
         ChartDatum(label: 'محصّل', value: _collected(), color: AppColors.ok),
         ChartDatum(label: 'مصروفات', value: _monthExpenses(), color: AppColors.late),
-        ChartDatum(label: 'ذمم', value: _monthDue(ctx), color: AppColors.gold500),
+        ChartDatum(label: 'ذمم', value: _monthDue(ctx), color: AppColors.accent500),
       ];
 
   /// Annual 12-month revenue series for [selYear], summed straight from
@@ -93,7 +93,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
     return [
       for (var i = 0; i < 12; i++)
-        ChartDatum(label: monthLabelNum(i), value: byMonth[i], color: AppColors.navy600),
+        ChartDatum(label: monthLabelNum(i), value: byMonth[i], color: AppColors.brand600),
     ];
   }
 
@@ -195,7 +195,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(children: [
-          IconChip(icon: icon, tone: 'navy', size: 40),
+          IconChip(icon: icon, tone: 'brand', size: 40),
           const SizedBox(width: 12),
           Expanded(child: Text(label, style: AppType.base(size: 14.5, weight: FontWeight.w700))),
           AppIcon('chevronL', size: 18, color: AppColors.ink300),
@@ -490,7 +490,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       byCat[e.cat] = (byCat[e.cat] ?? 0) + e.amount;
     }
     final palette = [
-      AppColors.navy600, AppColors.ok, AppColors.warn, AppColors.credit, AppColors.gold500
+      AppColors.brand600, AppColors.ok, AppColors.warn, AppColors.credit, AppColors.accent500
     ];
     final cats = byCat.keys.toList();
     return [
@@ -618,7 +618,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       Row(children: [
         Expanded(child: StatCard(label: 'إجمالي محصّل', value: fmtUSD(collected), icon: 'trend', tone: 'ok')),
         const SizedBox(width: 10),
-        Expanded(child: StatCard(label: 'الذمم', value: fmtUSD(due), icon: 'alert', tone: 'gold')),
+        Expanded(child: StatCard(label: 'الذمم', value: fmtUSD(due), icon: 'alert', tone: 'accent')),
       ]),
       const SizedBox(height: 12),
       // Nothing collected / spent / owed this month → show the empty state.
@@ -650,7 +650,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ...List.generate(lateUnits.length, (i) {
                   final u = lateUnits[i];
                   return ListRow(
-                    leading: Avatar(name: u.resident, size: 38, tone: 'navy'),
+                    leading: Avatar(name: u.resident, size: 38, tone: 'brand'),
                     title: u.resident,
                     sub: '$unitWord ${u.no}',
                     dividerBelow: i < lateUnits.length - 1,
@@ -676,13 +676,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
         const EmptyState(icon: 'trend', title: 'لا توجد بيانات لهذه السنة')
       else ...[
         HeroBanner(
-          gradient: [AppColors.navy700, AppColors.navy800],
+          gradient: [AppColors.brand700, AppColors.brand800],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('الرصيد النهائي — $selYear',
-                  style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.navy300)),
+                  style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.brand300)),
               const SizedBox(height: 6),
               NumText(fmtUSD(revenue - _yearExpenses()),
                   style: AppType.num(size: 28, weight: FontWeight.w800, color: Colors.white)),
@@ -773,7 +773,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           children: [
             Row(
               children: [
-                Avatar(name: u.resident, size: 46, tone: u.kind == 'مالك' ? 'navy' : 'gold'),
+                Avatar(name: u.resident, size: 46, tone: u.kind == 'مالك' ? 'brand' : 'accent'),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -978,7 +978,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
       return [
         Padding(
           padding: EdgeInsets.symmetric(vertical: 16),
-          child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
+          child: Center(child: CircularProgressIndicator(color: AppColors.brand700)),
         ),
       ];
     }
@@ -1000,7 +1000,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  IconChip(icon: 'user', tone: isNew ? 'gold' : 'navy', size: 42),
+                  IconChip(icon: 'user', tone: isNew ? 'accent' : 'brand', size: 42),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -1015,7 +1015,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                               style: AppType.base(size: 14, weight: FontWeight.w800),
                             ),
                           ),
-                          if (isNew) const AppBadge(label: 'جديد', tone: 'gold', small: true),
+                          if (isNew) const AppBadge(label: 'جديد', tone: 'accent', small: true),
                         ]),
                         const SizedBox(height: 4),
                         Text('${n['body'] ?? ''}',
@@ -1025,7 +1025,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Text('اضغط لتعليمها كمقروءة',
-                                style: AppType.base(size: 11, weight: FontWeight.w600, color: AppColors.navy500)),
+                                style: AppType.base(size: 11, weight: FontWeight.w600, color: AppColors.brand500)),
                           ),
                       ],
                     ),
@@ -1221,9 +1221,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
                       decoration: BoxDecoration(
-                        color: title == t[0] ? AppColors.navy700 : AppColors.surface,
+                        color: title == t[0] ? AppColors.brand700 : AppColors.surface,
                         border: Border.all(
-                            color: title == t[0] ? AppColors.navy700 : AppColors.line2, width: 1.5),
+                            color: title == t[0] ? AppColors.brand700 : AppColors.line2, width: 1.5),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(t[0],
@@ -1407,7 +1407,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                     : null,
               ),
               child: Row(children: [
-                IconChip(icon: rows[i][1], tone: 'navy', size: 38),
+                IconChip(icon: rows[i][1], tone: 'brand', size: 38),
                 const SizedBox(width: 11),
                 Expanded(child: Text(rows[i][0], style: AppType.base(size: 14, weight: FontWeight.w700))),
                 _SettingsSwitch(initial: i % 3 != 2),
@@ -1425,7 +1425,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
       Row(children: [
         Expanded(child: _channelCard('whatsapp', 'واتساب', AppColors.ok700)),
         const SizedBox(width: 10),
-        Expanded(child: _channelCard('bell', 'إشعار داخلي', AppColors.navy700)),
+        Expanded(child: _channelCard('bell', 'إشعار داخلي', AppColors.brand700)),
       ]),
       const SizedBox(height: 16),
       AppButton(
@@ -1559,8 +1559,8 @@ class _YearsScreenState extends State<YearsScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 11),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: on ? AppColors.navy700 : AppColors.surface,
-                      border: Border.all(color: on ? AppColors.navy700 : AppColors.line2),
+                      color: on ? AppColors.brand700 : AppColors.surface,
+                      border: Border.all(color: on ? AppColors.brand700 : AppColors.line2),
                       borderRadius: BorderRadius.circular(13),
                       boxShadow: on ? AppShadows.sm : null,
                     ),
@@ -1574,11 +1574,11 @@ class _YearsScreenState extends State<YearsScreen> {
         ),
         const SizedBox(height: 14),
         AppCard(
-          color: AppColors.gold50,
-          borderColor: AppColors.gold200,
+          color: AppColors.accent50,
+          borderColor: AppColors.accent200,
           child: Row(
             children: [
-              const IconChip(icon: 'refresh', tone: 'gold', size: 42),
+              const IconChip(icon: 'refresh', tone: 'accent', size: 42),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1593,7 +1593,7 @@ class _YearsScreenState extends State<YearsScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              NumText(fmtUSD(kOpeningBalance), style: AppType.num(size: 16, weight: FontWeight.w800, color: AppColors.gold700)),
+              NumText(fmtUSD(kOpeningBalance), style: AppType.num(size: 16, weight: FontWeight.w800, color: AppColors.accent700)),
             ],
           ),
         ),
@@ -1629,7 +1629,7 @@ class _YearsScreenState extends State<YearsScreen> {
                         child: LinearProgressIndicator(
                           value: pct / 100, // guarded above (no divide-by-zero)
                           minHeight: 8,
-                          backgroundColor: AppColors.navy50,
+                          backgroundColor: AppColors.brand50,
                           valueColor: AlwaysStoppedAnimation(col),
                         ),
                       ),

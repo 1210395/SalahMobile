@@ -1,4 +1,4 @@
-// عمارتي — auth state: token persistence + login/OTP/logout against the API.
+// سكن برو — auth state: token persistence + login/OTP/logout against the API.
 
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';

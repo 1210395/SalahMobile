@@ -1,4 +1,4 @@
-// عمارتي — repository: fetches API data into the runtime DataStore so every
+// سكن برو — repository: fetches API data into the runtime DataStore so every
 // screen renders live data through its existing (synchronous) accessors.
 
 import 'package:dio/dio.dart';

@@ -1,4 +1,4 @@
-// عمارتي — Admin: Guard, Elevator access, Craftsmen.
+// سكن برو — Admin: Guard, Elevator access, Craftsmen.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,9 +41,9 @@ class GuardScreen extends StatelessWidget {
                     Container(
                       width: 92,
                       height: 92,
-                      decoration: BoxDecoration(color: AppColors.navy50, shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: AppColors.brand50, shape: BoxShape.circle),
                       alignment: Alignment.center,
-                      child: AppIcon('user', size: 48, color: AppColors.navy300),
+                      child: AppIcon('user', size: 48, color: AppColors.brand300),
                     ),
                     Positioned(
                       bottom: 0,
@@ -52,7 +52,7 @@ class GuardScreen extends StatelessWidget {
                         width: 30,
                         height: 30,
                         decoration: BoxDecoration(
-                          color: AppColors.gold500,
+                          color: AppColors.accent500,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2.5),
                         ),
@@ -90,7 +90,7 @@ class GuardScreen extends StatelessWidget {
           child: Column(
             children: [
               ListRow(
-                leading: const IconChip(icon: 'phone', tone: 'navy', size: 40),
+                leading: const IconChip(icon: 'phone', tone: 'brand', size: 40),
                 title: 'الجوال',
                 dividerBelow: true,
                 trailing: NumText(g.phone, style: AppType.num(size: 13.5, weight: FontWeight.w700, color: AppColors.ink700)),
@@ -102,9 +102,9 @@ class GuardScreen extends StatelessWidget {
                 trailing: Text(g.address, style: AppType.base(size: 12.5, weight: FontWeight.w700, color: AppColors.ink700)),
               ),
               ListRow(
-                leading: const IconChip(icon: 'wallet', tone: 'gold', size: 40),
+                leading: const IconChip(icon: 'wallet', tone: 'accent', size: 40),
                 title: 'الأجرة الشهرية (اختياري)',
-                trailing: NumText(fmtUSD(g.fee), style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.gold700)),
+                trailing: NumText(fmtUSD(g.fee), style: AppType.num(size: 14, weight: FontWeight.w800, color: AppColors.accent700)),
               ),
             ],
           ),
@@ -139,7 +139,7 @@ class GuardScreen extends StatelessWidget {
               await Api.I.createExpense(ctx.btype, {
                 'cat': 'أخرى',
                 'icon': 'user',
-                'tone': 'gold',
+                'tone': 'accent',
                 'supplier': 'أجرة الحارس — ${g.name}',
                 'amount': g.fee,
                 'original_amount': g.fee,
@@ -270,7 +270,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(children: [
-                const IconChip(icon: 'elevator', tone: 'navy', size: 42),
+                const IconChip(icon: 'elevator', tone: 'brand', size: 42),
                 const SizedBox(width: 11),
                 Expanded(
                   child: Column(
@@ -310,13 +310,13 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
                 MiniStat(
                     label: 'تاريخ آخر فحص دوري',
                     value: b.elevatorLastCheck.isEmpty ? '—' : b.elevatorLastCheck,
-                    tone: 'navy',
+                    tone: 'brand',
                     num: true),
                 const SizedBox(width: 8),
                 MiniStat(
                     label: 'تذكير الفحص',
                     value: b.elevatorCheckNotify ? 'كل ${b.elevatorCheckInterval} شهر' : 'متوقّف',
-                    tone: b.elevatorCheckNotify ? 'ok' : 'navy'),
+                    tone: b.elevatorCheckNotify ? 'ok' : 'brand'),
               ]),
             ],
           ),
@@ -325,7 +325,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: appGradient([AppColors.navy700, AppColors.navy800]),
+            gradient: appGradient([AppColors.brand700, AppColors.brand800]),
             borderRadius: BorderRadius.circular(AppRadii.lg),
           ),
           child: Row(
@@ -345,7 +345,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text('رقم هاتف المصعد (للمصرّح لهم)',
-                        style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.navy300)),
+                        style: AppType.base(size: 12.5, weight: FontWeight.w500, color: AppColors.brand300)),
                     const SizedBox(height: 3),
                     NumText(b.elevatorPhone.isEmpty ? kElevPhone : b.elevatorPhone,
                         style: AppType.num(size: 17, weight: FontWeight.w800, color: Colors.white)),
@@ -379,7 +379,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
                     Container(
                       width: 40,
                       height: 40,
-                      decoration: BoxDecoration(color: AppColors.navy700, borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(color: AppColors.brand700, borderRadius: BorderRadius.circular(12)),
                       alignment: Alignment.center,
                       child: NumText(u.no, style: AppType.num(size: 13, weight: FontWeight.w800, color: Colors.white)),
                     ),
@@ -510,12 +510,12 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
               decoration: BoxDecoration(
-                color: notify ? AppColors.navy50 : AppColors.surface,
-                border: Border.all(color: notify ? AppColors.navy100 : AppColors.line, width: 1.5),
+                color: notify ? AppColors.brand50 : AppColors.surface,
+                border: Border.all(color: notify ? AppColors.brand100 : AppColors.line, width: 1.5),
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Row(children: [
-                AppIcon('bell', size: 20, color: AppColors.navy700),
+                AppIcon('bell', size: 20, color: AppColors.brand700),
                 const SizedBox(width: 11),
                 Expanded(
                     child: Text('تذكير بالفحص الدوري القادم',
@@ -608,8 +608,8 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: on ? AppColors.navy700 : AppColors.surface,
-                    border: Border.all(color: on ? AppColors.navy700 : AppColors.line2),
+                    color: on ? AppColors.brand700 : AppColors.surface,
+                    border: Border.all(color: on ? AppColors.brand700 : AppColors.line2),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(j == 'all' ? 'الكل' : j,
@@ -631,7 +631,7 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
                 pad: 13,
                 child: Row(
                   children: [
-                    IconChip(icon: _jobIcon[c.job] ?? 'wrench', tone: 'gold', size: 46),
+                    IconChip(icon: _jobIcon[c.job] ?? 'wrench', tone: 'accent', size: 46),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -641,7 +641,7 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
                           Text(c.name, style: AppType.base(size: 14.5, weight: FontWeight.w800)),
                           const SizedBox(height: 4),
                           Row(children: [
-                            AppBadge(label: c.job, tone: 'navy', small: true),
+                            AppBadge(label: c.job, tone: 'brand', small: true),
                             if (c.note.isNotEmpty) ...[
                               const SizedBox(width: 6),
                               Flexible(

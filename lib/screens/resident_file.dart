@@ -1,4 +1,4 @@
-// عمارتي — ملف الساكن: everything about one renter in one place.
+// سكن برو — ملف الساكن: everything about one renter in one place.
 //
 // Tapping a resident's name opens this: their personal record, their login
 // (QR + a password the manager can set and read out), and their money kept in
@@ -259,7 +259,7 @@ class _ResidentFileScreenState extends State<ResidentFileScreen> {
                 style: AppType.base(size: 12, weight: FontWeight.w700, color: AppColors.ink600)),
             const SizedBox(height: 6),
             NumText(freshPassword!,
-                style: AppType.num(size: 20, weight: FontWeight.w800, color: AppColors.navy700)),
+                style: AppType.num(size: 20, weight: FontWeight.w800, color: AppColors.brand700)),
             const SizedBox(height: 6),
             Text('اكتبها الآن أو أرسلها للساكن — لا يمكن عرضها لاحقاً، فهي تُحفظ مشفَّرة.',
                 style: AppType.base(

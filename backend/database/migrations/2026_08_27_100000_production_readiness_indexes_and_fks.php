@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-// عمارتي — pre-production hardening of the schema itself.
+// سكن برو — pre-production hardening of the schema itself.
 //
 //  * users.phone / users.email got no usable index when identity became unique
 //    per building: the unique is (building_id, phone), and MySQL cannot use it

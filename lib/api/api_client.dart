@@ -1,4 +1,4 @@
-// عمارتي — Dio API client for the Laravel backend.
+// سكن برو — Dio API client for the Laravel backend.
 
 import 'package:dio/dio.dart';
 

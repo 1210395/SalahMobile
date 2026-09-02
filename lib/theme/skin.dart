@@ -16,19 +16,18 @@ enum AppSkin { dark, light }
 
 /// Every colour the app can ask for, in one skin's worth.
 ///
-/// The token NAMES are historical (`navy*` for the brand, `gold*` for the
-/// accent) and are kept so this change stays a palette swap rather than a
-/// rename across 573 call sites. They now mean: navy* = brand purple,
-/// gold* = accent gold, and the neutrals invert between skins.
+/// `brand*` is the purple of the logo's towers, `accent*` the gold of its
+/// frame, `brandRed` the red plinth they stand on. The neutrals invert between
+/// the two skins; everything else is the same colour seen on a different ground.
 @immutable
 class Palette {
   const Palette({
-    required this.navy900, required this.navy800, required this.navy700,
-    required this.navy600, required this.navy500, required this.navy300,
-    required this.navy100, required this.navy50,
-    required this.gold700, required this.gold600, required this.gold500,
-    required this.gold400, required this.gold200, required this.gold100,
-    required this.gold50,
+    required this.brand900, required this.brand800, required this.brand700,
+    required this.brand600, required this.brand500, required this.brand300,
+    required this.brand100, required this.brand50,
+    required this.accent700, required this.accent600, required this.accent500,
+    required this.accent400, required this.accent200, required this.accent100,
+    required this.accent50,
     required this.brandRed, required this.brandRed700, required this.brandRedBg,
     required this.ink900, required this.ink700, required this.ink600,
     required this.ink500, required this.ink400, required this.ink300,
@@ -42,8 +41,8 @@ class Palette {
     required this.shadowInk,
   });
 
-  final Color navy900, navy800, navy700, navy600, navy500, navy300, navy100, navy50;
-  final Color gold700, gold600, gold500, gold400, gold200, gold100, gold50;
+  final Color brand900, brand800, brand700, brand600, brand500, brand300, brand100, brand50;
+  final Color accent700, accent600, accent500, accent400, accent200, accent100, accent50;
   final Color brandRed, brandRed700, brandRedBg;
   final Color ink900, ink700, ink600, ink500, ink400, ink300;
   final Color line, line2;
@@ -61,15 +60,15 @@ class Palette {
 
 // ── dark (default) ──────────────────────────────────────────────────────────
 const kDarkPalette = Palette(
-  navy900: Color(0xFF1A0E22), navy800: Color(0xFF241130), navy700: Color(0xFF7E42B4),
-  navy600: Color(0xFF9A63CE), navy500: Color(0xFFB183DF), navy300: Color(0xFFC3A8DA),
-  navy100: Color(0xFF2E1F3D), navy50: Color(0xFF241A31),
+  brand900: Color(0xFF1A0E22), brand800: Color(0xFF241130), brand700: Color(0xFF7E42B4),
+  brand600: Color(0xFF9A63CE), brand500: Color(0xFFB183DF), brand300: Color(0xFFC3A8DA),
+  brand100: Color(0xFF2E1F3D), brand50: Color(0xFF241A31),
 
   // Lifted so gold still reads as gold on near-black — the first dark pass came
   // out muddy on the "add" button and the tenant badge.
-  gold700: Color(0xFFE0C07A), gold600: Color(0xFFC08F44), gold500: Color(0xFFD2A85C),
-  gold400: Color(0xFFE2C688), gold200: Color(0xFF3F3117), gold100: Color(0xFF33280F),
-  gold50: Color(0xFF241B0C),
+  accent700: Color(0xFFE0C07A), accent600: Color(0xFFC08F44), accent500: Color(0xFFD2A85C),
+  accent400: Color(0xFFE2C688), accent200: Color(0xFF3F3117), accent100: Color(0xFF33280F),
+  accent50: Color(0xFF241B0C),
 
   brandRed: Color(0xFFC4453F), brandRed700: Color(0xFFD8615B), brandRedBg: Color(0xFF3A1A18),
 
@@ -93,15 +92,15 @@ const kDarkPalette = Palette(
 
 // ── light ───────────────────────────────────────────────────────────────────
 const kLightPalette = Palette(
-  navy900: Color(0xFF2A1436), navy800: Color(0xFF3C1B4A), navy700: Color(0xFF6B2F9E),
-  navy600: Color(0xFF7E42B4), navy500: Color(0xFF9A63CE), navy300: Color(0xFFC3A8DA),
-  navy100: Color(0xFFEDE4F5), navy50: Color(0xFFF6F3FA),
+  brand900: Color(0xFF2A1436), brand800: Color(0xFF3C1B4A), brand700: Color(0xFF6B2F9E),
+  brand600: Color(0xFF7E42B4), brand500: Color(0xFF9A63CE), brand300: Color(0xFFC3A8DA),
+  brand100: Color(0xFFEDE4F5), brand50: Color(0xFFF6F3FA),
 
   // Darker than the logo's gold: #937135 on white is ~4.4:1, fine for a hairline
   // but not for a label, so the text-carrying steps go darker still.
-  gold700: Color(0xFF6B4F24), gold600: Color(0xFF7A5C2B), gold500: Color(0xFF937135),
-  gold400: Color(0xFFB08C46), gold200: Color(0xFFEEDDA8), gold100: Color(0xFFF6EDCE),
-  gold50: Color(0xFFFBF6E8),
+  accent700: Color(0xFF6B4F24), accent600: Color(0xFF7A5C2B), accent500: Color(0xFF937135),
+  accent400: Color(0xFFB08C46), accent200: Color(0xFFEEDDA8), accent100: Color(0xFFF6EDCE),
+  accent50: Color(0xFFFBF6E8),
 
   brandRed: Color(0xFFB02324), brandRed700: Color(0xFF8C1B1C), brandRedBg: Color(0xFFF8E7E5),
 
