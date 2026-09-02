@@ -1528,7 +1528,7 @@ class AmaratiOverhaulTest extends TestCase
         // The shared invite link must resolve to a helpful page (was a 404).
         $res = $this->get('/join/AMR-1206');
         $res->assertOk();
-        $res->assertSee('عمارتي', false);
+        $res->assertSee('سكن برو', false);
         $res->assertSee('AMR-1206', false);
     }
 
