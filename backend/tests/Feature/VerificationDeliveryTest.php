@@ -78,12 +78,17 @@ class VerificationDeliveryTest extends TestCase
         $this->postJson('/api/auth/request-otp', ['phone' => '0599111000'])
             ->assertOk()->assertJsonStructure(['sent', 'dev_code']);
 
-        // Provider named but unusable (no credentials): the send fails AND the
-        // echo is off, so the caller is told plainly rather than left waiting.
+        // Named but unusable (no credentials) is NOT live: /settings reports SMS
+        // availability from this, so claiming otherwise would tell every client
+        // that codes work while each one failed in silence.
         config(['amarati.sms.driver' => 'twilio', 'amarati.sms.twilio.sid' => null]);
-        $this->assertTrue(Notifier::channelIsLive('sms'));
+        $this->assertFalse(Notifier::channelIsLive('sms'));
+
+        // And on a production host — where nothing may be echoed — that is a
+        // plain refusal rather than leaving the caller waiting for a code.
+        $this->app['env'] = 'production';
         $this->postJson('/api/auth/request-otp', ['phone' => '0599111001'])
-            ->assertStatus(503);
+            ->assertStatus(503)->assertJsonMissingPath('dev_code');
     }
 
     public function test_local_numbers_are_normalised_for_the_gateway(): void
@@ -466,7 +471,12 @@ class VerificationDeliveryTest extends TestCase
         config(['amarati.sms.driver' => 'log']);
         $this->assertFalse(\App\Services\Notifier::channelIsLive('sms'));
 
-        config(['amarati.sms.driver' => 'htd']);
+        // Naming the gateway is not enough — without its credential nothing can
+        // be sent, and saying otherwise would fail every code in silence.
+        config(['amarati.sms.driver' => 'htd', 'amarati.sms.htd.id' => null]);
+        $this->assertFalse(\App\Services\Notifier::channelIsLive('sms'));
+
+        config(['amarati.sms.htd.id' => 'an-api-id']);
         $this->assertTrue(\App\Services\Notifier::channelIsLive('sms'));
     }
 }

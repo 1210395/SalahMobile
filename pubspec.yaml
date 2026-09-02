@@ -2,7 +2,7 @@ name: sakan_pro
 description: "سكن برو — إدارة عمارتك بسهولة. Building & commercial-complex management app (Arabic, RTL)."
 publish_to: 'none'
 
-version: 2.0.0+17
+version: 2.1.0+18
 
 environment:
   sdk: ^3.11.4

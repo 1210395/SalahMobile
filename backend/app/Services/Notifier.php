@@ -22,7 +22,17 @@ class Notifier
     public static function channelIsLive(string $channel): bool
     {
         if ($channel === 'sms') {
-            return ! in_array(config('amarati.sms.driver'), ['log', '', null], true);
+            // A driver NAME is not a working provider. Naming a gateway and
+            // forgetting its credential would otherwise advertise SMS as
+            // available and fail every single code silently, which is the exact
+            // dishonesty this method exists to prevent.
+            return match (config('amarati.sms.driver')) {
+                'htd' => ! empty(config('amarati.sms.htd.id')),
+                'twilio' => ! empty(config('amarati.sms.twilio.sid'))
+                    && ! empty(config('amarati.sms.twilio.token')),
+                'http' => ! empty(config('amarati.sms.http.url')),
+                default => false,
+            };
         }
 
         return ! in_array(config('mail.default'), ['log', 'array', 'null', '', null], true);
