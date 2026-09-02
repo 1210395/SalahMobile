@@ -3,9 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>دعوة للانضمام — عمارتي</title>
+    <title>دعوة للانضمام — سكن برو</title>
     <style>
-        :root { --navy:#232858; --navy700:#2b3168; --gold:#C2A24E; --ink:#1a1d33; --bg:#f4f5fa; }
+        :root { --navy:#6B2F9E; --navy700:#552663; --gold:#937135; --ink:#1a1d33; --bg:#f4f5fa; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, "Segoe UI", Tahoma, sans-serif; background: var(--bg); color: var(--ink);
                min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -32,19 +32,19 @@
 </head>
 <body>
     <div class="card">
-        <div class="brand">عمارتي</div>
+        <div class="brand">سكن برو</div>
         <div class="sub">إدارة العمارات السكنية والمجمعات التجارية</div>
 
         <div class="hero">
             <h1>تمّت دعوتك للانضمام إلى مبناك</h1>
-            <p>حمّل تطبيق عمارتي، ثم سجّل الدخول عبر رمز الدخول (QR) الذي زوّدك به مسؤول العمارة.</p>
+            <p>حمّل تطبيق سكن برو، ثم سجّل الدخول عبر رمز الدخول (QR) الذي زوّدك به مسؤول العمارة.</p>
             @if(!empty($code))
                 <div class="code">{{ $code }}</div>
             @endif
         </div>
 
         <ol class="steps">
-            <li><span class="num">1</span><span>حمّل تطبيق عمارتي على هاتفك من الزر بالأسفل.</span></li>
+            <li><span class="num">1</span><span>حمّل تطبيق سكن برو على هاتفك من الزر بالأسفل.</span></li>
             <li><span class="num">2</span><span>افتح التطبيق واختر «كود الدخول / QR».</span></li>
             <li><span class="num">3</span><span>امسح رمز الـ QR من مسؤول العمارة أو أدخل رمز الدخول الخاص بك.</span></li>
         </ol>

@@ -10,8 +10,11 @@ import 'app_ctx.dart';
 import 'data/sample_data.dart';
 import 'theme/tokens.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // The device's dark/light choice, before the first frame — otherwise the app
+  // paints in dark and then flips, which reads as a bug.
+  await AppTheme.restore();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
   ));
@@ -38,6 +41,14 @@ void main() {
         role = AppRole.guest;
     }
     if (q['btype'] == 'commercial') btype = BType.commercial;
+    // Review hook, alongside ?screen= and ?demo=: open the app in a chosen skin
+    // without touching the device's saved preference. Web only.
+    switch (q['skin']) {
+      case 'light':
+        AppTheme.skin.value = AppSkin.light;
+      case 'dark':
+        AppTheme.skin.value = AppSkin.dark;
+    }
     switch (q['demo']) {
       case 'admin':
         demoEmail = 'admin@amarati.app';
@@ -55,20 +66,31 @@ class AmaratiRoot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Every colour in the app is resolved from the active skin at build time,
+    // so rebuilding from the root is all a switch needs.
+    return ValueListenableBuilder<AppSkin>(
+      valueListenable: AppTheme.skin,
+      builder: (context, skin, _) => _buildApp(context),
+    );
+  }
+
+  Widget _buildApp(BuildContext context) {
     final base = ThemeData(
+      brightness: AppTheme.isDark ? Brightness.dark : Brightness.light,
       useMaterial3: true,
       scaffoldBackgroundColor: AppColors.page,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.navy700,
         primary: AppColors.navy700,
         surface: AppColors.surface,
+        brightness: AppTheme.isDark ? Brightness.dark : Brightness.light,
       ),
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
     );
 
     return MaterialApp(
-      title: 'عمارتي',
+      title: 'سكن برو',
       debugShowCheckedModeBanner: false,
       theme: base.copyWith(textTheme: GoogleFonts.cairoTextTheme(base.textTheme)),
       locale: const Locale('ar'),

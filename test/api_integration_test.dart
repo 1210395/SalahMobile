@@ -5,10 +5,13 @@
 // network path is exercised by the running app; the API itself is verified via
 // the backend's PHPUnit suite.
 
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:amarati/data/sample_data.dart';
-import 'package:amarati/screens/report_pdf.dart' show reportBlocks;
+import 'package:sakan_pro/data/sample_data.dart';
+import 'package:sakan_pro/theme/tokens.dart';
+import 'package:sakan_pro/screens/report_pdf.dart' show reportBlocks;
 
 void main() {
   setUp(() => DataStore.I.clear());
@@ -218,5 +221,62 @@ void main() {
     DataStore.I.applySettingsJson({'app_name': 'عمارتي'});
     expect(Brand.smsAvailable, isFalse);
     expect(Brand.smsCoverage, ['+970', '+972']);
+  });
+
+  // ─────────── the dark/light skin ───────────
+
+  test('the app starts dark, and every colour follows the switch', () {
+    // Dark is the brand's own world and the default the owner asked for.
+    expect(AppTheme.skin.value, AppSkin.dark);
+    expect(AppColors.page, kDarkPalette.page);
+    expect(AppColors.ink900, kDarkPalette.ink900);
+
+    AppTheme.skin.value = AppSkin.light;
+    // The tokens are read through the active skin, so nothing else has to know.
+    expect(AppColors.page, kLightPalette.page);
+    expect(AppColors.ink900, kLightPalette.ink900);
+    // The neutrals genuinely invert rather than shifting a shade.
+    expect(AppColors.page.computeLuminance() > AppColors.ink900.computeLuminance(), isTrue);
+
+    AppTheme.skin.value = AppSkin.dark;
+    expect(AppColors.page.computeLuminance() < AppColors.ink900.computeLuminance(), isTrue);
+  });
+
+  test('shadows are black on dark and brand-tinted on light', () {
+    // A cool-tinted shadow reads as depth on white and as a glow on black.
+    AppTheme.skin.value = AppSkin.dark;
+    expect(kDarkPalette.shadowInk, const Color(0xFF000000));
+    AppTheme.skin.value = AppSkin.light;
+    expect(kLightPalette.shadowInk == const Color(0xFF000000), isFalse);
+    AppTheme.skin.value = AppSkin.dark;
+  });
+
+  test('the chosen skin survives a restart', () async {
+    // The switch is worth nothing if the app forgets it on the next launch, and
+    // the storage round-trip is the half that a screenshot cannot prove.
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues({});
+
+    AppTheme.skin.value = AppSkin.dark;
+    await AppTheme.toggle();                 // the user taps the header button
+    expect(AppTheme.skin.value, AppSkin.light);
+
+    AppTheme.skin.value = AppSkin.dark;      // pretend the app was killed
+    await AppTheme.restore();
+    expect(AppTheme.skin.value, AppSkin.light, reason: 'light must survive a restart');
+
+    await AppTheme.toggle();                 // back to dark, and that persists too
+    AppTheme.skin.value = AppSkin.light;
+    await AppTheme.restore();
+    expect(AppTheme.skin.value, AppSkin.dark);
+  });
+
+  test('restore leaves the default alone when nothing was stored', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues({});
+    AppTheme.skin.value = AppSkin.light;     // whatever the process happened to hold
+    await AppTheme.restore();
+    expect(AppTheme.skin.value, AppSkin.light,
+        reason: 'restore must not invent a value when nothing was stored');
   });
 }

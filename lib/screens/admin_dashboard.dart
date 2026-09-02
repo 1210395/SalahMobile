@@ -113,7 +113,7 @@ class _DashboardState extends State<Dashboard> {
               child: Container(
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
-                  gradient: appGradient(const [AppColors.navy700, AppColors.navy800]),
+                  gradient: appGradient([AppColors.navy700, AppColors.navy800]),
                   borderRadius: BorderRadius.circular(AppRadii.md),
                   boxShadow: AppShadows.navy,
                 ),
@@ -297,7 +297,7 @@ class _CarryOverCard extends StatelessWidget {
           row('رصيد مرحّل من السنوات السابقة', Summary.carried),
           row('إيرادات العام $year', Summary.yearRevenue, color: AppColors.ok700),
           row('مصروفات العام $year', Summary.yearExpense, color: AppColors.late700),
-          const Divider(height: 14, color: AppColors.line),
+          Divider(height: 14, color: AppColors.line),
           row('ذمم من السنوات السابقة', Summary.duePrev, color: AppColors.late700),
           row('ذمم العام $year', Summary.dueYear, color: AppColors.late700),
           row('إجمالي الذمم', Summary.due, color: AppColors.late700, strong: true),
@@ -335,7 +335,7 @@ class BuildingScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: appGradient(const [AppColors.navy700, AppColors.navy800]),
+            gradient: appGradient([AppColors.navy700, AppColors.navy800]),
             borderRadius: BorderRadius.circular(AppRadii.lg),
             boxShadow: AppShadows.navy,
           ),
@@ -367,7 +367,7 @@ class BuildingScreen extends StatelessWidget {
                             const SizedBox(height: 3),
                             Row(
                               children: [
-                                const AppIcon('pin', size: 14, color: AppColors.navy300),
+                                AppIcon('pin', size: 14, color: AppColors.navy300),
                                 const SizedBox(width: 4),
                                 Expanded(
                                   child: Text(b.address,

@@ -22,8 +22,8 @@ class VerificationCodeMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(subject: $this->purpose === 'reset'
-            ? 'عمارتي — رمز إعادة تعيين كلمة المرور'
-            : 'عمارتي — رمز التحقق');
+            ? 'سكن برو — رمز إعادة تعيين كلمة المرور'
+            : 'سكن برو — رمز التحقق');
     }
 
     public function content(): Content

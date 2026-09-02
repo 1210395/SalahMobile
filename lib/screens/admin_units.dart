@@ -182,7 +182,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 _potChip('اشتراك', u.subBalance),
               ],
               const SizedBox(height: 2),
-              const AppIcon('chevronL', size: 18, color: AppColors.ink300),
+              AppIcon('chevronL', size: 18, color: AppColors.ink300),
             ],
           ),
         ],
@@ -328,7 +328,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
           onTap: () {
             shareViaWhatsApp(
               phone: u.phone,
-              text: 'كود الدخول إلى تطبيق عمارتي: ${u.loginCode}',
+              text: 'كود الدخول إلى تطبيق سكن برو: ${u.loginCode}',
             );
           },
         ),
@@ -877,7 +877,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ),
                 alignment: Alignment.center,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const AppIcon('qr', size: 96, color: AppColors.navy700),
+                  AppIcon('qr', size: 96, color: AppColors.navy700),
                   const SizedBox(height: 8),
                   NumText(code,
                       style: AppType.num(size: 12, weight: FontWeight.w700, color: AppColors.ink500)),
@@ -908,7 +908,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   Clipboard.setData(ClipboardData(text: link));
                   ctx.toast('تم نسخ رابط الدعوة');
                 },
-                child: const AppIcon('file', size: 18, color: AppColors.navy600),
+                child: AppIcon('file', size: 18, color: AppColors.navy600),
               ),
             ]),
           ),
@@ -954,7 +954,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                 ],
               ),
             ),
-            const AppIcon('chevronL', size: 18, color: AppColors.ink300),
+            AppIcon('chevronL', size: 18, color: AppColors.ink300),
           ],
         ),
       ),

@@ -29,14 +29,14 @@ class ScreenScaffold extends StatelessWidget {
     required this.children,
     this.nav,
     this.fab,
-    this.bg = AppColors.page,
+    this.bg,
     this.pad = true,
   });
   final Widget header;
   final List<Widget> children;
   final Widget? nav;
   final Widget? fab;
-  final Color bg;
+  final Color? bg;
   final bool pad;
 
   @override
@@ -64,10 +64,10 @@ class ScreenScaffold extends StatelessWidget {
     );
 
     if (fab == null) {
-      return Container(color: bg, child: column);
+      return Container(color: bg ?? AppColors.page, child: column);
     }
     return Container(
-      color: bg,
+      color: bg ?? AppColors.page,
       child: Stack(
         children: [
           Positioned.fill(child: column),
@@ -100,7 +100,7 @@ class SheetShell extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(bottom: keyboard),
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
         ),
@@ -122,7 +122,7 @@ class SheetShell extends StatelessWidget {
             if (title != null)
               Container(
                 padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                     border: Border(bottom: BorderSide(color: AppColors.line))),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

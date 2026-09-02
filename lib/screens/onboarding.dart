@@ -65,7 +65,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
       ),
       children: [
         HeroBanner(
-          gradient: const [AppColors.navy700, AppColors.navy800],
+          gradient: [AppColors.navy700, AppColors.navy800],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -135,7 +135,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         ),
         const SizedBox(height: 10),
         Row(children: [
-          const AppIcon('lock', size: 14, color: AppColors.ink400),
+          AppIcon('lock', size: 14, color: AppColors.ink400),
           const SizedBox(width: 6),
           Expanded(
             child: Text('دفع آمن عبر بوابة البنك. لا يتم تخزين بيانات بطاقتك على الجهاز.',
@@ -194,7 +194,7 @@ class _GatewaySheet extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [AppColors.navy700, AppColors.navy800],
@@ -206,7 +206,7 @@ class _GatewaySheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(children: [
-                const AppIcon('shield', size: 16, color: AppColors.gold400),
+                AppIcon('shield', size: 16, color: AppColors.gold400),
                 const SizedBox(width: 6),
                 Text('دفع إلكتروني آمن',
                     style: AppType.base(size: 12.5, weight: FontWeight.w700, color: AppColors.gold400)),
@@ -225,7 +225,7 @@ class _GatewaySheet extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         Row(children: [
-          const AppIcon('lock', size: 14, color: AppColors.ink400),
+          AppIcon('lock', size: 14, color: AppColors.ink400),
           const SizedBox(width: 6),
           Expanded(
             child: Text('بيئة محاكاة للدفع. عند الربط الفعلي، تتم العملية على صفحة البنك '
@@ -821,7 +821,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
         if (_error != null)
           EmptyState(icon: 'alert', title: 'تعذّر التحميل', sub: _error)
         else if (_requests == null)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
           )

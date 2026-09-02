@@ -112,7 +112,7 @@ class _SuperReportScreenState extends State<SuperReportScreen> {
         if (_error != null)
           EmptyState(icon: 'alert', title: 'تعذّر التحميل', sub: _error)
         else if (_data == null && _loading)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 50),
             child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
           )
@@ -274,7 +274,7 @@ class _AdminsScreenState extends State<AdminsScreen> {
         if (_error != null)
           EmptyState(icon: 'alert', title: 'تعذّر التحميل', sub: _error)
         else if (_admins == null)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
           )

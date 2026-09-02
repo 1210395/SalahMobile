@@ -4,7 +4,7 @@
          must declare it here or all network calls fail ("no server connection"). -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="عمارتي"
+        android:label="سكن برو"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"

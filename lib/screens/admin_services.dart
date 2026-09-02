@@ -41,9 +41,9 @@ class GuardScreen extends StatelessWidget {
                     Container(
                       width: 92,
                       height: 92,
-                      decoration: const BoxDecoration(color: AppColors.navy50, shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: AppColors.navy50, shape: BoxShape.circle),
                       alignment: Alignment.center,
-                      child: const AppIcon('user', size: 48, color: AppColors.navy300),
+                      child: AppIcon('user', size: 48, color: AppColors.navy300),
                     ),
                     Positioned(
                       bottom: 0,
@@ -325,7 +325,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: appGradient(const [AppColors.navy700, AppColors.navy800]),
+            gradient: appGradient([AppColors.navy700, AppColors.navy800]),
             borderRadius: BorderRadius.circular(AppRadii.lg),
           ),
           child: Row(
@@ -371,7 +371,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 11),
                 decoration: BoxDecoration(
                   border: i < base.length - 1
-                      ? const Border(bottom: BorderSide(color: AppColors.line))
+                      ? Border(bottom: BorderSide(color: AppColors.line))
                       : null,
                 ),
                 child: Row(
@@ -515,7 +515,7 @@ class _ElevatorScreenState extends State<ElevatorScreen> {
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Row(children: [
-                const AppIcon('bell', size: 20, color: AppColors.navy700),
+                AppIcon('bell', size: 20, color: AppColors.navy700),
                 const SizedBox(width: 11),
                 Expanded(
                     child: Text('تذكير بالفحص الدوري القادم',
@@ -663,7 +663,7 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
                         height: 44,
                         decoration: BoxDecoration(color: AppColors.okBg, borderRadius: BorderRadius.circular(14)),
                         alignment: Alignment.center,
-                        child: const AppIcon('phone', size: 22, color: AppColors.ok700),
+                        child: AppIcon('phone', size: 22, color: AppColors.ok700),
                       ),
                     ),
                     // Only the building's own manager may prune the directory —
@@ -679,7 +679,7 @@ class _CraftsmenScreenState extends State<CraftsmenScreen> {
                           decoration: BoxDecoration(
                               color: AppColors.lateBg, borderRadius: BorderRadius.circular(14)),
                           alignment: Alignment.center,
-                          child: const AppIcon('trash', size: 20, color: AppColors.late700),
+                          child: AppIcon('trash', size: 20, color: AppColors.late700),
                         ),
                       ),
                     ],

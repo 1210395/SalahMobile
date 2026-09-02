@@ -7,12 +7,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:amarati/app.dart';
-import 'package:amarati/common.dart';
-import 'package:amarati/api/auth_store.dart' show AuthUser;
-import 'package:amarati/screens/admin_finance.dart' show AddPaymentSheet, PaymentsScreen;
-import 'package:amarati/screens/admin_units.dart' show UnitsScreen;
-import 'package:amarati/screens/resident_file.dart' show ResidentFileScreen;
+import 'package:sakan_pro/app.dart';
+import 'package:sakan_pro/common.dart';
+import 'package:sakan_pro/api/auth_store.dart' show AuthUser;
+import 'package:sakan_pro/screens/admin_finance.dart' show AddPaymentSheet, PaymentsScreen;
+import 'package:sakan_pro/screens/admin_units.dart' show UnitsScreen;
+import 'package:sakan_pro/screens/resident_file.dart' show ResidentFileScreen;
 
 Widget _wrap(Widget child) => MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -999,5 +999,16 @@ void main() {
         initialScreen: 'login', initialRole: AppRole.guest, initialBtype: BType.residential)));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('نسيت كلمة المرور؟'), findsOneWidget);
+  });
+
+  // The owner asked for the switch to live in the header, on every screen.
+  testWidgets('the header carries a dark/light switch', (tester) async {
+    await tester.pumpWidget(_wrap(AmaratiApp(
+        initialScreen: 'login', initialRole: AppRole.guest, initialBtype: BType.residential)));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // Dark is the default, so the button offers the sun (the skin you would get).
+    expect(find.byWidgetPredicate((w) => w is RoundBtn && w.icon == 'sun'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 }

@@ -108,8 +108,8 @@ class ResidentHome extends StatelessWidget {
         // My status hero.
         HeroBanner(
           gradient: paid
-              ? const [AppColors.ok700, Color(0xFF0F5E3E)]
-              : const [AppColors.late700, Color(0xFF8C2019)],
+              ? [AppColors.ok700, Color(0xFF0F5E3E)]
+              : [AppColors.late700, Color(0xFF8C2019)],
           shadow: AppShadows.md,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,7 +441,7 @@ class ResidentElevator extends StatelessWidget {
                   height: 72,
                   decoration: BoxDecoration(color: AppColors.okBg, borderRadius: BorderRadius.circular(22)),
                   alignment: Alignment.center,
-                  child: const AppIcon('elevator', size: 36, color: AppColors.ok700),
+                  child: AppIcon('elevator', size: 36, color: AppColors.ok700),
                 ),
                 const SizedBox(height: 14),
                 const AppBadge(label: 'اشتراكك مسدّد', tone: 'ok', icon: 'checkCircle'),
@@ -472,7 +472,7 @@ class ResidentElevator extends StatelessWidget {
                   height: 72,
                   decoration: BoxDecoration(color: AppColors.lateBg, borderRadius: BorderRadius.circular(22)),
                   alignment: Alignment.center,
-                  child: const AppIcon('lock', size: 34, color: AppColors.late700),
+                  child: AppIcon('lock', size: 34, color: AppColors.late700),
                 ),
                 const SizedBox(height: 14),
                 const AppBadge(label: 'الوصول للمصعد موقوف', tone: 'late', icon: 'alert'),

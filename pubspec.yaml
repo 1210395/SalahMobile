@@ -1,8 +1,8 @@
-name: amarati
-description: "عمارتي — إدارة المباني السكنية والتجارية. Building & commercial-complex management app (Arabic, RTL)."
+name: sakan_pro
+description: "سكن برو — إدارة عمارتك بسهولة. Building & commercial-complex management app (Arabic, RTL)."
 publish_to: 'none'
 
-version: 1.5.3+16
+version: 2.0.0+17
 
 environment:
   sdk: ^3.11.4
@@ -49,3 +49,4 @@ flutter:
   assets:
     - assets/images/logo.png
     - assets/images/logo-light.png
+    - assets/images/logo-mark-light.png

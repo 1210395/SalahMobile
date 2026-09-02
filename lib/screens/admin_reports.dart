@@ -198,7 +198,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           IconChip(icon: icon, tone: 'navy', size: 40),
           const SizedBox(width: 12),
           Expanded(child: Text(label, style: AppType.base(size: 14.5, weight: FontWeight.w700))),
-          const AppIcon('chevronL', size: 18, color: AppColors.ink300),
+          AppIcon('chevronL', size: 18, color: AppColors.ink300),
         ]),
       ),
     );
@@ -209,7 +209,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<List<String>> _withHeader(Ctx ctx, List<List<String>> rows) {
     final b = ctx.building.name.trim();
     return [
-      ['عمارتي${b.isEmpty ? '' : ' — $b'}'],
+      ['سكن برو${b.isEmpty ? '' : ' — $b'}'],
       if (b.isNotEmpty) ['المبنى', b],
       <String>[],
       ...rows,
@@ -242,7 +242,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/$name');
       await file.writeAsBytes(bytes);
-      await Share.shareXFiles([XFile(file.path)], text: 'تقرير عمارتي');
+      await Share.shareXFiles([XFile(file.path)], text: 'تقرير سكن برو');
     } catch (_) {
       ctx.toast('تعذّر تصدير الملف', tone: 'late');
     }
@@ -303,7 +303,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       for (final y in years) {
         final sheet = book['$y'];
         // Branded header: app + building name + report title, then a blank row.
-        sheet.appendRow([xlsx.TextCellValue('عمارتي${bName.isEmpty ? '' : ' — $bName'}')]);
+        sheet.appendRow([xlsx.TextCellValue('سكن برو${bName.isEmpty ? '' : ' — $bName'}')]);
         sheet.appendRow([xlsx.TextCellValue('التقرير الشامل · $y')]);
         sheet.appendRow([xlsx.TextCellValue('')]);
         // Header: one row per apartment/shop; a column per month; then the
@@ -367,7 +367,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/amarati-comprehensive.xlsx');
       await file.writeAsBytes(bytes);
-      await Share.shareXFiles([XFile(file.path)], text: 'التقرير الشامل — عمارتي');
+      await Share.shareXFiles([XFile(file.path)], text: 'التقرير الشامل — سكن برو');
     } catch (_) {
       ctx.toast('تعذّر تصدير الملف', tone: 'late');
     }
@@ -489,7 +489,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (expSupplier != 'all' && e.supplier != expSupplier) continue;
       byCat[e.cat] = (byCat[e.cat] ?? 0) + e.amount;
     }
-    const palette = [
+    final palette = [
       AppColors.navy600, AppColors.ok, AppColors.warn, AppColors.credit, AppColors.gold500
     ];
     final cats = byCat.keys.toList();
@@ -676,7 +676,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         const EmptyState(icon: 'trend', title: 'لا توجد بيانات لهذه السنة')
       else ...[
         HeroBanner(
-          gradient: const [AppColors.navy700, AppColors.navy800],
+          gradient: [AppColors.navy700, AppColors.navy800],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -975,7 +975,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
   List<Widget> _residentNotes(Ctx ctx) {
     final notes = _notes;
     if (notes == null) {
-      return const [
+      return [
         Padding(
           padding: EdgeInsets.symmetric(vertical: 16),
           child: Center(child: CircularProgressIndicator(color: AppColors.navy700)),
@@ -1403,7 +1403,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 11),
               decoration: BoxDecoration(
                 border: i < rows.length - 1
-                    ? const Border(bottom: BorderSide(color: AppColors.line))
+                    ? Border(bottom: BorderSide(color: AppColors.line))
                     : null,
               ),
               child: Row(children: [
@@ -1479,7 +1479,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                                 ctx.toast('تم إرسال الرسالة');
                               },
                               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                const AppIcon('send', size: 15, color: AppColors.ok700),
+                                AppIcon('send', size: 15, color: AppColors.ok700),
                                 const SizedBox(width: 3),
                                 Text('إرسال',
                                     style: AppType.base(size: 12.5, weight: FontWeight.w800, color: AppColors.ok700)),
@@ -1613,7 +1613,7 @@ class _YearsScreenState extends State<YearsScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 11),
                 decoration: BoxDecoration(
                   border: i < kMonthsGrid.length - 1
-                      ? const Border(bottom: BorderSide(color: AppColors.line))
+                      ? Border(bottom: BorderSide(color: AppColors.line))
                       : null,
                 ),
                 child: Row(

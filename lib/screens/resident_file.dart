@@ -235,7 +235,7 @@ class _ResidentFileScreenState extends State<ResidentFileScreen> {
           icon: 'whatsapp',
           onTap: () => shareViaWhatsApp(
             phone: '${_resident?['phone'] ?? widget.unit.phone}',
-            text: 'بيانات الدخول إلى تطبيق عمارتي:\n'
+            text: 'بيانات الدخول إلى تطبيق سكن برو:\n'
                 'اسم المستخدم: ${_resident?['phone'] ?? widget.unit.phone}'
                 '${freshPassword != null ? '\nكلمة المرور: $freshPassword' : ''}'
                 '\nأو رمز الدخول: $code',

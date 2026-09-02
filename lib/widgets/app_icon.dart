@@ -89,6 +89,11 @@ const Map<String, String> kIconPaths = {
   'pin':
       '<path d="M12 21s7-6.3 7-12a7 7 0 1 0-14 0c0 5.7 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/>',
   'clock': '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  // The dark/light switch in the header shows the skin you would GET.
+  'sun':
+      '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.6 1.6"/>'
+      '<path d="M18.2 18.2l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/>',
+  'moon': '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>',
   'alert': '<path d="M12 4 2.5 20h19L12 4Z"/><path d="M12 10v4M12 17h.01"/>',
   'file':
       '<path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5M8 13h8M8 17h5"/>',
@@ -120,14 +125,14 @@ class AppIcon extends StatelessWidget {
     this.name, {
     super.key,
     this.size = 22,
-    this.color = AppColors.ink900,
+    this.color,
     this.stroke = 1.75,
     this.fill = false,
   });
 
   final String name;
   final double size;
-  final Color color;
+  final Color? color;
   final double stroke;
   final bool fill;
 
@@ -135,7 +140,7 @@ class AppIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final inner = kIconPaths[name];
     if (inner == null) return SizedBox(width: size, height: size);
-    final hex = _hex(color);
+    final hex = _hex(color ?? AppColors.ink900);
     final body = inner.replaceAll('currentColor', hex);
     final svg =
         '<svg xmlns="http://www.w3.org/2000/svg" width="$size" height="$size" '

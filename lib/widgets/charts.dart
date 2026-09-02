@@ -13,15 +13,15 @@ class Ring extends StatelessWidget {
     required this.value,
     this.size = 96,
     this.stroke = 9,
-    this.color = AppColors.ok,
-    this.track = AppColors.navy50,
+    this.color,
+    this.track,
     this.child,
   });
   final double value; // 0..100
   final double size;
   final double stroke;
-  final Color color;
-  final Color track;
+  final Color? color;
+  final Color? track;
   final Widget? child;
 
   @override
@@ -34,7 +34,8 @@ class Ring extends StatelessWidget {
         children: [
           CustomPaint(
             size: Size(size, size),
-            painter: _RingPainter(value / 100, stroke, color, track),
+            painter: _RingPainter(
+                value / 100, stroke, color ?? AppColors.ok, track ?? AppColors.navy50),
           ),
           ?child,
         ],

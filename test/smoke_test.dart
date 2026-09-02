@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:amarati/app.dart';
-import 'package:amarati/app_ctx.dart';
-import 'package:amarati/data/sample_data.dart';
+import 'package:sakan_pro/app.dart';
+import 'package:sakan_pro/app_ctx.dart';
+import 'package:sakan_pro/data/sample_data.dart';
 
 Widget _wrap(Widget child) => MaterialApp(
       debugShowCheckedModeBanner: false,

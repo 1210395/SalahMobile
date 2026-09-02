@@ -237,6 +237,7 @@ class AppHeader extends StatelessWidget {
     this.right,
     this.accent = false,
     this.logo = false,
+    this.skinToggle = true,
   });
   final String? title;
   final String? subtitle;
@@ -248,6 +249,10 @@ class AppHeader extends StatelessWidget {
   final Widget? right;
   final bool accent;
   final bool logo;
+
+  /// The dark/light switch. On by default so it is reachable from every screen;
+  /// a header that is already crowded can turn it off.
+  final bool skinToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -265,7 +270,7 @@ class AppHeader extends StatelessWidget {
         child: logo
             ? Align(
                 alignment: Alignment.centerRight,
-                child: Image.asset('assets/images/logo-light.png', height: 42),
+                child: Image.asset('assets/images/logo-mark-light.png', height: 42),
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,8 +300,18 @@ class AppHeader extends StatelessWidget {
                 ],
               ),
       ),
-      if (onHome != null || right != null) ...[
+      if (onHome != null || right != null || skinToggle) ...[
         const SizedBox(width: 10),
+        // Shows the skin you would GET, not the one you are in: a sun to go
+        // light, a moon to go dark.
+        if (skinToggle) ...[
+          RoundBtn(
+            icon: AppTheme.isDark ? 'sun' : 'moon',
+            dark: accent,
+            onTap: AppTheme.toggle,
+          ),
+          if (onHome != null || right != null) const SizedBox(width: 8),
+        ],
         if (onHome != null) RoundBtn(icon: 'home', dark: accent, onTap: onHome),
         if (onHome != null && right != null) const SizedBox(width: 8),
         ?right,
@@ -323,7 +338,7 @@ class AppHeader extends StatelessWidget {
             child: bar,
           )
         : Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.surface,
               border: Border(bottom: BorderSide(color: AppColors.line)),
             ),
@@ -365,7 +380,7 @@ class BottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.line)),
         boxShadow: [
@@ -410,7 +425,7 @@ class BottomNav extends StatelessWidget {
                               child: Container(
                                 width: 7,
                                 height: 7,
-                                decoration: const BoxDecoration(
+                                decoration: BoxDecoration(
                                     color: AppColors.late, shape: BoxShape.circle),
                               ),
                             ),
@@ -504,7 +519,7 @@ class SectionTitle extends StatelessWidget {
                   Text(action!,
                       style: AppType.base(
                           size: 12.5, weight: FontWeight.w700, color: AppColors.navy600)),
-                  const AppIcon('chevronL', size: 15, color: AppColors.navy600),
+                  AppIcon('chevronL', size: 15, color: AppColors.navy600),
                 ],
               ),
             ),
@@ -559,7 +574,7 @@ class AppButton extends StatelessWidget {
       case BtnVariant.gold:
         fg = const Color(0xFF3A2F0C);
         deco = BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [AppColors.gold500, AppColors.gold600]),
@@ -746,7 +761,7 @@ class ListRow extends StatelessWidget {
           if (trailing != null) ...[const SizedBox(width: 8), trailing!],
           if (chevron) ...[
             const SizedBox(width: 6),
-            const AppIcon('chevronL', size: 18, color: AppColors.ink300),
+            AppIcon('chevronL', size: 18, color: AppColors.ink300),
           ],
         ],
       ),
@@ -754,7 +769,7 @@ class ListRow extends StatelessWidget {
 
     final body = dividerBelow
         ? DecoratedBox(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
                 border: Border(bottom: BorderSide(color: AppColors.line))),
             child: row,
           )

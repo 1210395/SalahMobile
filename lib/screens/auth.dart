@@ -17,7 +17,7 @@ class SplashScreen extends StatelessWidget {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topRight,
             end: Alignment.bottomLeft,
@@ -173,7 +173,7 @@ class GuestHome extends StatelessWidget {
       nav: ctx.guestNav,
       children: [
         HeroBanner(
-          gradient: const [AppColors.navy700, AppColors.navy800],
+          gradient: [AppColors.navy700, AppColors.navy800],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -238,7 +238,7 @@ class GuestHome extends StatelessWidget {
                 decoration: BoxDecoration(
                     color: AppColors.gold100, borderRadius: BorderRadius.circular(16)),
                 alignment: Alignment.center,
-                child: const AppIcon('lock', size: 26, color: AppColors.gold700),
+                child: AppIcon('lock', size: 26, color: AppColors.gold700),
               ),
               const SizedBox(height: 12),
               Text('الوصول محدود في وضع الزائر',
@@ -466,7 +466,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return ScreenScaffold(
       header: AppHeader(
         title: 'تسجيل الدخول',
-        subtitle: 'أهلاً بعودتك إلى عمارتي',
+        subtitle: 'أهلاً بعودتك إلى سكن برو',
         onBack: ctx.back,
       ),
       children: [
@@ -714,7 +714,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return ScreenScaffold(
       header: AppHeader(
         title: 'إنشاء حساب جديد',
-        subtitle: 'انضم إلى عمارتي',
+        subtitle: 'انضم إلى سكن برو',
         onBack: ctx.back,
       ),
       children: [

@@ -77,7 +77,7 @@ class StatCard extends StatelessWidget {
   }
 }
 
-const Map<String, (Color, Color)> _statTones = {
+Map<String, (Color, Color)> _statTones = {
   'navy': (AppColors.navy50, AppColors.navy700),
   'gold': (AppColors.gold100, AppColors.gold700),
   'late': (AppColors.lateBg, AppColors.late700),
@@ -279,7 +279,7 @@ class HeroBanner extends StatelessWidget {
     this.gradient,
     this.color,
     this.borderColor,
-    this.shadow = AppShadows.navy,
+    this.shadow,
     this.radius = AppRadii.lg,
     this.padding = const EdgeInsets.all(18),
   });
@@ -287,7 +287,7 @@ class HeroBanner extends StatelessWidget {
   final List<Color>? gradient;
   final Color? color;
   final Color? borderColor;
-  final List<BoxShadow> shadow;
+  final List<BoxShadow>? shadow;
   final double radius;
   final EdgeInsets padding;
 
@@ -301,7 +301,7 @@ class HeroBanner extends StatelessWidget {
         color: color,
         border: borderColor != null ? Border.all(color: borderColor!) : null,
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: shadow,
+        boxShadow: shadow ?? AppShadows.navy,
       ),
       child: child,
     );

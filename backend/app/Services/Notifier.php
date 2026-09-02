@@ -65,7 +65,7 @@ class Notifier
     {
         $minutes = (int) config('amarati.code_ttl_minutes', 10);
 
-        return $this->sendSms($phone, "رمز الدخول إلى تطبيق عمارتي: $code\nصالح لمدة $minutes دقائق. لا تشاركه مع أحد.");
+        return $this->sendSms($phone, "رمز الدخول إلى تطبيق سكن برو: $code\nصالح لمدة $minutes دقائق. لا تشاركه مع أحد.");
     }
 
     /// Send an arbitrary SMS through the configured driver.

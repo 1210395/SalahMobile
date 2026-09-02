@@ -11,12 +11,12 @@ use Illuminate\Support\Facades\Storage;
 class SettingsController extends Controller
 {
     private const DEFAULTS = [
-        'app_name' => 'عمارتي',
-        'slogan' => 'إدارة عماراتك بثقة وراحة',
+        'app_name' => 'سكن برو',
+        'slogan' => 'إدارة عمارتك بسهولة',
         'description' => 'برنامج متكامل لإدارة شؤون العمارات السكنية والمجمعات التجارية — المستحقات، المصروفات، التقارير والتنبيهات في مكان واحد.',
-        'tagline' => 'عمارتي … تنظيم اليوم، راحة تدوم',
-        'primary' => '#232858',
-        'accent' => '#C2A24E',
+        'tagline' => 'سكن برو … إدارة عمارتك بسهولة',
+        'primary' => '#7E42B4',
+        'accent' => '#937135',
         'logo_url' => '',
     ];
 

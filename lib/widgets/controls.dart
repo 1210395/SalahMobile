@@ -103,7 +103,7 @@ class _FieldState extends State<Field> {
               border: Border.all(
                   color: _foc ? AppColors.navy500 : AppColors.line2, width: 1.5),
               boxShadow: _foc
-                  ? [const BoxShadow(color: AppColors.navy100, blurRadius: 0, spreadRadius: 3)]
+                  ? [BoxShadow(color: AppColors.navy100, blurRadius: 0, spreadRadius: 3)]
                   : AppShadows.xs,
             ),
             child: Row(
@@ -283,7 +283,7 @@ class _SelectFieldState extends State<SelectField> {
                   AnimatedRotation(
                     turns: _open ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
-                    child: const AppIcon('chevronDown', size: 18, color: AppColors.ink400),
+                    child: AppIcon('chevronDown', size: 18, color: AppColors.ink400),
                   ),
                 ],
               ),
@@ -322,7 +322,7 @@ class _SelectFieldState extends State<SelectField> {
                                         size: 14.5,
                                         weight: FontWeight.w600,
                                         color: on ? AppColors.navy700 : AppColors.ink700)),
-                                if (on) const AppIcon('check', size: 17, color: AppColors.navy700),
+                                if (on) AppIcon('check', size: 17, color: AppColors.navy700),
                               ],
                             ),
                           ),
@@ -530,7 +530,7 @@ class AppFab extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: label != null ? 20 : 0),
         width: label != null ? null : 52,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [AppColors.gold500, AppColors.gold600]),
@@ -586,7 +586,7 @@ class FormBlockedHint extends StatelessWidget {
         children: [
           Row(
             children: [
-              const AppIcon('alert', size: 15, color: AppColors.late700),
+              AppIcon('alert', size: 15, color: AppColors.late700),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(title ?? (reasons.length == 1 ? 'لإكمال الحفظ:' : 'لإكمال الحفظ، أكمل ما يلي:'),

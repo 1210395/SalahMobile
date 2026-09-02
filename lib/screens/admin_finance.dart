@@ -51,7 +51,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       fab: AppFab(icon: 'plus', label: 'دفعة جديدة', onTap: () => _openAdd(ctx)),
       children: [
         HeroBanner(
-          gradient: const [AppColors.ok700, Color(0xFF0F5E3E)],
+          gradient: [AppColors.ok700, Color(0xFF0F5E3E)],
           shadow: const [BoxShadow(color: Color(0x52157A52), offset: Offset(0, 10), blurRadius: 26)],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,7 +429,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                     ),
                     child: Row(
                       children: [
-                        const AppIcon('wallet', size: 18, color: AppColors.navy600),
+                        AppIcon('wallet', size: 18, color: AppColors.navy600),
                         const SizedBox(width: 11),
                         Expanded(
                           child: Column(
@@ -522,7 +522,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   // Plain-text سند قبض — date, resident, unit, amount, kind, method.
   String _receiptText(Payment p, String unitWord) {
     return [
-      'سند قبض — عمارتي',
+      'سند قبض — سكن برو',
       'التاريخ: ${p.date}',
       p.unit.isEmpty ? 'المصدر: ${p.name}' : 'الساكن: ${p.name}',
       // ايراد خاص carries no unit — omit the line entirely rather than print an empty one.
@@ -560,11 +560,11 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         build: (c) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            pw.Text('عمارتي',
-                style: pw.TextStyle(font: bold, fontSize: 22, color: PdfColor.fromInt(0xFF232858))),
+            pw.Text('سكن برو',
+                style: pw.TextStyle(font: bold, fontSize: 22, color: PdfColor.fromInt(0xFF6B2F9E))),
             pw.SizedBox(height: 2),
             pw.Text('سند قبض', style: pw.TextStyle(font: base, fontSize: 13, color: PdfColors.grey600)),
-            pw.Divider(color: PdfColor.fromInt(0xFFC2A24E), thickness: 1.2),
+            pw.Divider(color: PdfColor.fromInt(0xFFB02324), thickness: 1.2),
             pw.SizedBox(height: 10),
             row('التاريخ', p.date),
             row(p.unit.isEmpty ? 'المصدر' : 'الساكن', p.name),
@@ -908,7 +908,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Row(children: [
-                const AppIcon('calendar', size: 20, color: AppColors.navy600),
+                AppIcon('calendar', size: 20, color: AppColors.navy600),
                 const SizedBox(width: 11),
                 Expanded(
                   child: Text(_monthsSummary(),
@@ -916,7 +916,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                       overflow: TextOverflow.ellipsis,
                       style: AppType.base(size: 14, weight: FontWeight.w700, color: AppColors.ink900)),
                 ),
-                const AppIcon('chevronDown', size: 18, color: AppColors.ink400),
+                AppIcon('chevronDown', size: 18, color: AppColors.ink400),
               ]),
             ),
           ),
@@ -1080,7 +1080,7 @@ class _AddPaymentSheetState extends State<AddPaymentSheet> {
                             color: settled.contains(i) ? AppColors.ink400 : AppColors.ink900)),
                   ),
                   if (settled.contains(i))
-                    const AppIcon('checkCircle', size: 20, color: AppColors.ok700)
+                    AppIcon('checkCircle', size: 20, color: AppColors.ok700)
                   else
                     AppSwitch(
                       checked: payMonths.contains(i),
@@ -1259,7 +1259,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         ),
         const SizedBox(height: 12),
         HeroBanner(
-          gradient: const [AppColors.late700, Color(0xFF8C2019)],
+          gradient: [AppColors.late700, Color(0xFF8C2019)],
           shadow: const [BoxShadow(color: Color(0x4DAF2E26), offset: Offset(0, 10), blurRadius: 26)],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1741,7 +1741,7 @@ class WorkersScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Row(children: [
-                const AppIcon('checkCircle', size: 20, color: AppColors.navy700),
+                AppIcon('checkCircle', size: 20, color: AppColors.navy700),
                 const SizedBox(width: 11),
                 Expanded(child: Text('حضر في هذه الدورة', style: AppType.base(size: 14, weight: FontWeight.w700))),
                 AppSwitch(checked: came, onChanged: (v) => setS(() => came = v)),

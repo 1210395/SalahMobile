@@ -867,11 +867,11 @@ class Brand {
     return (v == null || v.isEmpty) ? fallback : v;
   }
 
-  static String get appName => _v('app_name', 'عمارتي');
+  static String get appName => _v('app_name', 'سكن برو');
   static String get slogan => _v('slogan', 'فخر الصناعة الوطنية');
   static String get description => _v('description',
       'برنامج متكامل لإدارة شؤون العمارات السكنية والمجمعات التجارية — المستحقات، المصروفات، التقارير والتنبيهات في مكان واحد.');
-  static String get tagline => _v('tagline', 'عمارتي … تنظيم اليوم، راحة تدوم');
+  static String get tagline => _v('tagline', 'سكن برو … إدارة عمارتك بسهولة');
   static String get logoUrl => _v('logo_url', '');
 
   // Whether the configured SMS gateway can reach the phone at all, and which

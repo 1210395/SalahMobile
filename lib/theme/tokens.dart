@@ -1,66 +1,78 @@
-// عمارتي — design tokens. Navy + Gold brand, Cairo type, RTL.
-// Direct translation of the prototype's tokens.css.
+// سكن برو — design tokens. Purple + gold brand, Cairo type, RTL.
+//
+// The colours are no longer compile-time constants: every token reads through
+// to the active skin (see skin.dart), so the whole app follows the dark/light
+// switch without any widget knowing a theme exists. The token NAMES are
+// historical — `navy*` is the brand purple and `gold*` the accent — kept so the
+// rebrand stayed a palette swap instead of a rename across 573 call sites.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Brand + semantic color tokens.
+import 'skin.dart';
+
+export 'skin.dart' show AppSkin, AppTheme, Palette, kDarkPalette, kLightPalette;
+
+/// Brand + semantic color tokens, resolved against the active skin.
 class AppColors {
   AppColors._();
 
-  // Brand — navy
-  static const navy900 = Color(0xFF14163A);
-  static const navy800 = Color(0xFF1B1E48);
-  static const navy700 = Color(0xFF232858); // primary
-  static const navy600 = Color(0xFF303676);
-  static const navy500 = Color(0xFF474E96);
-  static const navy300 = Color(0xFF9AA0C8);
-  static const navy100 = Color(0xFFE7E9F4);
-  static const navy50 = Color(0xFFF1F2FA);
+  static Palette get _p => AppTheme.palette;
 
-  // Brand — gold (aligned to the عمارتي / AMARTI logo gold)
-  static const gold700 = Color(0xFF8A6A1C);
-  static const gold600 = Color(0xFFAE831D);
-  static const gold500 = Color(0xFFC8941E); // primary gold — logo
-  static const gold400 = Color(0xFFD9B257);
-  static const gold200 = Color(0xFFEEDDA8);
-  static const gold100 = Color(0xFFF6EDCE);
-  static const gold50 = Color(0xFFFBF6E8);
+  // Brand — purple (historically "navy")
+  static Color get navy900 => _p.navy900;
+  static Color get navy800 => _p.navy800;
+  static Color get navy700 => _p.navy700; // primary
+  static Color get navy600 => _p.navy600;
+  static Color get navy500 => _p.navy500;
+  static Color get navy300 => _p.navy300;
+  static Color get navy100 => _p.navy100;
+  static Color get navy50 => _p.navy50;
 
-  // Brand — red (logo checkmark accent). Distinct from the semantic `late` red.
-  static const brandRed = Color(0xFFB5342B);
-  static const brandRed700 = Color(0xFF92271F);
-  static const brandRedBg = Color(0xFFF8E7E5);
+  // Brand — gold (the logo's frame colour)
+  static Color get gold700 => _p.gold700;
+  static Color get gold600 => _p.gold600;
+  static Color get gold500 => _p.gold500;
+  static Color get gold400 => _p.gold400;
+  static Color get gold200 => _p.gold200;
+  static Color get gold100 => _p.gold100;
+  static Color get gold50 => _p.gold50;
 
-  // Neutrals
-  static const ink900 = Color(0xFF1A1C2E);
-  static const ink700 = Color(0xFF353953);
-  static const ink600 = Color(0xFF5C6080);
-  static const ink500 = Color(0xFF767B97);
-  static const ink400 = Color(0xFF9CA1BC);
-  static const ink300 = Color(0xFFC2C6D8);
-  static const line = Color(0xFFE9EBF3);
-  static const line2 = Color(0xFFDEE1EE);
+  // Brand — red (the plinth the logo's towers stand on). Distinct from the
+  // semantic `late` red.
+  static Color get brandRed => _p.brandRed;
+  static Color get brandRed700 => _p.brandRed700;
+  static Color get brandRedBg => _p.brandRedBg;
 
-  static const page = Color(0xFFF4F5FA);
-  static const surface = Color(0xFFFFFFFF);
-  static const surface2 = Color(0xFFFAFBFD);
+  // Neutrals — these INVERT between skins.
+  static Color get ink900 => _p.ink900;
+  static Color get ink700 => _p.ink700;
+  static Color get ink600 => _p.ink600;
+  static Color get ink500 => _p.ink500;
+  static Color get ink400 => _p.ink400;
+  static Color get ink300 => _p.ink300;
+  static Color get line => _p.line;
+  static Color get line2 => _p.line2;
+
+  static Color get page => _p.page;
+  static Color get surface => _p.surface;
+  static Color get surface2 => _p.surface2;
 
   // Status — paid / late / credit / warn
-  static const ok = Color(0xFF1E9D6B);
-  static const okBg = Color(0xFFE6F5EE);
-  static const ok700 = Color(0xFF157A52);
-  static const late = Color(0xFFD8453B);
-  static const lateBg = Color(0xFFFBEAE8);
-  static const late700 = Color(0xFFAF2E26);
-  static const credit = Color(0xFF2E73D6);
-  static const creditBg = Color(0xFFE7EFFB);
-  static const credit700 = Color(0xFF1F569F);
-  static const warn = Color(0xFFD98A1F);
-  static const warnBg = Color(0xFFFBF0DE);
+  static Color get ok => _p.ok;
+  static Color get okBg => _p.okBg;
+  static Color get ok700 => _p.ok700;
+  static Color get late => _p.late;
+  static Color get lateBg => _p.lateBg;
+  static Color get late700 => _p.late700;
+  static Color get credit => _p.credit;
+  static Color get creditBg => _p.creditBg;
+  static Color get credit700 => _p.credit700;
+  static Color get warn => _p.warn;
+  static Color get warnBg => _p.warnBg;
 
-  // App backdrop behind the screen content.
-  static const backdrop = Color(0xFF20223F);
+  /// App backdrop behind the screen content.
+  static Color get backdrop => _p.backdrop;
 }
 
 /// Corner radii.
@@ -74,30 +86,35 @@ class AppRadii {
   static const double pill = 999;
 }
 
-/// Soft, cool navy-tinted shadows.
+/// Soft shadows, tinted by the skin: a cool tint reads as depth on a light
+/// ground and as a glow on a dark one, so the dark skin shadows in black.
 class AppShadows {
   AppShadows._();
 
-  static const xs = [
-    BoxShadow(color: Color(0x0F14163A), offset: Offset(0, 1), blurRadius: 2),
-  ];
-  static const sm = [
-    BoxShadow(color: Color(0x1214163A), offset: Offset(0, 2), blurRadius: 8),
-    BoxShadow(color: Color(0x0D14163A), offset: Offset(0, 1), blurRadius: 2),
-  ];
-  static const md = [
-    BoxShadow(color: Color(0x1A14163A), offset: Offset(0, 6), blurRadius: 20),
-    BoxShadow(color: Color(0x0F14163A), offset: Offset(0, 2), blurRadius: 6),
-  ];
-  static const lg = [
-    BoxShadow(color: Color(0x2914163A), offset: Offset(0, 16), blurRadius: 40),
-  ];
-  static const gold = [
-    BoxShadow(color: Color(0x47AE831D), offset: Offset(0, 8), blurRadius: 22),
-  ];
-  static const navy = [
-    BoxShadow(color: Color(0x4D232858), offset: Offset(0, 10), blurRadius: 26),
-  ];
+  static Color _ink(double opacity) => AppTheme.palette.shadowInk.withValues(alpha: opacity);
+
+  static List<BoxShadow> get xs => [
+        BoxShadow(color: _ink(0.06), offset: const Offset(0, 1), blurRadius: 2),
+      ];
+  static List<BoxShadow> get sm => [
+        BoxShadow(color: _ink(0.07), offset: const Offset(0, 2), blurRadius: 8),
+        BoxShadow(color: _ink(0.05), offset: const Offset(0, 1), blurRadius: 2),
+      ];
+  static List<BoxShadow> get md => [
+        BoxShadow(color: _ink(0.10), offset: const Offset(0, 6), blurRadius: 20),
+        BoxShadow(color: _ink(0.06), offset: const Offset(0, 2), blurRadius: 6),
+      ];
+  static List<BoxShadow> get lg => [
+        BoxShadow(color: _ink(0.16), offset: const Offset(0, 16), blurRadius: 40),
+      ];
+  static List<BoxShadow> get gold => [
+        BoxShadow(color: AppColors.gold600.withValues(alpha: 0.28),
+            offset: const Offset(0, 8), blurRadius: 22),
+      ];
+  static List<BoxShadow> get navy => [
+        BoxShadow(color: AppColors.navy700.withValues(alpha: 0.30),
+            offset: const Offset(0, 10), blurRadius: 26),
+      ];
 }
 
 /// Standard easing curve (cubic-bezier(0.22, 1, 0.36, 1)).
@@ -107,17 +124,19 @@ const Cubic kEaseOut = Cubic(0.22, 1, 0.36, 1);
 class AppType {
   AppType._();
 
+  // `color` is nullable rather than defaulted: a default value must be a
+  // compile-time constant, and the ink colour now depends on the active skin.
   static TextStyle base({
     double size = 14,
     FontWeight weight = FontWeight.w600,
-    Color color = AppColors.ink900,
+    Color? color,
     double? height,
     double? letterSpacing,
   }) =>
       GoogleFonts.cairo(
         fontSize: size,
         fontWeight: weight,
-        color: color,
+        color: color ?? AppColors.ink900,
         height: height,
         letterSpacing: letterSpacing,
       );
@@ -126,13 +145,13 @@ class AppType {
   static TextStyle num({
     double size = 14,
     FontWeight weight = FontWeight.w800,
-    Color color = AppColors.ink900,
+    Color? color,
     double? letterSpacing,
   }) =>
       GoogleFonts.cairo(
         fontSize: size,
         fontWeight: weight,
-        color: color,
+        color: color ?? AppColors.ink900,
         letterSpacing: letterSpacing,
         fontFeatures: const [FontFeature.tabularFigures()],
       );

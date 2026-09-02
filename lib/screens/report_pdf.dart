@@ -16,12 +16,12 @@ import '../data/file_save.dart';
 Future<void> exportReportPdf(String title, List<List<String>> rows,
     {String? buildingName}) async {
   final bytes = await buildReportPdf(title, rows, buildingName: buildingName);
-  await Printing.sharePdf(bytes: bytes, filename: 'amarati-report.pdf');
+  await Printing.sharePdf(bytes: bytes, filename: 'sakan-pro-report.pdf');
 }
 
 /// #41 — save the report to the device instead; returns the saved path.
 Future<String> saveReportPdf(String title, List<List<String>> rows,
-    {String? buildingName, String fileName = 'amarati-report.pdf'}) async {
+    {String? buildingName, String fileName = 'sakan-pro-report.pdf'}) async {
   final bytes = await buildReportPdf(title, rows, buildingName: buildingName);
   return saveToDownloads(fileName, bytes);
 }
@@ -96,8 +96,8 @@ Future<Uint8List> buildReportPdf(String title, List<List<String>> rows,
                     if (building.isNotEmpty)
                       pw.Text(building,
                           style: pw.TextStyle(
-                              font: bold, fontSize: 22, color: PdfColor.fromInt(0xFF232858))),
-                    pw.Text('عمارتي',
+                              font: bold, fontSize: 22, color: PdfColor.fromInt(0xFF6B2F9E))),
+                    pw.Text('سكن برو',
                         style: pw.TextStyle(
                             font: base, fontSize: 12, color: PdfColor.fromInt(0xFFA8873A))),
                   ],
@@ -112,7 +112,7 @@ Future<Uint8List> buildReportPdf(String title, List<List<String>> rows,
             pw.Text('تاريخ الإصدار: ${_today()}',
                 style: pw.TextStyle(font: base, fontSize: 10, color: PdfColors.grey600)),
             pw.SizedBox(height: 8),
-            pw.Divider(color: PdfColor.fromInt(0xFFC2A24E), thickness: 1.4),
+            pw.Divider(color: PdfColor.fromInt(0xFFB02324), thickness: 1.4),
           ],
         ),
       ),
@@ -132,7 +132,7 @@ Future<Uint8List> buildReportPdf(String title, List<List<String>> rows,
             data: block.skip(1).toList(),
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
             headerStyle: pw.TextStyle(font: bold, fontSize: 12, color: PdfColors.white),
-            headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF232858)),
+            headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF6B2F9E)),
             cellStyle: pw.TextStyle(font: base, fontSize: 11.5),
             cellHeight: 24,
             cellAlignment: pw.Alignment.centerRight,
@@ -140,7 +140,7 @@ Future<Uint8List> buildReportPdf(String title, List<List<String>> rows,
             rowDecoration: const pw.BoxDecoration(
               border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200, width: 0.5)),
             ),
-            oddRowDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFFAFBFD)),
+            oddRowDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF6F3FA)),
           ),
           pw.SizedBox(height: 18),
         ],

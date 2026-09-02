@@ -1,4 +1,4 @@
-package com.amarati.amarati
+package com.olivedev.sakanpro
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -28,7 +28,7 @@ Future<String?> pickDate(BuildContext context, {String? initialIso}) async {
       textDirection: TextDirection.rtl,
       child: Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(
+          colorScheme: ColorScheme.light(
               primary: AppColors.navy700, onPrimary: Colors.white),
         ),
         child: child!,
@@ -99,7 +99,7 @@ class DateField extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const AppIcon('calendar', size: 19, color: AppColors.ink400),
+                  AppIcon('calendar', size: 19, color: AppColors.ink400),
                   const SizedBox(width: 9),
                   Expanded(
                     child: Text(has ? value : placeholder,
@@ -141,9 +141,9 @@ class QrBox extends StatelessWidget {
         size: size,
         version: QrVersions.auto,
         backgroundColor: Colors.white,
-        eyeStyle: const QrEyeStyle(
+        eyeStyle: QrEyeStyle(
             eyeShape: QrEyeShape.square, color: AppColors.navy700),
-        dataModuleStyle: const QrDataModuleStyle(
+        dataModuleStyle: QrDataModuleStyle(
             dataModuleShape: QrDataModuleShape.square, color: AppColors.navy800),
       ),
     );
