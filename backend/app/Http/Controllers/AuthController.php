@@ -68,6 +68,20 @@ class AuthController extends Controller
             && (Notifier::channelIsLive('mail') || $this->exposesDevCode('mail'));
     }
 
+    /// Whether a code REALLY left the server, which is what `sent` claims.
+    ///
+    /// The `log` driver reports success by writing the message to a file — which
+    /// is exactly right in development, and a lie on a deployment with no
+    /// provider: the caller was told "sent" and nobody's phone ever rang. A
+    /// channel with no real provider behind it has delivered nothing, so this
+    /// says false and lets the caller be told plainly (or handed the dev echo).
+    private function delivered(string $channel, callable $send): bool
+    {
+        $accepted = $send();
+
+        return $accepted && Notifier::channelIsLive($channel);
+    }
+
     /// Issue + store a fresh 6-digit code, invalidating any outstanding one.
     private function issueCode(string $model, string $key, string $value): string
     {
@@ -190,7 +204,7 @@ class AuthController extends Controller
         $data = $r->validate(['email' => 'required|email']);
 
         $code = $this->issueCode(EmailCode::class, 'email', $data['email']);
-        $sent = $notifier->sendEmailCode($data['email'], $code);
+        $sent = $this->delivered('mail', fn () => $notifier->sendEmailCode($data['email'], $code));
 
         $body = ['sent' => $sent];
         if ($this->exposesDevCode('mail')) {
@@ -282,7 +296,7 @@ class AuthController extends Controller
             .'الدخول الذي يوفره مسؤول العمارة.');
 
         $code = $this->issueCode(OtpCode::class, 'phone', $data['phone']);
-        $sent = $notifier->sendSmsCode($data['phone'], $code);
+        $sent = $this->delivered('sms', fn () => $notifier->sendSmsCode($data['phone'], $code));
 
         $body = ['sent' => $sent];
         if ($this->exposesDevCode('sms')) {

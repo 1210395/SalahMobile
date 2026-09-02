@@ -1154,7 +1154,9 @@ class AmaratiOverhaulTest extends TestCase
     {
         $this->app['env'] = 'local';
         $res = $this->postJson('/api/auth/request-email-code', ['email' => 'a@b.com']);
-        $res->assertOk()->assertJson(['sent' => true]);
+        // `sent` is false with no mail provider behind it — the dev echo below is
+        // what makes the flow usable, and saying "sent" would be a lie.
+        $res->assertOk()->assertJson(['sent' => false]);
         $this->assertNotEmpty($res->json('dev_code'));
         $this->assertDatabaseHas('email_codes', ['email' => 'a@b.com', 'used' => false]);
     }

@@ -41,8 +41,10 @@ class VerificationDeliveryTest extends TestCase
     {
         Mail::fake();
 
+        // The mailable is dispatched (asserted below); `sent` stays false because
+        // the suite's mailer is a fake — nothing actually left the server.
         $this->postJson('/api/auth/request-email-code', ['email' => 'new@test.app'])
-            ->assertOk()->assertJson(['sent' => true]);
+            ->assertOk();
 
         Mail::assertSentCount(1);
         // Stored hashed, never in the clear.
@@ -198,11 +200,15 @@ class VerificationDeliveryTest extends TestCase
         ]);
         $this->app['env'] = 'production';   // the echo's local/testing shortcut is off
 
+        // SMS: no provider AND no echo, so there is no way to give the caller a
+        // code — which is a refusal, not a cheerful "sent" they cannot act on.
         $this->postJson('/api/auth/request-otp', ['phone' => '0599111222'])
-            ->assertOk()->assertJsonMissingPath('dev_code');
+            ->assertStatus(503)->assertJsonMissingPath('dev_code');
 
+        // E-mail: still echoed, so the flow remains usable on a host with no
+        // mail provider — and `sent` tells the truth that nothing was delivered.
         $this->postJson('/api/auth/request-email-code', ['email' => 'x@test.app'])
-            ->assertOk()->assertJsonStructure(['sent', 'dev_code']);
+            ->assertOk()->assertJson(['sent' => false])->assertJsonStructure(['dev_code']);
     }
 
     // ─────────────── SMS gateway coverage (+970 / +972 only) ───────────────
@@ -259,5 +265,34 @@ class VerificationDeliveryTest extends TestCase
             $this->actingAs($user, 'sanctum')->getJson('/api/me')->assertOk();
         }
         $this->actingAs($user, 'sanctum')->getJson('/api/me')->assertStatus(429);
+    }
+
+    // A code is either DELIVERED or echoed — never neither, and never a claim
+    // that it was sent when it only reached a log file.
+    public function test_the_log_driver_is_not_reported_as_a_delivery(): void
+    {
+        config([
+            'amarati.sms.driver' => 'log',
+            'amarati.expose_sms_dev_code' => false,
+            'mail.default' => 'log',
+            'amarati.expose_email_dev_code' => false,
+        ]);
+        $this->app['env'] = 'production';   // no local/testing shortcut
+
+        // Both channels "succeed" into a log file, which nobody's phone or inbox
+        // can read: the caller must be told, not promised.
+        $this->postJson('/api/auth/request-otp', ['phone' => '0599111333'])
+            ->assertStatus(503);
+        $this->postJson('/api/auth/request-email-code', ['email' => 'nowhere@test.app'])
+            ->assertStatus(503);
+    }
+
+    public function test_a_real_provider_is_reported_as_sent(): void
+    {
+        Mail::fake();                       // an array/fake mailer stands in for SMTP
+        config(['mail.default' => 'smtp']); // …while the config says a real one
+
+        $this->postJson('/api/auth/request-email-code', ['email' => 'real@test.app'])
+            ->assertOk()->assertJson(['sent' => true])->assertJsonMissingPath('dev_code');
     }
 }
