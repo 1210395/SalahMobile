@@ -65,7 +65,13 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Palestine, not UTC. The building's month is what the subscription is
+    // billed by: monthsBilledThrough(now()) on a UTC clock counts one month less
+    // for the first three hours after local midnight on the 1st, so every
+    // resident's balance would quietly read one month light — and be right again
+    // by breakfast. The default lives HERE and not only in .env so moving to
+    // another host cannot silently drop it.
+    'timezone' => env('APP_TIMEZONE', 'Asia/Hebron'),
 
     /*
     |--------------------------------------------------------------------------

@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Models\Building;
 use App\Models\JoinRequest;
 use App\Models\PayType;
+use App\Models\Payment;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\Sanctum;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -239,5 +241,46 @@ class MultiBuildingIsolationTest extends TestCase
         ])->assertStatus(422);
 
         $this->assertNull(User::where('email', 'newadmin2@test.app')->first());
+    }
+
+    // ─────────── money converts at the RIGHT building's currency ───────────
+
+    /// The base currency decides what a foreign-currency payment is worth once
+    /// stored, and it was resolved by building TYPE. With two residential
+    /// buildings priced differently, one of them converted at the other's
+    /// currency and banked the wrong number in the column its reports sum.
+    public function test_a_payment_converts_at_its_own_buildings_currency(): void
+    {
+        // The FIRST residential building is the one a type lookup finds.
+        $nis = $this->building('عمارة الشيكل');
+        $jod = $this->building('عمارة الدينار');
+        $jod->update(['currency' => 'JOD']);
+
+        Unit::create([
+            'building_id' => $jod->id, 'building_key' => $jod->key, 'ext_id' => 'B1',
+            'no' => '201', 'floor' => 2, 'resident' => 'ساكن', 'kind' => 'مالك',
+            'phone' => '-', 'sub' => 40, 'status' => 'ok', 'balance' => 0,
+            'opening_balance' => 0, 'payer' => 'الساكن',
+        ]);
+
+        Sanctum::actingAs($this->adminOf($jod, 'jod@test.app'));
+
+        // 100 NIS into a JOD building, at 5 NIS to the dinar → 500 dinars' worth
+        // is NOT what was paid; the stored base amount must be the converted 500
+        // only because the rate says so, and the currency kept must be NIS.
+        $this->postJson('/api/payments', [
+            'unit_no' => '201', 'name' => 'ساكن', 'amount' => 100,
+            'original_amount' => 100, 'currency' => 'NIS', 'exchange_rate' => 5,
+            'kind' => 'اشتراك شهري', 'month' => 0, 'year' => 2026,
+            'date' => '2026-01-05', 'method' => 'نقداً', 'bucket' => 'sub',
+        ])->assertCreated();
+
+        $payment = Payment::where('building_id', $jod->id)->firstOrFail();
+
+        // Converted, because NIS is not this building's base — the old code saw
+        // the NIS building first, called them equal, and stored 100.
+        $this->assertSame(500, (int) $payment->amount);
+        $this->assertSame('NIS', $payment->currency);
+        $this->assertSame(0, Payment::where('building_id', $nis->id)->count());
     }
 }

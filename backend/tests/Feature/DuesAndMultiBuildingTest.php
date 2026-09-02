@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Building;
 use App\Models\PayType;
 use App\Models\Unit;
+use Carbon\Carbon;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -306,5 +307,34 @@ class DuesAndMultiBuildingTest extends TestCase
         $this->actingAs($admin, 'sanctum')->postJson('/api/residents', [
             'name' => 'ساكن', 'phone' => '0599777888', 'password' => 'six123',
         ])->assertCreated();
+    }
+
+    // ─────────────── the building's month is the LOCAL month ───────────────
+
+    /// A unit is billed by whole months, so which month "now" falls in decides
+    /// what every resident owes. On a UTC clock the first three hours after
+    /// local midnight on the 1st still belong to the previous month, and every
+    /// balance in the building read one month light until breakfast.
+    public function test_a_new_month_starts_at_local_midnight_not_utc_midnight(): void
+    {
+        $this->assertSame('Asia/Hebron', config('app.timezone'),
+            'the platform bills in Palestine local time');
+
+        $b = $this->building();
+        $unit = Unit::create([
+            'building_id' => $b->id, 'building_key' => $b->key, 'ext_id' => 'A1',
+            'no' => '101', 'floor' => 1, 'resident' => 'ساكن', 'kind' => 'مالك',
+            'phone' => '-', 'sub' => 100, 'status' => 'ok', 'balance' => 0,
+            'opening_balance' => 0, 'payer' => 'الساكن', 'billing_start' => '2026-01-01',
+        ]);
+
+        // 00:30 on 1 March, Palestine - which is still 22:30 on 28 February UTC.
+        Carbon::setTestNow(Carbon::parse('2026-03-01 00:30:00', 'Asia/Hebron'));
+
+        // January, February AND March: three months, not two.
+        $this->assertSame(3, $unit->monthsBilled());
+        $this->assertSame(300, $unit->charges());
+
+        Carbon::setTestNow();
     }
 }

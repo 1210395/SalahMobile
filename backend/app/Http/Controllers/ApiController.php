@@ -435,7 +435,7 @@ class ApiController extends Controller
         // resync the original-currency fields so a receipt can't show a stale
         // "350 ILS" next to a freshly-edited base total.
         if (array_key_exists('amount', $clean) && (int) $clean['amount'] !== $before) {
-            $base = Building::where('key', $payment->building_key)->value('currency') ?: 'NIS';
+            $base = $this->baseCurrency($payment->building_id);
             $clean['original_amount'] = (int) $clean['amount'];
             $clean['currency'] = $base;
             $clean['exchange_rate'] = 1;
@@ -483,6 +483,18 @@ class ApiController extends Controller
     /// Recompute + persist a unit's DERIVED balance and status after a payment
     /// write (balance = opening − charges + payments). Vacant stays 0/vacant.
     /// The persisted value is a cache; reads recompute so month accrual stays live.
+    /// The base currency of ONE building, by id.
+    ///
+    /// It used to be looked up by `key` — which holds a TYPE ('residential'),
+    /// not an identity, so with two residential buildings on the platform every
+    /// conversion silently used whichever of them came first. A building priced
+    /// in JOD would have had its payments converted at the NIS building's rate
+    /// and stored wrong, in the column all its reports sum.
+    private function baseCurrency(?int $buildingId): string
+    {
+        return ($buildingId ? Building::whereKey($buildingId)->value('currency') : null) ?: 'NIS';
+    }
+
     private function recomputeUnit(?Unit $unit): void
     {
         if (! $unit || $unit->status === 'vacant') {
@@ -517,7 +529,7 @@ class ApiController extends Controller
 
         // Re-convert if currency/original/rate were supplied (keep `amount` base).
         if (array_key_exists('currency', $data) || array_key_exists('original_amount', $data)) {
-            $base = Building::where('key', $expense->building_key)->value('currency') ?: 'NIS';
+            $base = $this->baseCurrency($expense->building_id);
             $currency = $data['currency'] ?? $expense->currency ?? $base;
             $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? $expense->exchange_rate ?? 1);
             $original = (int) ($data['original_amount'] ?? $expense->original_amount ?? $data['amount'] ?? $expense->amount);
@@ -769,7 +781,7 @@ class ApiController extends Controller
 
         // Convert the entered amount to the building's base currency. `amount` is
         // always stored in the base currency so totals/reports sum cleanly.
-        $base = Building::where('key', $bk)->value('currency') ?: 'NIS';
+        $base = $this->baseCurrency($this->buildingId($r));
         $currency = $data['currency'] ?? $base;
         $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
         $original = (int) ($data['original_amount'] ?? $data['amount'] ?? 0);
@@ -869,7 +881,7 @@ class ApiController extends Controller
 
         // Convert the entered amount to the building's base currency so reports
         // sum cleanly — mirrors payments. `amount` is always base currency.
-        $base = Building::where('key', $bk)->value('currency') ?: 'NIS';
+        $base = $this->baseCurrency($this->buildingId($r));
         $currency = $data['currency'] ?? $base;
         $rate = $currency === $base ? 1.0 : (float) ($data['exchange_rate'] ?? 1);
         $original = (int) ($data['original_amount'] ?? $data['amount']);
