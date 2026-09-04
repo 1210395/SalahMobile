@@ -112,7 +112,11 @@ if ($problems === []) {
 
 // Only ever mailed when something is actually wrong. A daily "all is well" is
 // how people learn to filter the alert that matters into the bin.
-$to = trim((string) getenv('OPS_ALERT_EMAIL')) ?: 'no-reply@sakanpro.app';
+// env() rather than getenv(): the framework is booted here, so it has already
+// read .env — and cron gives a job almost no environment of its own, so
+// getenv() would have been empty and every alert would go to the fallback
+// address that nobody reads.
+$to = trim((string) env('OPS_ALERT_EMAIL')) ?: 'no-reply@sakanpro.app';
 $body = "sakanpro.app\n\n".implode("\n", array_map(fn ($p) => "- $p", $problems))
     ."\n\ncontext:\n".implode("\n", array_map(fn ($n) => "  $n", $notes))."\n";
 

@@ -38,7 +38,11 @@ function env_value(string $file, string $key): string
 
 function ops_notify(string $subject, string $body): void
 {
-    $to = trim((string) getenv('OPS_ALERT_EMAIL')) ?: 'no-reply@sakanpro.app';
+    // From .env, not the environment: cron gives a job almost no environment of
+    // its own, so a variable set anywhere else would silently be empty and every
+    // alert would go to the fallback nobody reads.
+    $to = env_value('/home/sakanpro/sakanpro-api/.env', 'OPS_ALERT_EMAIL')
+        ?: 'no-reply@sakanpro.app';
     $cmd = sprintf('/usr/local/bin/ea-php83 /home/sakanpro/sakanpro-api/artisan amarati:ops-mail %s %s 2>&1',
         escapeshellarg($to), escapeshellarg($subject));
     $proc = popen($cmd, 'w');
